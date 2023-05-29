@@ -1,1 +1,1 @@
-# rust-pairwise-testing
+# Rust Pairwise Testing Prototype
