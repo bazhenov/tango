@@ -1,73 +1,19 @@
-use rand::{rngs::SmallRng, thread_rng, Rng, SeedableRng};
+use rand::{thread_rng, Rng};
+use rust_pairwise_testing::{
+    std, std_4925, std_5000, std_count, std_count_rev, Generator, RandomStringGenerator,
+};
 use std::{
-    fs::{self, File},
+    fs::File,
     io::{self, BufWriter, Write},
     time::Instant,
 };
 
-trait Generator {
-    type Output: ?Sized;
-    fn next_payload(&mut self) -> &Self::Output;
-}
-
-#[derive(Clone)]
-struct FixedStringGenerator {
-    string: String,
-}
-
-impl Generator for FixedStringGenerator {
-    type Output = str;
-
-    fn next_payload(&mut self) -> &Self::Output {
-        &self.string[..]
-    }
-}
-
-#[derive(Clone)]
-struct RandomStringGenerator {
-    string: String,
-    char_indicies: Vec<usize>,
-    rng: SmallRng,
-    length: usize,
-}
-
-impl RandomStringGenerator {
-    fn new(string: String, length: usize) -> Self {
-        let char_indicies = string
-            .char_indices()
-            .map(|(idx, _)| idx)
-            .collect::<Vec<_>>();
-        let rng = SmallRng::seed_from_u64(42);
-        Self {
-            string,
-            char_indicies,
-            rng,
-            length,
-        }
-    }
-}
-
-impl Generator for RandomStringGenerator {
-    type Output = str;
-
-    fn next_payload(&mut self) -> &Self::Output {
-        let start = self
-            .rng
-            .gen_range(0..self.char_indicies.len() - self.length);
-
-        let from = self.char_indicies[start];
-        let to = self.char_indicies[start + self.length];
-        return &self.string[from..to];
-    }
-}
-
 fn main() -> io::Result<()> {
-    let input = fs::read_to_string("./input.txt")?;
-    let generator = RandomStringGenerator::new(input, 5000);
+    let generator = RandomStringGenerator::new()?;
 
     // this trick is require for compiler not to uroll measurement loops
     let mut rand = thread_rng();
-    let iter = 10000;
+    let iter = 100000;
     let iter = rand.gen_range(iter..iter + 1);
     let iter = iter & (usize::MAX << 1);
     let factor = 10;
@@ -93,13 +39,13 @@ fn main() -> io::Result<()> {
     report("std_count_rev / std_count_rev", data, None)?;
 
     let data = measure(generator.clone(), std_5000, std_4925, iter, factor);
-    report("std_5000 / std_4925", data, None)?;
+    report("std_5000 / std_4925", data, Some("./result.csv"))?;
 
     let data = measure(generator.clone(), std_count, std_count_rev, iter, factor);
     report("std_count / std_count_rev", data, None)?;
 
     let data = measure(generator.clone(), std, std_count, iter, factor);
-    report("std / std_count", data, Some("./result.csv"))?;
+    report("std / std_count", data, None)?;
 
     Ok(())
 }
@@ -192,37 +138,6 @@ fn running_std_err(input: &[i64]) -> Vec<f64> {
     output
 }
 
-fn std(s: &str) -> usize {
-    s.chars().count()
-}
-
-fn std_count(s: &str) -> usize {
-    let mut l = 0;
-    let mut chars = s.chars();
-    while chars.next().is_some() {
-        l += 1;
-    }
-    l
-}
-
-fn std_count_rev(s: &str) -> usize {
-    let mut l = 0;
-    let mut chars = s.chars().rev();
-    while chars.next().is_some() {
-        l += 1;
-    }
-    l
-}
-
-fn std_5000(s: &str) -> usize {
-    s.chars().take(5000).count()
-}
-
-fn std_4925(s: &str) -> usize {
-    s.chars().take(4925).count()
-}
-
-#[inline(never)]
 fn measure<O, G: Generator, B: Fn(&G::Output) -> O, C: Fn(&G::Output) -> O>(
     mut generator: G,
     base: B,
