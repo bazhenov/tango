@@ -13,39 +13,44 @@ fn main() -> io::Result<()> {
 
     // this trick is require for compiler not to uroll measurement loops
     let mut rand = thread_rng();
-    let iter = 100000;
+    let iter = 50000;
     let iter = rand.gen_range(iter..iter + 1);
     let iter = iter & (usize::MAX << 1);
-    let factor = 10;
 
     println!(
         "{:40} {:>10} {:>10} {:>10} {:>10} {:>10} {:>10} {:>10}",
         "name", "B min", "C min", "min ∆", "B mean", "C mean", "mean ∆", "mean ∆ (%)"
     );
 
-    let data = measure(generator.clone(), std, std, iter, factor);
-    report("std / std", data, None)?;
+    let data = measure(generator.clone(), std, std, iter);
+    report("std / std", data, Some("std-std.csv"))?;
 
-    let data = measure(generator.clone(), std_count, std_count, iter, factor);
-    report("std_count / std_count", data, None)?;
+    let data = measure(generator.clone(), std_count, std_count, iter);
+    report(
+        "std_count / std_count",
+        data,
+        Some("std_count-std_count.csv"),
+    )?;
 
-    let data = measure(
-        generator.clone(),
-        std_count_rev,
-        std_count_rev,
-        iter,
-        factor,
-    );
-    report("std_count_rev / std_count_rev", data, None)?;
+    let data = measure(generator.clone(), std_count_rev, std_count_rev, iter);
+    report(
+        "std_count_rev / std_count_rev",
+        data,
+        Some("std_count_rev-std_count_rev.csv"),
+    )?;
 
-    let data = measure(generator.clone(), std_5000, std_4925, iter, factor);
-    report("std_5000 / std_4925", data, Some("./result.csv"))?;
+    let data = measure(generator.clone(), std_5000, std_4925, iter);
+    report("std_5000 / std_4925", data, Some("std_5000-std_4925.csv"))?;
 
-    let data = measure(generator.clone(), std_count, std_count_rev, iter, factor);
-    report("std_count / std_count_rev", data, None)?;
+    let data = measure(generator.clone(), std_count, std_count_rev, iter);
+    report(
+        "std_count / std_count_rev",
+        data,
+        Some("std_count-std_count_rev.csv"),
+    )?;
 
-    let data = measure(generator.clone(), std, std_count, iter, factor);
-    report("std / std_count", data, None)?;
+    let data = measure(generator.clone(), std, std_count, iter);
+    report("std / std_count", data, Some("std-std_count.csv"))?;
 
     Ok(())
 }
@@ -107,16 +112,18 @@ fn report(name: &str, input: Vec<(u64, u64)>, file: Option<&str>) -> io::Result<
         let mut file = BufWriter::new(File::create(file)?);
 
         for i in 0..base.len() {
-            writeln!(
-                &mut file,
-                "{},{},{},{:.2},{:.2},{:.2}",
-                base[i],
-                candidate[i],
-                diff[i],
-                base_std_err[i],
-                candidate_std_err[i],
-                diff_std_err[i]
-            )?;
+            if i % 1 == 0 {
+                writeln!(
+                    &mut file,
+                    "{},{},{},{:.2},{:.2},{:.2}",
+                    base[i],
+                    candidate[i],
+                    diff[i],
+                    base_std_err[i],
+                    candidate_std_err[i],
+                    diff_std_err[i]
+                )?;
+            }
         }
     }
 
@@ -143,12 +150,11 @@ fn measure<O, G: Generator, B: Fn(&G::Output) -> O, C: Fn(&G::Output) -> O>(
     base: B,
     candidate: C,
     iter: usize,
-    factor: usize,
 ) -> Vec<(u64, u64)> {
     let mut result = Vec::with_capacity(iter);
     let mut rand = thread_rng();
 
-    for i in 0..iter {
+    for _ in 0..iter {
         let payload = generator.next_payload();
 
         let (base, candidate) = if rand.gen_bool(0.5) {
@@ -163,9 +169,7 @@ fn measure<O, G: Generator, B: Fn(&G::Output) -> O, C: Fn(&G::Output) -> O>(
             (base, candidate)
         };
 
-        if i % factor == 0 {
-            result.push((base as u64, candidate as u64));
-        }
+        result.push((base, candidate))
     }
 
     result

@@ -40,7 +40,7 @@ impl RandomStringGenerator {
             string,
             char_indicies,
             rng,
-            length: 5000,
+            length: 10000,
         })
     }
 }
@@ -59,10 +59,12 @@ impl Generator for RandomStringGenerator {
     }
 }
 
+#[inline]
 pub fn std(s: &str) -> usize {
     s.chars().count()
 }
 
+#[inline]
 pub fn std_count(s: &str) -> usize {
     let mut l = 0;
     let mut chars = s.chars();
@@ -72,6 +74,7 @@ pub fn std_count(s: &str) -> usize {
     l
 }
 
+#[inline]
 pub fn std_count_rev(s: &str) -> usize {
     let mut l = 0;
     let mut chars = s.chars().rev();
@@ -81,10 +84,12 @@ pub fn std_count_rev(s: &str) -> usize {
     l
 }
 
+#[inline]
 pub fn std_5000(s: &str) -> usize {
     s.chars().take(5000).count()
 }
 
+#[inline]
 pub fn std_4925(s: &str) -> usize {
     s.chars().take(4925).count()
 }
