@@ -6,13 +6,13 @@ Running paired tests:
 
 ```console
 $ cargo run --release
-name                                          B min      C min      min ∆     B mean     C mean     mean ∆ mean ∆ (%)
-std / std                                       731        731       0.0%      868.5      868.9        0.1       0.0%
-std_count / std_count                          4210       4211       0.0%     6942.5     6926.8        1.7       0.0%
-std_count_rev / std_count_rev                  4211       4211       0.0%     7160.3     7155.0        1.6       0.0%
-std_5000 / std_4925                            3167       3121      -1.5%     4573.9     4507.7      -65.9      -1.4% CHANGE DETECTED
-std_count / std_count_rev                      4210       4210       0.0%     6952.8     7205.3      236.5       3.4% CHANGE DETECTED
-std / std_count                                 740       4210     468.9%      890.7     6952.0     6062.8     680.7% CHANGE DETECTED
+name                            B min  C min  min ∆     B mean  C mean  mean ∆ mean ∆ (%)
+std / std                         731    731   0.0%      868.5   868.9     0.1       0.0%
+std_count / std_count            4210   4211   0.0%     6942.5  6926.8     1.7       0.0%
+std_count_rev / std_count_rev    4211   4211   0.0%     7160.3  7155.0     1.6       0.0%
+std_5000 / std_4925              3167   3121  -1.5%     4573.9  4507.7   -65.9      -1.4% CHANGE DETECTED
+std_count / std_count_rev        4210   4210   0.0%     6952.8  7205.3   236.5       3.4% CHANGE DETECTED
+std / std_count                   740   4210 468.9%      890.7  6952.0  6062.8     680.7% CHANGE DETECTED
 ```
 
 Running pointwise tests using criterion.rs:
