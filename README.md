@@ -27,3 +27,9 @@ utf8/std_count_rev      time:   [7.5723 µs 7.7677 µs 7.9667 µs]
 Found 8 outliers among 100 measurements (8.00%)
   8 (8.00%) high severe
 ```
+
+Generating gnuplot graphs:
+
+```console
+$ gnuplot -c plot.gnuplot input.csv
+```

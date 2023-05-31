@@ -111,8 +111,11 @@ fn report(name: &str, input: Vec<(u64, u64)>, file: Option<&str>) -> io::Result<
     if let Some(file) = file {
         let mut file = BufWriter::new(File::create(file)?);
 
+        // Writing at most 5000 points to csv file. GNUplot can't handle more
+        let factor = 1.max(base.len() / 5000);
+
         for i in 0..base.len() {
-            if i % 1 == 0 {
+            if i % factor == 0 {
                 writeln!(
                     &mut file,
                     "{},{},{},{:.2},{:.2},{:.2}",
