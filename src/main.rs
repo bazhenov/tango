@@ -5,7 +5,6 @@ use rust_pairwise_testing::{
 use std::{
     fs::File,
     io::{self, BufWriter, Write},
-    time::Instant,
 };
 
 fn main() -> io::Result<()> {
@@ -120,10 +119,11 @@ fn report(name: &str, input: Vec<(u64, u64)>, file: Option<&str>) -> io::Result<
     Ok(())
 }
 
-fn measure<O, G: Generator, B: Fn(&G::Output) -> O, C: Fn(&G::Output) -> O>(
+#[inline(never)]
+fn measure<O, G: Generator>(
     mut generator: G,
-    base: B,
-    candidate: C,
+    base: fn(&G::Output) -> (u128, O),
+    candidate: fn(&G::Output) -> (u128, O),
     iter: usize,
 ) -> Vec<(u64, u64)> {
     let mut result = Vec::with_capacity(iter);
@@ -133,13 +133,13 @@ fn measure<O, G: Generator, B: Fn(&G::Output) -> O, C: Fn(&G::Output) -> O>(
         let payload = generator.next_payload();
 
         let (base, candidate) = if rand.gen_bool(0.5) {
-            let base = time_call(&base, payload);
-            let candidate = time_call(&candidate, payload);
+            let base = time_call(base, &payload);
+            let candidate = time_call(candidate, &payload);
 
             (base, candidate)
         } else {
-            let candidate = time_call(&candidate, payload);
-            let base = time_call(&base, payload);
+            let candidate = time_call(candidate, &payload);
+            let base = time_call(base, &payload);
 
             (base, candidate)
         };
@@ -150,11 +150,8 @@ fn measure<O, G: Generator, B: Fn(&G::Output) -> O, C: Fn(&G::Output) -> O>(
     result
 }
 
-#[inline(never)]
-fn time_call<O, P: Copy, F: Fn(P) -> O>(f: F, payload: P) -> u64 {
-    let started = Instant::now();
-    black_box(f(payload));
-    started.elapsed().as_nanos() as u64
+fn time_call<O, P>(f: fn(P) -> (u128, O), payload: P) -> u64 {
+    black_box(f(payload)).0 as u64
 }
 
 #[inline]

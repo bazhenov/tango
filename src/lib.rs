@@ -1,4 +1,4 @@
-use std::io;
+use std::{io, time::Instant};
 
 use rand::{rngs::SmallRng, Rng, SeedableRng};
 
@@ -59,37 +59,46 @@ impl Generator for RandomStringGenerator {
     }
 }
 
-#[inline]
-pub fn std(s: &str) -> usize {
-    s.chars().count()
+pub fn std(s: &str) -> (u128, usize) {
+    let start = Instant::now();
+    let result = { s.chars().count() };
+    (start.elapsed().as_nanos(), result)
 }
 
-#[inline]
-pub fn std_count(s: &str) -> usize {
-    let mut l = 0;
-    let mut chars = s.chars();
-    while chars.next().is_some() {
-        l += 1;
-    }
-    l
+pub fn std_count(s: &str) -> (u128, usize) {
+    let start = Instant::now();
+    let result = {
+        let mut l = 0;
+        let mut chars = s.chars();
+        while chars.next().is_some() {
+            l += 1;
+        }
+        l
+    };
+    (start.elapsed().as_nanos(), result)
 }
 
-#[inline]
-pub fn std_count_rev(s: &str) -> usize {
-    let mut l = 0;
-    let mut chars = s.chars().rev();
-    while chars.next().is_some() {
-        l += 1;
-    }
-    l
+pub fn std_count_rev(s: &str) -> (u128, usize) {
+    let start = Instant::now();
+    let result = {
+        let mut l = 0;
+        let mut chars = s.chars().rev();
+        while chars.next().is_some() {
+            l += 1;
+        }
+        l
+    };
+    (start.elapsed().as_nanos(), result)
 }
 
-#[inline]
-pub fn std_5000(s: &str) -> usize {
-    s.chars().take(5000).count()
+pub fn std_5000(s: &str) -> (u128, usize) {
+    let start = Instant::now();
+    let result = { s.chars().take(5000).count() };
+    (start.elapsed().as_nanos(), result)
 }
 
-#[inline]
-pub fn std_4925(s: &str) -> usize {
-    s.chars().take(4925).count()
+pub fn std_4925(s: &str) -> (u128, usize) {
+    let start = Instant::now();
+    let result = { s.chars().take(4925).count() };
+    (start.elapsed().as_nanos(), result)
 }
