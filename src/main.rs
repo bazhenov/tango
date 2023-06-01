@@ -107,8 +107,8 @@ fn report(name: &str, input: Vec<(u64, u64)>, file: Option<&str>) -> io::Result<
     if let Some(file) = file {
         let mut file = BufWriter::new(File::create(file)?);
 
-        // Writing at most 5000 points to csv file. GNUplot can't handle more
-        let factor = 1.max(base.len() / 5000);
+        // Writing at most 1000 points to csv file. GNUplot can't handle more
+        let factor = 1.max(base.len() / 1000);
 
         for i in 0..base.len() {
             if i % factor == 0 {
@@ -166,11 +166,22 @@ pub fn black_box<T>(dummy: T) -> T {
     }
 }
 
+/// Winsorizing symmetric outliers in a slice
+///
+/// [Winsorizing][winsorize] is a tchinque of removing outliers in a dataset effectively masking then
+/// with what the most exteme observations left (wo. outliers). This particular algorithm will remove outliers
+/// only if following criteria holds:
+///
+/// - only 5% of observations are removed from each size
+/// - only outliers greater than 3 IQR from median are removed
+///
+/// [winsorize]: https://en.wikipedia.org/wiki/Winsorizing
 fn mask_symmetric_outliers(input: &mut [i64]) {
-    let mut sorted = input.iter().copied().collect::<Vec<_>>();
+    let n = input.len();
+
+    let mut sorted = input.to_vec();
     sorted.sort();
 
-    let n = sorted.len();
     let iqr = sorted[n * 75 / 100] - sorted[n * 25 / 100];
 
     let mut top = sorted.len() - 1;
@@ -180,7 +191,7 @@ fn mask_symmetric_outliers(input: &mut [i64]) {
 
     let median = sorted[sorted.len() / 2];
 
-    while bottom < top {
+    while bottom < n * 5 / 100 && top > n * 95 / 100 {
         let bottom_diff = median - sorted[bottom];
         let top_diff = sorted[top] - median;
 
@@ -195,9 +206,11 @@ fn mask_symmetric_outliers(input: &mut [i64]) {
             bottom += 1;
         }
 
-        let top_removed = sorted.len() - top - 1;
+        let top_removed = n - top - 1;
         let bottom_removed = bottom;
         let abs_diff = top_removed.abs_diff(bottom_removed);
+
+        // TODO Replace this with binomial coefficient/normal distribution approximation calculations
         let deviation = abs_diff as f64 / (bottom_removed + top_removed) as f64;
         if abs_diff < 3 || deviation < 0.3 {
             commited_top = top;
@@ -220,10 +233,13 @@ mod tests {
 
     #[test]
     fn test_symmetric_outliers() {
-        let mut input = vec![-1000, 3, 3, 3, 1000];
+        let mut input = [50i64; 100];
+        input[0] = -1000;
+        input[1] = -1000;
 
         mask_symmetric_outliers(&mut input);
 
-        assert_eq!(input, vec![3, 3, 3, 3, 3]);
+        assert_eq!(input[0], 50);
+        assert_eq!(input[input.len() - 1], 50);
     }
 }
