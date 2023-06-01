@@ -104,10 +104,6 @@ fn report(name: &str, input: Vec<(u64, u64)>, file: Option<&str>) -> io::Result<
     }
     println!();
 
-    let base_std_err = running_std_err(&base);
-    let candidate_std_err = running_std_err(&candidate);
-    let diff_std_err = running_std_err(&diff);
-
     if let Some(file) = file {
         let mut file = BufWriter::new(File::create(file)?);
 
@@ -116,36 +112,12 @@ fn report(name: &str, input: Vec<(u64, u64)>, file: Option<&str>) -> io::Result<
 
         for i in 0..base.len() {
             if i % factor == 0 {
-                writeln!(
-                    &mut file,
-                    "{},{},{},{:.2},{:.2},{:.2}",
-                    base[i],
-                    candidate[i],
-                    diff[i],
-                    base_std_err[i],
-                    candidate_std_err[i],
-                    diff_std_err[i]
-                )?;
+                writeln!(&mut file, "{},{}", base[i], candidate[i])?;
             }
         }
     }
 
     Ok(())
-}
-
-fn running_std_err(input: &[i64]) -> Vec<f64> {
-    let mut output = Vec::with_capacity(input.len());
-    let mut running_sum_square = 0.;
-    let mut running_sum = 0;
-    for (i, el) in input.iter().enumerate() {
-        running_sum += *el;
-        let n = (i + 1) as f64;
-        let mean = running_sum as f64 / n;
-        running_sum_square += (*el as f64 - mean).powi(2) as f64;
-        let std_err = (running_sum_square / (i + 1) as f64).sqrt() / n.sqrt();
-        output.push(std_err);
-    }
-    output
 }
 
 fn measure<O, G: Generator, B: Fn(&G::Output) -> O, C: Fn(&G::Output) -> O>(

@@ -14,7 +14,7 @@ set size 0.6,1
 set origin 0,0
 plot ARG1 using ($1/1000) title "base" with linespoints pt 1 ps 0.3 lw 0.2 lc 'dark-red', \
      ARG1 using (-$2/1000) title "-candidate" with linespoints pt 1 ps 0.3 lw 0.2 lc 'dark-green', \
-     ARG1 using ($3/1000) title "(candidate-baseline)" with lines lw 0.5 lc 'navy'
+     ARG1 using (($2 - $1)/1000) title "(candidate-baseline)" with lines lw 0.5 lc 'navy'
 
 set xtics autofreq
 set ytics autofreq
