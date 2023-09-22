@@ -1,9 +1,8 @@
-use rand::{rngs::SmallRng, thread_rng, Rng, SeedableRng};
+use rand::{rngs::SmallRng, Rng, SeedableRng};
 use reporting::Reporter;
 use std::{
     any::{type_name, TypeId},
     collections::HashMap,
-    hint::black_box,
     io,
     time::Instant,
 };
@@ -98,7 +97,7 @@ pub mod reporting {
                 .map(|(base, candidate)| *candidate as i64 - *base as i64)
                 .collect::<Vec<i64>>();
 
-            mask_symmetric_outliers(&mut diff);
+            let filtered = mask_symmetric_outliers(&mut diff);
 
             let diff_mean = diff.iter().sum::<i64>() as f64 / n;
             let variance = diff
@@ -117,8 +116,17 @@ pub mod reporting {
             print!("{:10.1} {:10.1} ", base_mean, candidate_mean);
             print!("{:10.1} ", diff_mean);
             print!("{:9.1}% ", diff_mean / base_mean * 100.);
+            print!(
+                "{:5} {:4.1}% ",
+                filtered,
+                filtered as f64 / (n as f64) * 100.
+            );
             if z_score.abs() >= 2.6 {
-                print!("CHANGE DETECTED");
+                if diff_mean > 0. {
+                    print!("CANDIDATE SLOWER");
+                } else {
+                    print!("CANDIDATE FASTER");
+                }
             }
             println!();
 
@@ -141,8 +149,16 @@ pub mod reporting {
             if !self.header_printed {
                 self.header_printed = true;
                 println!(
-                    "{:40} {:>10} {:>10} {:>10} {:>10} {:>10} {:>10} {:>10}",
-                    "name", "B min", "C min", "min ∆", "B mean", "C mean", "mean ∆", "mean ∆ (%)"
+                    "{:40} {:>10} {:>10} {:>10} {:>10} {:>10} {:>10} {:>10} {:>11}",
+                    "name",
+                    "B min",
+                    "C min",
+                    "min ∆",
+                    "B mean",
+                    "C mean",
+                    "mean ∆",
+                    "mean ∆ (%)",
+                    "outliers"
                 );
             }
         }
@@ -158,7 +174,8 @@ pub mod reporting {
     /// - only outliers greater than 3 IQR from median are removed
     ///
     /// [winsorize]: https://en.wikipedia.org/wiki/Winsorizing
-    fn mask_symmetric_outliers(input: &mut [i64]) {
+    fn mask_symmetric_outliers(input: &mut [i64]) -> usize {
+        let mut filtered = 0;
         let n = input.len();
 
         let mut sorted = input.to_vec();
@@ -173,7 +190,7 @@ pub mod reporting {
 
         let median = sorted[sorted.len() / 2];
 
-        while bottom < n * 5 / 100 && top > n * 95 / 100 {
+        while bottom < n * 10 / 100 && top > n * 90 / 100 {
             let bottom_diff = median - sorted[bottom];
             let top_diff = sorted[top] - median;
 
@@ -194,7 +211,7 @@ pub mod reporting {
 
             // TODO Replace this with binomial coefficient/normal distribution approximation calculations
             let deviation = abs_diff as f64 / (bottom_removed + top_removed) as f64;
-            if abs_diff < 3 || deviation < 0.3 {
+            if abs_diff < 5 || deviation < 0.3 {
                 commited_top = top;
                 commited_bottom = bottom;
             }
@@ -203,10 +220,14 @@ pub mod reporting {
         for el in input.iter_mut() {
             if *el < sorted[commited_bottom] {
                 *el = sorted[commited_bottom];
+                filtered += 1;
             } else if *el > sorted[commited_top] {
                 *el = sorted[commited_top];
+                filtered += 1;
             }
         }
+
+        filtered
     }
 
     #[cfg(test)]
@@ -283,10 +304,12 @@ impl<P, O> Benchmark<P, O> {
 
     pub fn run_all_against(&mut self, baseline: impl AsRef<str>, reporter: &mut impl Reporter) {
         let baseline_f = self.funcs.get(baseline.as_ref()).unwrap();
-        let candidates = self
+        let mut candidates = self
             .funcs
             .iter()
-            .filter(|(name, _)| *name != baseline.as_ref());
+            .filter(|(name, _)| *name != baseline.as_ref())
+            .collect::<Vec<_>>();
+        candidates.sort_by(|a, b| a.0.cmp(b.0));
 
         reporter.before_start();
         for (name, func) in candidates {
@@ -322,31 +345,25 @@ pub fn measure<O, P>(
     candidate: fn(&P) -> O,
     iter: usize,
 ) -> Vec<(u64, u64)> {
-    let mut result = Vec::with_capacity(iter);
-    let mut rand = thread_rng();
-    //SmallRng::seed_from_u64(42)
+    let mut base_measurements = Vec::with_capacity(iter);
+    let mut candidate_measurements = Vec::with_capacity(iter);
 
-    for i in 0..iter {
+    for i in 0..iter * 2 {
         let payload = generator.next_payload();
 
-        let baseline_first = i % 2 == 0;
-        let (f1, f2) = match baseline_first {
-            true => (base, candidate),
-            false => (candidate, base),
+        let baseline = i % 2 == 0;
+        let (f, m) = if baseline {
+            (base, &mut base_measurements)
+        } else {
+            (candidate, &mut candidate_measurements)
         };
-
-        let m1 = time_call(f1, &payload);
-        let m2 = time_call(f2, &payload);
-
-        let (base_measurement, candidate_measurement) = match baseline_first {
-            true => (m1, m2),
-            false => (m2, m1),
-        };
-
-        result.push((base_measurement, candidate_measurement));
+        m.push(time_call(f, &payload));
     }
 
-    result
+    base_measurements
+        .into_iter()
+        .zip(candidate_measurements.into_iter())
+        .collect()
 }
 
 fn time_call<O, P>(f: fn(P) -> O, payload: P) -> u64 {

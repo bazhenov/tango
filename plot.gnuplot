@@ -2,7 +2,7 @@ set term svg enhanced size 1000,400 lw 1.5
 set output ARG2
 set grid
 
-set datafile separator ',
+set datafile separator ','
 
 set multiplot
 

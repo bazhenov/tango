@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+libc = "0.2.148"
+mmap = "0.1.1"
 rand = { version = "0.8.5", features = ["small_rng"] }
 
 [dev-dependencies]
@@ -11,4 +13,8 @@ criterion = "0.5.1"
 
 [[bench]]
 name = "bench"
+harness = false
+
+[[bench]]
+name = "tango"
 harness = false
