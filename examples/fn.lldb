@@ -1,0 +1,4 @@
+target create target/debug/examples/fn
+settings set target.x86-disassembly-flavor intel
+breakpoint set --file examples/fn.rs --line 16
+run

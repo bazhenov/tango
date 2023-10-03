@@ -1,8 +1,8 @@
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
-use rust_pairwise_testing::{
-    test_funcs::{std_4925, std_5000, std_count, std_count_rev},
-    Generator, RandomStringGenerator,
-};
+use rust_pairwise_testing::{Generator, RandomStringGenerator};
+use test_funcs::{std_4925, std_5000, std_count, std_count_rev};
+
+mod test_funcs;
 
 fn criterion_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("utf8");
