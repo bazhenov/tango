@@ -207,6 +207,10 @@ impl<P, O> Benchmark<P, O> {
             .zip(candidate_measurements.into_iter())
             .collect()
     }
+
+    pub fn list_functions(&self) -> impl Iterator<Item = &str> {
+        self.funcs.keys().map(String::as_str)
+    }
 }
 
 impl Generator for RandomStringGenerator {

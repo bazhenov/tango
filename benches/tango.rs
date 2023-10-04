@@ -41,22 +41,21 @@ fn copy_and_sort_stable(input: &Vec<u32>) -> usize {
 
 #[derive(Parser, Debug)]
 enum RunMode {
-    Pair(PairOpts),
-    Calibration(CalibrationOpts),
-}
+    Pair {
+        baseline: String,
+        candidates: Vec<String>,
 
-#[derive(Parser, Debug)]
-struct PairOpts {
-    functions: Vec<String>,
-
-    #[arg(long = "bench", default_value_t = true)]
-    bench: bool,
-}
-
-#[derive(Parser, Debug)]
-struct CalibrationOpts {
-    #[arg(long = "bench", default_value_t = true)]
-    bench: bool,
+        #[arg(long = "bench", default_value_t = true)]
+        bench: bool,
+    },
+    Calibration {
+        #[arg(long = "bench", default_value_t = true)]
+        bench: bool,
+    },
+    List {
+        #[arg(long = "bench", default_value_t = true)]
+        bench: bool,
+    },
 }
 
 #[derive(Parser, Debug)]
@@ -77,7 +76,7 @@ fn main() {
         NonZeroUsize::new(100).unwrap(),
     ));
 
-    benchmark.set_iterations(5000);
+    benchmark.set_iterations(10000);
 
     benchmark.add_function("stable", benchmark_fn_with_setup(sort_stable, Clone::clone));
     benchmark.add_function("copy_stable", benchmark_fn(copy_and_sort_stable));
@@ -86,15 +85,22 @@ fn main() {
     let mut reporter = ConsoleReporter::default();
 
     match opts.subcommand {
-        RunMode::Pair(opts) => {
-            assert!(opts.functions.len() >= 2);
-            let baseline = &opts.functions[0];
-            for candidate in &opts.functions[1..] {
-                benchmark.run_pair(baseline, candidate, &mut reporter);
+        RunMode::Pair {
+            candidates,
+            baseline,
+            ..
+        } => {
+            for candidate in &candidates {
+                benchmark.run_pair(&baseline, candidate, &mut reporter);
             }
         }
-        RunMode::Calibration(_) => {
+        RunMode::Calibration { .. } => {
             benchmark.run_calibration(&mut reporter);
+        }
+        RunMode::List { .. } => {
+            for fn_name in benchmark.list_functions() {
+                println!("{}", fn_name);
+            }
         }
     }
 
