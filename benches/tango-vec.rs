@@ -43,7 +43,7 @@ fn main() {
         NonZeroUsize::new(100).unwrap(),
     ));
 
-    benchmark.set_iterations(10000);
+    benchmark.set_iterations(100000);
 
     benchmark.add_function("stable", benchmark_fn_with_setup(sort_stable, Clone::clone));
     benchmark.add_function("copy_stable", benchmark_fn(copy_and_sort_stable));

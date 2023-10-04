@@ -1,6 +1,6 @@
 use rand::{rngs::SmallRng, Rng, SeedableRng};
 use rust_pairwise_testing::Generator;
-use std::{arch::asm, io};
+use std::{hint::black_box, io};
 
 #[derive(Clone)]
 pub struct FixedStringGenerator {
@@ -53,8 +53,6 @@ impl Generator for RandomStringGenerator {
     }
 }
 
-const TIMES: usize = 1;
-
 //#[repr(align(32))]
 pub fn std(s: &String) -> usize {
     s.chars().count()
@@ -63,11 +61,8 @@ pub fn std(s: &String) -> usize {
 //#[repr(align(32))]
 pub fn std_count(s: &String) -> usize {
     let mut l = 0;
-    for _ in 0..TIMES {
-        let mut chars = s.chars();
-        while chars.next().is_some() {
-            l += 1;
-        }
+    for _ in s.chars() {
+        l += 1;
     }
     l
 }
@@ -75,64 +70,25 @@ pub fn std_count(s: &String) -> usize {
 //#[repr(align(32))]
 pub fn std_count_rev(s: &String) -> usize {
     let mut l = 0;
-    for _ in 0..TIMES {
-        let mut chars = s.chars().rev();
-        while chars.next().is_some() {
-            l += 1;
-        }
+    for _ in s.chars().rev() {
+        l += 1;
     }
     l
 }
 
-//#[repr(align(32))]
+// #[repr(align(32))]
 pub fn std_5000(s: &String) -> usize {
-    let mut l = 0;
-    for _ in 0..TIMES {
-        l += s.chars().take(5000).count();
-    }
-    l
+    s.chars().take(5000).count()
 }
 
-//#[repr(align(32))]
+// #[repr(align(32))]
 pub fn std_4925(s: &String) -> usize {
-    let mut l = 0;
-    for _ in 0..TIMES {
-        l += s.chars().take(4925).count();
-    }
-    l / 2 + 100
-}
-
-//#[repr(align(32))]
-pub fn std_5000_dupl(s: &String) -> usize {
-    let mut l = 0;
-    for _ in 0..TIMES {
-        l += s.chars().take(5000).count();
-    }
-    l
+    s.chars().take(4925).count()
 }
 
 #[inline(always)]
 pub fn std_5000_n(s: &String, offset: usize) -> usize {
-    let mut l = 0;
-    for _ in 0..TIMES {
-        l += s.chars().take(5000).count();
-    }
-    unsafe {
-        asm!("nop");
-        asm!("nop");
-        asm!("nop");
-        asm!("nop");
-        asm!("nop");
-        asm!("nop");
-        asm!("nop");
-        asm!("nop");
-        asm!("nop");
-        asm!("nop");
-        asm!("nop");
-        asm!("nop");
-    }
-
-    l + offset
+    s.chars().take(5000).count() + offset
 }
 
 //#[repr(align(32))]

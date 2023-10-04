@@ -1,4 +1,4 @@
-use std::{collections::HashMap, time::Instant};
+use std::{collections::HashMap, hint::black_box, time::Instant};
 
 pub mod cli;
 
@@ -17,7 +17,7 @@ pub trait BenchmarkFn<P, O> {
     fn measure(&self, payload: &P, measurements: &mut [u64]);
 }
 
-pub struct Func<F> {
+struct Func<F> {
     pub func: F,
 }
 
@@ -28,16 +28,16 @@ where
     fn measure(&self, payload: &P, measurements: &mut [u64]) {
         for time in measurements.iter_mut() {
             let start = Instant::now();
-            let result = (self.func)(payload);
+            let result = black_box((self.func)(payload));
             *time = start.elapsed().as_nanos() as u64;
             drop(result);
         }
     }
 }
 
-pub struct SetupFunc<S, F> {
-    pub setup: S,
-    pub func: F,
+struct SetupFunc<S, F> {
+    setup: S,
+    func: F,
 }
 
 impl<S, F, P, I, O> BenchmarkFn<P, O> for SetupFunc<S, F>
@@ -49,7 +49,7 @@ where
         for time in measurements.iter_mut() {
             let payload = (self.setup)(payload);
             let start = Instant::now();
-            let result = (self.func)(payload);
+            let result = black_box((self.func)(payload));
             *time = start.elapsed().as_nanos() as u64;
             drop(result);
         }
@@ -93,7 +93,7 @@ impl<P, O> Benchmark<P, O> {
         &mut self,
         baseline: impl AsRef<str>,
         candidate: impl AsRef<str>,
-        reporter: &mut impl Reporter,
+        reporter: &mut dyn Reporter,
     ) {
         let baseline_f = self.funcs.get(baseline.as_ref()).unwrap();
         let candidate_f = self.funcs.get(candidate.as_ref()).unwrap();
@@ -112,7 +112,7 @@ impl<P, O> Benchmark<P, O> {
         );
     }
 
-    pub fn run_calibration(&mut self, reporter: &mut impl Reporter) {
+    pub fn run_calibration(&mut self, reporter: &mut dyn Reporter) {
         reporter.before_start();
         for (name, f) in self.funcs.iter() {
             let measurements = Self::measure(
@@ -152,21 +152,34 @@ impl<P, O> Benchmark<P, O> {
         candidate: &dyn BenchmarkFn<P, O>,
         iter: usize,
     ) -> Vec<(u64, u64)> {
-        let mut base_measurements = Vec::with_capacity(iter);
-        let mut candidate_measurements = Vec::with_capacity(iter);
+        let mut base_measurements = vec![0; iter];
+        let mut candidate_measurements = vec![0; iter];
 
-        for i in 0..iter * 2 {
+        // let mut batch_size = [1, 1, 25, 25, 50, 50, 75, 75, 100, 100].iter().cycle();
+        // let mut batch_size = [1, 25, 50, 75, 100].iter().cycle();
+        let mut batch_size = [1].iter().cycle();
+        let mut offset = 0;
+        let mut baseline_first = false;
+        while offset < iter {
             let payload = generator.next_payload();
-
-            let baseline = i % 2 == 0;
-            let (f, m) = if baseline {
-                (base, &mut base_measurements)
+            let batch = *batch_size.next().unwrap();
+            let batch = batch.min(iter - offset);
+            baseline_first = !baseline_first;
+            if baseline_first {
+                base.measure(&payload, &mut base_measurements[offset..offset + batch]);
+                candidate.measure(
+                    &payload,
+                    &mut candidate_measurements[offset..offset + batch],
+                );
             } else {
-                (candidate, &mut candidate_measurements)
-            };
-            m.push(0);
-            let len = m.len();
-            f.measure(&payload, &mut m[len - 1..len]);
+                candidate.measure(
+                    &payload,
+                    &mut candidate_measurements[offset..offset + batch],
+                );
+                base.measure(&payload, &mut base_measurements[offset..offset + batch]);
+            }
+
+            offset += batch;
         }
 
         base_measurements
