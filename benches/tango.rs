@@ -1,7 +1,9 @@
 // #![feature(fn_align)]
 
 use rand::{rngs::SmallRng, Rng, SeedableRng};
-use rust_pairwise_testing::{reporting::ConsoleReporter, Benchmark, Func, Generator, SetupFunc};
+use rust_pairwise_testing::{
+    benchmark_fn, benchmark_fn_with_setup, reporting::ConsoleReporter, Benchmark, Generator,
+};
 use std::num::NonZeroUsize;
 
 struct RandomVec(SmallRng, NonZeroUsize);
@@ -37,10 +39,6 @@ fn copy_and_sort_stable(input: &Vec<u32>) -> usize {
     input.len()
 }
 
-fn clone<T: Clone>(obj: &T) -> T {
-    obj.clone()
-}
-
 fn main() {
     let mut benchmark = Benchmark::new(RandomVec(
         SmallRng::seed_from_u64(42),
@@ -49,25 +47,9 @@ fn main() {
 
     benchmark.set_iterations(5000);
 
-    benchmark.add_function(
-        "stable",
-        SetupFunc {
-            setup: clone,
-            func: sort_stable,
-        },
-    );
-    benchmark.add_function(
-        "copy_stable",
-        Func {
-            func: copy_and_sort_stable,
-        },
-    );
-    benchmark.add_function(
-        "unstable",
-        Func {
-            func: sort_unstable,
-        },
-    );
+    benchmark.add_function("stable", benchmark_fn_with_setup(sort_stable, Clone::clone));
+    benchmark.add_function("copy_stable", benchmark_fn(copy_and_sort_stable));
+    benchmark.add_function("unstable", benchmark_fn(sort_unstable));
 
     let mut reporter = ConsoleReporter::default();
 

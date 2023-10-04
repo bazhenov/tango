@@ -2,7 +2,18 @@ use rand::{rngs::SmallRng, Rng, SeedableRng};
 use reporting::Reporter;
 use std::{collections::HashMap, io, time::Instant};
 
-pub trait Measure<P, O> {
+pub fn benchmark_fn<P, O, F: Fn(&P) -> O>(func: F) -> impl BenchmarkFn<P, O> {
+    Func { func }
+}
+
+pub fn benchmark_fn_with_setup<P, O, I, F: Fn(I) -> O, S: Fn(&P) -> I>(
+    func: F,
+    setup: S,
+) -> impl BenchmarkFn<P, O> {
+    SetupFunc { func, setup }
+}
+
+pub trait BenchmarkFn<P, O> {
     fn measure(&self, payload: &P, measurements: &mut [u64]);
 }
 
@@ -10,16 +21,7 @@ pub struct Func<F> {
     pub func: F,
 }
 
-// impl<P, O> Measure<P, O> for fn(&P) -> O {
-//     fn measure(&self, payload: &P) -> (u64, O) {
-//         let start = Instant::now();
-//         let result = self(payload);
-//         let time = start.elapsed().as_nanos() as u64;
-//         (time, result)
-//     }
-// }
-
-impl<F, P, O> Measure<P, O> for Func<F>
+impl<F, P, O> BenchmarkFn<P, O> for Func<F>
 where
     F: Fn(&P) -> O,
 {
@@ -38,7 +40,7 @@ pub struct SetupFunc<S, F> {
     pub func: F,
 }
 
-impl<S, F, P, I, O> Measure<P, O> for SetupFunc<S, F>
+impl<S, F, P, I, O> BenchmarkFn<P, O> for SetupFunc<S, F>
 where
     S: Fn(&P) -> I,
     F: Fn(I) -> O,
@@ -99,7 +101,7 @@ impl RandomStringGenerator {
 
 pub struct Benchmark<P, O> {
     payload_generator: Box<dyn Generator<Output = P>>,
-    funcs: HashMap<String, Box<dyn Measure<P, O>>>,
+    funcs: HashMap<String, Box<dyn BenchmarkFn<P, O>>>,
     iterations: usize,
 }
 
@@ -116,7 +118,7 @@ impl<P, O> Benchmark<P, O> {
         self.iterations = iterations;
     }
 
-    pub fn add_function(&mut self, name: impl Into<String>, f: impl Measure<P, O> + 'static) {
+    pub fn add_function(&mut self, name: impl Into<String>, f: impl BenchmarkFn<P, O> + 'static) {
         self.funcs.insert(name.into(), Box::new(f));
     }
 
@@ -179,8 +181,8 @@ impl<P, O> Benchmark<P, O> {
 
     pub fn measure(
         generator: &mut dyn Generator<Output = P>,
-        base: &dyn Measure<P, O>,
-        candidate: &dyn Measure<P, O>,
+        base: &dyn BenchmarkFn<P, O>,
+        candidate: &dyn BenchmarkFn<P, O>,
         iter: usize,
     ) -> Vec<(u64, u64)> {
         let mut base_measurements = Vec::with_capacity(iter);
@@ -254,10 +256,11 @@ pub mod reporting {
                 .map(|(_, candidate)| *candidate as i64)
                 .collect::<Vec<_>>();
 
-            let base_min = base.iter().fold(i64::max_value(), |min, i| min.min(*i));
-            let candidate_min = candidate
-                .iter()
-                .fold(i64::max_value(), |min, i| min.min(*i));
+            let base_min = *base.iter().min().unwrap();
+            let candidate_min = *candidate.iter().min().unwrap();
+
+            let base_max = *base.iter().max().unwrap();
+            let candidate_max = *candidate.iter().max().unwrap();
 
             let n = base.len() as f64;
 
@@ -282,6 +285,7 @@ pub mod reporting {
 
             print!("{:40} ", name);
             print!("{:10} {:10} ", base_min, candidate_min);
+            print!("{:10} {:10} ", base_max, candidate_max);
             let min_diff = (candidate_min - base_min) as f64 / base_min as f64 * 100.;
             print!("{:9.1}% ", min_diff);
             print!("{:10.1} {:10.1} ", base_mean, candidate_mean);
@@ -320,10 +324,12 @@ pub mod reporting {
             if !self.header_printed {
                 self.header_printed = true;
                 println!(
-                    "{:40} {:>10} {:>10} {:>10} {:>10} {:>10} {:>10} {:>10} {:>11}",
+                    "{:40} {:>10} {:>10} {:>10} {:>10} {:>10} {:>10} {:>10} {:>10} {:>10} {:>11}",
                     "name",
                     "B min",
                     "C min",
+                    "B max",
+                    "C max",
                     "min ∆",
                     "B mean",
                     "C mean",
