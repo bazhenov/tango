@@ -1,6 +1,6 @@
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
-use rust_pairwise_testing::{Generator, RandomStringGenerator};
-use test_funcs::{std_4925, std_5000, std_count, std_count_rev};
+use rust_pairwise_testing::Generator;
+use test_funcs::{std_4925, std_5000, std_count, std_count_rev, RandomStringGenerator};
 
 mod test_funcs;
 

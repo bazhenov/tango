@@ -17,5 +17,9 @@ name = "bench"
 harness = false
 
 [[bench]]
-name = "tango"
+name = "tango-vec"
+harness = false
+
+[[bench]]
+name = "tango-str"
 harness = false
