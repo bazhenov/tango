@@ -31,7 +31,7 @@ fn sort_stable(mut input: Vec<u32>) -> usize {
 }
 
 //#[repr(align(32))]
-fn copy_and_sort_stable(mut input: &Vec<u32>) -> usize {
+fn copy_and_sort_stable(input: &Vec<u32>) -> usize {
     let mut input = input.clone();
     input.sort();
     input.len()
@@ -42,22 +42,12 @@ fn clone<T: Clone>(obj: &T) -> T {
 }
 
 fn main() {
-    let a = 0u8;
-    println!("Stack address: {:p}", &a);
-    // println!(
-    //     "sort_stable!: {:p}",
-    //     sort_stable as fn(&Vec<u32>) -> Vec<u32>
-    // );
-    // println!(
-    //     "sort_unstable!: {:p}",
-    //     sort_unstable as fn(&Vec<u32>) -> Vec<u32>
-    // );
     let mut benchmark = Benchmark::new(RandomVec(
         SmallRng::seed_from_u64(42),
         NonZeroUsize::new(100).unwrap(),
     ));
 
-    benchmark.set_iterations(1000);
+    benchmark.set_iterations(5000);
 
     benchmark.add_function(
         "stable",

@@ -1,14 +1,9 @@
 use rand::{rngs::SmallRng, Rng, SeedableRng};
 use reporting::Reporter;
-use std::{
-    any::{type_name, TypeId},
-    collections::HashMap,
-    io,
-    time::Instant,
-};
+use std::{collections::HashMap, io, time::Instant};
 
 pub trait Measure<P, O> {
-    fn measure(&self, payload: &P) -> u64;
+    fn measure(&self, payload: &P, measurements: &mut [u64]);
 }
 
 pub struct Func<F> {
@@ -28,12 +23,13 @@ impl<F, P, O> Measure<P, O> for Func<F>
 where
     F: Fn(&P) -> O,
 {
-    fn measure(&self, payload: &P) -> u64 {
-        let start = Instant::now();
-        let result = (self.func)(payload);
-        let time = start.elapsed().as_nanos() as u64;
-        drop(result);
-        time
+    fn measure(&self, payload: &P, measurements: &mut [u64]) {
+        for time in measurements.iter_mut() {
+            let start = Instant::now();
+            let result = (self.func)(payload);
+            *time = start.elapsed().as_nanos() as u64;
+            drop(result);
+        }
     }
 }
 
@@ -47,13 +43,14 @@ where
     S: Fn(&P) -> I,
     F: Fn(I) -> O,
 {
-    fn measure(&self, payload: &P) -> u64 {
-        let payload = (self.setup)(payload);
-        let start = Instant::now();
-        let result = (self.func)(payload);
-        let time = start.elapsed().as_nanos() as u64;
-        drop(result);
-        time
+    fn measure(&self, payload: &P, measurements: &mut [u64]) {
+        for time in measurements.iter_mut() {
+            let payload = (self.setup)(payload);
+            let start = Instant::now();
+            let result = (self.func)(payload);
+            *time = start.elapsed().as_nanos() as u64;
+            drop(result);
+        }
     }
 }
 
@@ -180,7 +177,6 @@ impl<P, O> Benchmark<P, O> {
         }
     }
 
-    #[inline(never)]
     pub fn measure(
         generator: &mut dyn Generator<Output = P>,
         base: &dyn Measure<P, O>,
@@ -199,7 +195,9 @@ impl<P, O> Benchmark<P, O> {
             } else {
                 (candidate, &mut candidate_measurements)
             };
-            m.push(f.measure(&payload));
+            m.push(0);
+            let len = m.len();
+            f.measure(&payload, &mut m[len - 1..len]);
         }
 
         base_measurements
@@ -418,37 +416,5 @@ pub mod reporting {
             assert_eq!(input[0], 50);
             assert_eq!(input[input.len() - 1], 50);
         }
-    }
-}
-
-fn time_call<O, P>(f: fn(P) -> O, payload: P) -> u64 {
-    let start = Instant::now();
-    let result = f(payload);
-    let time = start.elapsed().as_nanos() as u64;
-    drop(result);
-    time
-}
-
-pub struct TypedFunction<I> {
-    pub type_id: TypeId,
-    type_name: String,
-    pub f: fn(I),
-}
-
-impl<I: 'static> TypedFunction<I> {
-    pub fn new(inner: fn(I)) -> Self {
-        Self {
-            type_id: TypeId::of::<I>(),
-            type_name: type_name::<I>().to_string(),
-            f: inner,
-        }
-    }
-
-    pub fn type_name(&self) -> &str {
-        self.type_name.as_str()
-    }
-
-    pub fn downcast<F>(&self) -> Option<F> {
-        None
     }
 }
