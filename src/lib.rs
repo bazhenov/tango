@@ -1,4 +1,9 @@
-use std::{collections::HashMap, hint::black_box, time::Instant};
+use std::{
+    collections::HashMap,
+    hint::black_box,
+    num::NonZeroUsize,
+    time::{Duration, Instant},
+};
 
 pub mod cli;
 
@@ -74,10 +79,16 @@ pub trait Reporter {
     fn on_complete(&mut self, baseline: &str, candidate: &str, measurements: &[(u64, u64)]);
 }
 
+#[derive(Copy, Clone)]
+pub enum RunMode {
+    Iterations(NonZeroUsize),
+    Time(Duration),
+}
+
 pub struct Benchmark<P, O> {
     payload_generator: Box<dyn Generator<Output = P>>,
     funcs: HashMap<String, Box<dyn BenchmarkFn<P, O>>>,
-    iterations: usize,
+    run_mode: RunMode,
 }
 
 impl<P, O> Benchmark<P, O> {
@@ -85,12 +96,8 @@ impl<P, O> Benchmark<P, O> {
         Self {
             payload_generator: Box::new(generator),
             funcs: HashMap::new(),
-            iterations: 1000,
+            run_mode: RunMode::Time(Duration::from_millis(100)),
         }
-    }
-
-    pub fn set_iterations(&mut self, iterations: usize) {
-        self.iterations = iterations;
     }
 
     pub fn add_function(&mut self, name: impl Into<String>, f: impl BenchmarkFn<P, O> + 'static) {
@@ -110,7 +117,7 @@ impl<P, O> Benchmark<P, O> {
             self.payload_generator.as_mut(),
             baseline_f.as_ref(),
             candidate_f.as_ref(),
-            self.iterations,
+            self.run_mode,
         );
         reporter.before_start();
         reporter.on_complete(
@@ -127,7 +134,7 @@ impl<P, O> Benchmark<P, O> {
                 self.payload_generator.as_mut(),
                 f.as_ref(),
                 f.as_ref(),
-                self.iterations,
+                self.run_mode,
             );
             reporter.on_complete(name, name, measurements.as_slice());
         }
@@ -148,7 +155,7 @@ impl<P, O> Benchmark<P, O> {
                 self.payload_generator.as_mut(),
                 baseline_f.as_ref(),
                 func.as_ref(),
-                self.iterations,
+                self.run_mode,
             );
             reporter.on_complete(baseline.as_ref(), name, measurements.as_slice());
         }
@@ -158,19 +165,38 @@ impl<P, O> Benchmark<P, O> {
         generator: &mut dyn Generator<Output = P>,
         base: &dyn BenchmarkFn<P, O>,
         candidate: &dyn BenchmarkFn<P, O>,
-        iter: usize,
+        run_mode: RunMode,
     ) -> Vec<(u64, u64)> {
-        let mut base_measurements = Vec::with_capacity(iter);
-        let mut candidate_measurements = Vec::with_capacity(iter);
+        let mut base_measurements = vec![];
+        let mut candidate_measurements = vec![];
 
-        for i in 0..iter {
-            let payload = generator.next_payload();
-            if i % 2 == 0 {
-                base_measurements.push(base.measure(&payload));
-                candidate_measurements.push(candidate.measure(&payload));
-            } else {
-                candidate_measurements.push(candidate.measure(&payload));
-                base_measurements.push(base.measure(&payload));
+        match run_mode {
+            RunMode::Iterations(iter) => {
+                for i in 0..usize::from(iter) {
+                    let payload = generator.next_payload();
+                    if i % 2 == 0 {
+                        base_measurements.push(base.measure(&payload));
+                        candidate_measurements.push(candidate.measure(&payload));
+                    } else {
+                        candidate_measurements.push(candidate.measure(&payload));
+                        base_measurements.push(base.measure(&payload));
+                    }
+                }
+            }
+            RunMode::Time(duration) => {
+                let deadlline = Instant::now() + duration;
+                let mut baseline_first = false;
+                while Instant::now() < deadlline {
+                    let payload = generator.next_payload();
+                    baseline_first = !baseline_first;
+                    if baseline_first {
+                        base_measurements.push(base.measure(&payload));
+                        candidate_measurements.push(candidate.measure(&payload));
+                    } else {
+                        candidate_measurements.push(candidate.measure(&payload));
+                        base_measurements.push(base.measure(&payload));
+                    }
+                }
             }
         }
 
@@ -182,5 +208,9 @@ impl<P, O> Benchmark<P, O> {
 
     pub fn list_functions(&self) -> impl Iterator<Item = &str> {
         self.funcs.keys().map(String::as_str)
+    }
+
+    fn set_run_mode(&mut self, run_mode: RunMode) {
+        self.run_mode = run_mode;
     }
 }

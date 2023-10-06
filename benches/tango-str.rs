@@ -21,8 +21,6 @@ impl Generator for RandomVec {
 fn main() {
     let mut benchmark = Benchmark::new(RandomStringGenerator::new().unwrap());
 
-    benchmark.set_iterations(10000);
-
     benchmark.add_function("std", benchmark_fn(std));
     benchmark.add_function("std_count", benchmark_fn(std_count));
     benchmark.add_function("std_count_rev", benchmark_fn(std_count_rev));

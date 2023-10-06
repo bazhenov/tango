@@ -1,19 +1,28 @@
 use core::fmt;
-use std::num::NonZeroU64;
+use std::{
+    num::{NonZeroU64, NonZeroUsize},
+    time::Duration,
+};
 
-use crate::{Benchmark, Reporter};
+use crate::{Benchmark, Reporter, RunMode};
 use clap::Parser;
 
 use self::reporting::{NewConsoleReporter, VerboseReporter};
 
 #[derive(Parser, Debug)]
-enum RunMode {
+enum BenchMode {
     Pair {
         baseline: String,
         candidates: Vec<String>,
 
         #[arg(long = "bench", default_value_t = true)]
         bench: bool,
+
+        #[arg(short = 'i', long = "iterations")]
+        iterations: Option<NonZeroUsize>,
+
+        #[arg(short = 't', long = "time")]
+        time: Option<NonZeroU64>,
     },
     Calibrate {
         #[arg(long = "bench", default_value_t = true)]
@@ -29,7 +38,7 @@ enum RunMode {
 #[command(author, version, about, long_about = None)]
 struct Opts {
     #[command(subcommand)]
-    subcommand: RunMode,
+    subcommand: BenchMode,
 
     #[arg(short = 'v', long = "verbose", default_value_t = false)]
     verbose: bool,
@@ -50,24 +59,34 @@ pub fn run<P, O>(mut benchmark: Benchmark<P, O>) {
     };
 
     match opts.subcommand {
-        RunMode::Pair {
+        BenchMode::Pair {
             candidates,
             baseline,
+            time,
+            iterations,
             ..
         } => {
+            benchmark.set_run_mode(determine_run_mode(time, iterations));
             for candidate in &candidates {
                 benchmark.run_pair(&baseline, candidate, reporter);
             }
         }
-        RunMode::Calibrate { .. } => {
+        BenchMode::Calibrate { .. } => {
             benchmark.run_calibration(reporter);
         }
-        RunMode::List { .. } => {
+        BenchMode::List { .. } => {
             for fn_name in benchmark.list_functions() {
                 println!("{}", fn_name);
             }
         }
     }
+}
+
+fn determine_run_mode(time: Option<NonZeroU64>, iterations: Option<NonZeroUsize>) -> RunMode {
+    let time = time.map(|t| RunMode::Time(Duration::from_millis(u64::from(t))));
+    let iterations = iterations.map(|i| RunMode::Iterations(i));
+    time.or(iterations)
+        .unwrap_or(RunMode::Time(Duration::from_millis(100)))
 }
 
 pub mod reporting {
