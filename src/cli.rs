@@ -1,9 +1,10 @@
 use core::fmt;
+use std::num::NonZeroU64;
 
 use crate::{Benchmark, Reporter};
 use clap::Parser;
 
-use self::reporting::{ConsoleReporter, NewConsoleReporter, VerboseReporter};
+use self::reporting::{NewConsoleReporter, VerboseReporter};
 
 #[derive(Parser, Debug)]
 enum RunMode {
@@ -198,19 +199,14 @@ pub mod reporting {
             let base_min = *base.iter().min().unwrap();
             let candidate_min = *candidate.iter().min().unwrap();
 
-            let base_max = *base.iter().max().unwrap();
-            let candidate_max = *candidate.iter().max().unwrap();
-
             let n = base.len() as f64;
 
             let base_mean = base.iter().sum::<i64>() as f64 / n;
             let candidate_mean = candidate.iter().sum::<i64>() as f64 / n;
-            let mut diff = input
+            let diff = input
                 .iter()
                 .map(|(base, candidate)| *candidate as i64 - *base as i64)
                 .collect::<Vec<i64>>();
-
-            let filtered = mask_symmetric_outliers(&mut diff);
 
             let mean_of_diff = diff.iter().sum::<i64>() as f64 / n;
             let variance = diff
@@ -262,28 +258,6 @@ pub mod reporting {
             );
 
             println!("{}", HR);
-            // let min_diff = (candidate_min - base_min) as f64 / base_min as f64 * 100.;
-            // print!("{:9.1}% ", min_diff);
-            // print!(
-            //     "{:>10} {:>10} ",
-            //     HumanTime(base_mean),
-            //     HumanTime(candidate_mean)
-            // );
-            // print!("{:>10} ", HumanTime(diff_mean));
-            // print!("{:9.1}% ", diff_mean / base_mean * 100.);
-            // print!(
-            //     "{:5} {:4.1}% ",
-            //     filtered,
-            //     filtered as f64 / (n as f64) * 100.
-            // );
-            // if z_score.abs() >= 2.6 {
-            //     if diff_mean > 0. {
-            //         print!("CANDIDATE SLOWER");
-            //     } else {
-            //         print!("CANDIDATE FASTER");
-            //     }
-            // }
-            // println!();
         }
     }
 

@@ -53,6 +53,14 @@ impl Generator for RandomStringGenerator {
     }
 }
 
+pub fn sum(n: usize) -> usize {
+    let mut sum = 0;
+    for i in 0..black_box(n) {
+        sum += black_box(i);
+    }
+    sum
+}
+
 //#[repr(align(32))]
 pub fn std(s: &String) -> usize {
     s.chars().count()
@@ -84,54 +92,4 @@ pub fn std_5000(s: &String) -> usize {
 // #[repr(align(32))]
 pub fn std_4925(s: &String) -> usize {
     s.chars().take(4925).count()
-}
-
-#[inline(always)]
-pub fn std_5000_n(s: &String, offset: usize) -> usize {
-    s.chars().take(5000).count() + offset
-}
-
-//#[repr(align(32))]
-pub fn std_5000_1(s: &String) -> usize {
-    std_5000_n(s, 1)
-}
-
-//#[repr(align(32))]
-pub fn std_5000_2(s: &String) -> usize {
-    std_5000_n(s, 2)
-}
-
-//#[repr(align(32))]
-pub fn std_5000_3(s: &String) -> usize {
-    std_5000_n(s, 3)
-}
-
-//#[repr(align(32))]
-pub fn std_5000_4(s: &String) -> usize {
-    std_5000_n(s, 4)
-}
-
-//#[repr(align(32))]
-pub fn std_5000_5(s: &String) -> usize {
-    std_5000_n(s, 5)
-}
-
-//#[repr(align(32))]
-pub fn std_5000_6(s: &String) -> usize {
-    std_5000_n(s, 6)
-}
-
-//#[repr(align(32))]
-pub fn std_5000_7(s: &String) -> usize {
-    std_5000_n(s, 7)
-}
-
-//#[repr(align(32))]
-pub fn std_5000_8(s: &String) -> usize {
-    std_5000_n(s, 8)
-}
-
-//#[repr(align(32))]
-pub fn std_5000_9(s: &String) -> usize {
-    std_5000_n(s, 9)
 }

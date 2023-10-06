@@ -14,7 +14,7 @@ pub fn benchmark_fn_with_setup<P, O, I, F: Fn(I) -> O, S: Fn(&P) -> I>(
 }
 
 pub trait BenchmarkFn<P, O> {
-    fn measure(&self, payload: &P, measurements: &mut [u64]);
+    fn measure(&self, payload: &P) -> u64;
 }
 
 struct Func<F> {
@@ -25,13 +25,12 @@ impl<F, P, O> BenchmarkFn<P, O> for Func<F>
 where
     F: Fn(&P) -> O,
 {
-    fn measure(&self, payload: &P, measurements: &mut [u64]) {
-        for time in measurements.iter_mut() {
-            let start = Instant::now();
-            let result = black_box((self.func)(payload));
-            *time = start.elapsed().as_nanos() as u64;
-            drop(result);
-        }
+    fn measure(&self, payload: &P) -> u64 {
+        let start = Instant::now();
+        let result = black_box((self.func)(payload));
+        let time = start.elapsed().as_nanos() as u64;
+        drop(result);
+        time
     }
 }
 
@@ -45,20 +44,29 @@ where
     S: Fn(&P) -> I,
     F: Fn(I) -> O,
 {
-    fn measure(&self, payload: &P, measurements: &mut [u64]) {
-        for time in measurements.iter_mut() {
-            let payload = (self.setup)(payload);
-            let start = Instant::now();
-            let result = black_box((self.func)(payload));
-            *time = start.elapsed().as_nanos() as u64;
-            drop(result);
-        }
+    fn measure(&self, payload: &P) -> u64 {
+        let payload = (self.setup)(payload);
+        let start = Instant::now();
+        let result = black_box((self.func)(payload));
+        let time = start.elapsed().as_nanos() as u64;
+        drop(result);
+        time
     }
 }
 
 pub trait Generator {
     type Output;
     fn next_payload(&mut self) -> Self::Output;
+}
+
+pub struct StaticValue<T>(pub T);
+
+impl<T: Copy> Generator for StaticValue<T> {
+    type Output = T;
+
+    fn next_payload(&mut self) -> Self::Output {
+        self.0
+    }
 }
 
 pub trait Reporter {
@@ -152,34 +160,18 @@ impl<P, O> Benchmark<P, O> {
         candidate: &dyn BenchmarkFn<P, O>,
         iter: usize,
     ) -> Vec<(u64, u64)> {
-        let mut base_measurements = vec![0; iter];
-        let mut candidate_measurements = vec![0; iter];
+        let mut base_measurements = Vec::with_capacity(iter);
+        let mut candidate_measurements = Vec::with_capacity(iter);
 
-        // let mut batch_size = [1, 1, 25, 25, 50, 50, 75, 75, 100, 100].iter().cycle();
-        // let mut batch_size = [1, 25, 50, 75, 100].iter().cycle();
-        let mut batch_size = [1].iter().cycle();
-        let mut offset = 0;
-        let mut baseline_first = false;
-        while offset < iter {
+        for i in 0..iter {
             let payload = generator.next_payload();
-            let batch = *batch_size.next().unwrap();
-            let batch = batch.min(iter - offset);
-            baseline_first = !baseline_first;
-            if baseline_first {
-                base.measure(&payload, &mut base_measurements[offset..offset + batch]);
-                candidate.measure(
-                    &payload,
-                    &mut candidate_measurements[offset..offset + batch],
-                );
+            if i % 2 == 0 {
+                base_measurements.push(base.measure(&payload));
+                candidate_measurements.push(candidate.measure(&payload));
             } else {
-                candidate.measure(
-                    &payload,
-                    &mut candidate_measurements[offset..offset + batch],
-                );
-                base.measure(&payload, &mut base_measurements[offset..offset + batch]);
+                candidate_measurements.push(candidate.measure(&payload));
+                base_measurements.push(base.measure(&payload));
             }
-
-            offset += batch;
         }
 
         base_measurements
