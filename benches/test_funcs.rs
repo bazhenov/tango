@@ -61,12 +61,12 @@ pub fn sum(n: usize) -> usize {
     sum
 }
 
-//#[repr(align(32))]
+#[cfg_attr(feature = "align", repr(align(32)))]
 pub fn std(s: &String) -> usize {
     s.chars().count()
 }
 
-//#[repr(align(32))]
+#[cfg_attr(feature = "align", repr(align(32)))]
 pub fn std_count(s: &String) -> usize {
     let mut l = 0;
     for _ in s.chars() {
@@ -75,7 +75,7 @@ pub fn std_count(s: &String) -> usize {
     l
 }
 
-//#[repr(align(32))]
+#[cfg_attr(feature = "align", repr(align(32)))]
 pub fn std_count_rev(s: &String) -> usize {
     let mut l = 0;
     for _ in s.chars().rev() {
@@ -84,12 +84,12 @@ pub fn std_count_rev(s: &String) -> usize {
     l
 }
 
-// #[repr(align(32))]
+#[cfg_attr(feature = "align", repr(align(32)))]
 pub fn std_5000(s: &String) -> usize {
     s.chars().take(5000).count()
 }
 
-// #[repr(align(32))]
+#[cfg_attr(feature = "align", repr(align(32)))]
 pub fn std_4925(s: &String) -> usize {
     s.chars().take(4925).count()
 }

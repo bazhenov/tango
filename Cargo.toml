@@ -27,3 +27,6 @@ harness = false
 [[bench]]
 name = "tango-sum"
 harness = false
+
+[features]
+align = []
