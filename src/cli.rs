@@ -1,6 +1,7 @@
 use crate::{Benchmark, Reporter, RunMode};
 use clap::Parser;
 use core::fmt;
+use statrs::distribution::Normal;
 use std::{
     num::{NonZeroU64, NonZeroUsize},
     time::Duration,
@@ -599,26 +600,50 @@ impl<I, T: Iterator<Item = I>> From<T> for RunningVariance<T> {
 /// It is the observation including which will raise variance the most.
 fn outliers_threshold(mut input: Vec<i64>) -> Option<(i64, i64)> {
     // TODO(bazhenov) sorting should be done by difference with median
-    input.sort_by(|a, b| a.abs().cmp(&b));
+    input.sort_by(|a, b| a.abs().cmp(&b.abs()));
     let variance = RunningVariance::from(input.iter().copied());
 
-    let mut value_and_variance = input
-        .iter()
-        .copied()
-        .zip(variance)
-        .skip(input.len() * 30 / 100); // Looking only 30% topmost values
+    // Looking only 30% topmost values
+    let mut outliers_cnt = input.len() * 30 / 100;
+    let skip = input.len() - outliers_cnt;
+    let mut candidate_outliers = input[skip..].iter().filter(|i| **i < 0).count();
+    let mut value_and_variance = input.iter().copied().zip(variance).skip(skip);
 
     let mut prev_variance = 0.;
     while let Some((value, var)) = value_and_variance.next() {
         if prev_variance > 0. {
-            if var / prev_variance > 2. {
+            if var / prev_variance > 1.2 {
+                if let Some((min, max)) = binomial_interval_approximation(outliers_cnt, 0.5) {
+                    if candidate_outliers < min || candidate_outliers > max {
+                        continue;
+                    }
+                }
+                println!("Ok");
                 return Some((-value.abs(), value.abs()));
             }
         }
         prev_variance = var;
+        outliers_cnt -= 1;
+        if value < 0 {
+            candidate_outliers -= 1;
+        }
     }
 
     None
+}
+
+fn binomial_interval_approximation(n: usize, p: f64) -> Option<(usize, usize)> {
+    use statrs::distribution::ContinuousCDF;
+    let nf = n as f64;
+    if nf * p < 10. || nf * (1. - p) < 10. {
+        return None;
+    }
+    let mu = nf * p;
+    let sigma = (nf * p * (1. - p)).sqrt();
+    let distribution = Normal::new(mu, sigma).unwrap();
+    let min = distribution.inverse_cdf(0.1).floor() as usize;
+    let max = n - min;
+    Some((min, max))
 }
 
 #[cfg(test)]
@@ -680,11 +705,19 @@ mod tests {
     fn check_filter_outliers() {
         let input = vec![
             1i64, -2, 3, -4, 5, -6, 7, -8, 9, -10, //
-            101, -102, 103, -104, 105, -106, 107, -108, 109, -110,
+            101, -102,
         ];
 
         let (min, max) = outliers_threshold(input).unwrap();
         assert!(min < 1, "Minimum is: {}", min);
         assert!(10 < max && max <= 101, "Maximum is: {}", max);
+    }
+
+    #[test]
+    fn check_binomial_approximation() {
+        assert_eq!(
+            binomial_interval_approximation(10000000, 0.5),
+            Some((4997973, 5002027))
+        );
     }
 }
