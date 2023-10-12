@@ -1,11 +1,10 @@
+use crate::{Benchmark, Reporter, RunMode};
+use clap::Parser;
 use core::fmt;
 use std::{
     num::{NonZeroU64, NonZeroUsize},
     time::Duration,
 };
-
-use crate::{Benchmark, Reporter, RunMode};
-use clap::Parser;
 
 use self::reporting::{NewConsoleReporter, VerboseReporter};
 
@@ -90,7 +89,7 @@ fn determine_run_mode(time: Option<NonZeroU64>, iterations: Option<NonZeroUsize>
 }
 
 pub mod reporting {
-    use crate::cli::HumanTime;
+    use crate::cli::{outliers_threshold, HumanTime};
     use crate::Reporter;
     use std::io::Write;
     use std::iter::Sum;
@@ -104,6 +103,7 @@ pub mod reporting {
         variance: f64,
     }
 
+    // TODO(bazhenov) not need to use IntoIterator here, slice is enough
     impl<T: Ord + Copy + Sum, I: IntoIterator<Item = T>> From<I> for Summary<T>
     where
         i64: From<T>,
@@ -138,56 +138,88 @@ pub mod reporting {
 
     impl Reporter for VerboseReporter {
         fn on_complete(&mut self, baseline: &str, candidate: &str, measurements: &[(u64, u64)]) {
+            const HR: &str = "----------------------------------";
+            let n = measurements.len();
+            let diff = measurements
+                .iter()
+                .copied()
+                .map(|(b, c)| c as i64 - b as i64)
+                .collect::<Vec<_>>();
+            let (min, max) = outliers_threshold(diff.clone()).unwrap_or((i64::MIN, i64::MAX));
+
+            let (diff, measurements): (Vec<_>, Vec<_>) = diff
+                .into_iter()
+                .zip(measurements)
+                .filter(|(diff, _)| min < *diff && *diff < max)
+                .unzip();
+            let outliers_filtered = n - measurements.len();
+
             let (base, cand): (Vec<_>, Vec<_>) = measurements
                 .iter()
                 .copied()
                 .map(|(b, c)| (b as i64, c as i64))
                 .unzip();
 
-            let base = Summary::from(base);
-            let cand = Summary::from(cand);
-            let diff = Summary::from(
-                measurements
-                    .iter()
-                    .copied()
-                    .map(|(b, c)| c as i64 - b as i64),
-            );
+            let base_summary = Summary::from(base);
+            let cand_summary = Summary::from(cand);
+            let diff_summary = Summary::from(diff);
 
             println!("{:12} {:>10} {:>10}", "", baseline, candidate);
-            println!("{:12} {:>10} {:>10}", "n", base.n, cand.n);
+            println!("{:12} {:>10} {:>10}", "n", base_summary.n, cand_summary.n);
             println!(
                 "{:12} {:>10} {:>10}",
                 "min",
-                HumanTime(base.min as f64),
-                HumanTime(cand.min as f64)
+                HumanTime(base_summary.min as f64),
+                HumanTime(cand_summary.min as f64)
             );
             println!(
                 "{:12} {:>10} {:>10}",
                 "max",
-                HumanTime(base.max as f64),
-                HumanTime(cand.max as f64)
+                HumanTime(base_summary.max as f64),
+                HumanTime(cand_summary.max as f64)
             );
             println!(
                 "{:12} {:>10} {:>10}",
                 "mean",
-                HumanTime(base.mean),
-                HumanTime(cand.mean)
+                HumanTime(base_summary.mean),
+                HumanTime(cand_summary.mean)
             );
             println!(
                 "{:12} {:>10} {:>10}",
                 "std. dev.",
-                HumanTime(base.variance.sqrt()),
-                HumanTime(cand.variance.sqrt())
+                HumanTime(base_summary.variance.sqrt()),
+                HumanTime(cand_summary.variance.sqrt())
             );
             println!();
 
-            println!("{:12} {:>10} {:>10}", "∆ mean", "", HumanTime(diff.mean));
+            println!(
+                "{:12} {:>10} {:>10}",
+                "∆ mean",
+                "",
+                HumanTime(diff_summary.mean)
+            );
             println!(
                 "{:12} {:>10} {:>10}",
                 "∆ std. dev.",
                 "",
-                HumanTime(diff.variance.sqrt())
+                HumanTime(diff_summary.variance.sqrt())
             );
+            println!("{:12} {:>10} {:>10}", "outliers", "", outliers_filtered);
+
+            let std_dev = diff_summary.variance.sqrt();
+            let std_err = std_dev / (measurements.len() as f64).sqrt();
+            let z_score = diff_summary.mean / std_err;
+
+            let significant = z_score.abs() >= 2.6;
+            if significant {
+                println!(
+                    "{:12} {:>10} {:>10}",
+                    "CHANGE",
+                    if diff_summary.mean > 0. { "FASTER" } else { "" },
+                    if diff_summary.mean < 0. { "FASTER" } else { "" }
+                );
+            }
+            println!("{}", HR);
         }
     }
 
@@ -515,9 +547,78 @@ impl fmt::Display for HumanTime {
     }
 }
 
+/// Running variance iterator
+///
+/// Provides a running (streaming variance) for a given iterator of observations.
+/// Uses simple variance formula: `Var(X) = E[X^2] - E[X]^2`.
+struct RunningVariance<T> {
+    iter: T,
+    sum: f64,
+    sum_of_squares: f64,
+    n: f64,
+}
+
+impl<T: Iterator<Item = i64>> Iterator for RunningVariance<T> {
+    type Item = f64;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let i = f64::from(self.iter.next()? as f64);
+        self.sum += i;
+        self.sum_of_squares += i.powi(2);
+        self.n += 1.;
+
+        Some((self.sum_of_squares / self.n) - (self.sum / self.n).powi(2))
+    }
+}
+
+impl<I, T: Iterator<Item = I>> From<T> for RunningVariance<T> {
+    fn from(value: T) -> Self {
+        Self {
+            iter: value,
+            sum: 0.,
+            sum_of_squares: 0.,
+            n: 0.,
+        }
+    }
+}
+
+/// Outlier threshold detection
+///
+/// This functions detects optimal threshold for outlier filtering. Algorithm finds a threshold
+/// that split the set of all observations `M` into two different subsets `S` and `O`. Each observation
+/// is considered as a split point. Algorithm chooses split point in such way that it maximizes
+/// the ration of `S` with this observation and without.
+///
+/// For example in a set of observations `[1, 2, 3, 100, 200, 300]` the target observation will be 100.
+/// It is the observation including which will raise variance the most.
+fn outliers_threshold(mut input: Vec<i64>) -> Option<(i64, i64)> {
+    // TODO(bazhenov) sorting should be done by difference with median
+    input.sort_by(|a, b| a.abs().cmp(&b));
+    let variance = RunningVariance::from(input.iter().copied());
+
+    let mut value_and_variance = input
+        .iter()
+        .copied()
+        .zip(variance)
+        .skip(input.len() * 30 / 100); // Looking only 30% topmost values
+
+    let mut prev_variance = 0.;
+    while let Some((value, var)) = value_and_variance.next() {
+        if prev_variance > 0. {
+            if var / prev_variance > 2. {
+                return Some((-value.abs(), value.abs()));
+            }
+        }
+        prev_variance = var;
+    }
+
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rand::{rngs::SmallRng, RngCore, SeedableRng};
 
     #[test]
     fn check_human_time() {
@@ -533,5 +634,51 @@ mod tests {
         assert_eq!(format!("{}", HumanTime(1200000000.)), "1.2 s");
 
         assert_eq!(format!("{}", HumanTime(-1200000.)), "-1.2 ms");
+    }
+
+    struct RngIterator(SmallRng);
+
+    impl Iterator for RngIterator {
+        type Item = u32;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            Some(self.0.next_u32())
+        }
+    }
+
+    #[test]
+    fn check_running_variance() {
+        let input = [1i64, 2, 3, 4, 5, 6, 7];
+        let variances = RunningVariance::from(input.into_iter());
+        let expected = &[0., 0.25, 0.666, 1.25, 2.0, 2.916];
+
+        for (value, expected_value) in variances.zip(expected.iter()) {
+            assert!(
+                (value - expected_value).abs() < 1e-3,
+                "Expected close to: {}, given: {}",
+                expected_value,
+                value
+            );
+        }
+    }
+
+    #[test]
+    fn check_running_variance_stress_test() {
+        let rng = RngIterator(SmallRng::seed_from_u64(0)).map(|i| i as i64);
+        let mut variances = RunningVariance::from(rng);
+
+        assert!(variances.nth(10000000).unwrap() > 0.)
+    }
+
+    #[test]
+    fn check_filter_outliers() {
+        let input = vec![
+            1i64, -2, 3, -4, 5, -6, 7, -8, 9, -10, //
+            101, -102, 103, -104, 105, -106, 107, -108, 109, -110,
+        ];
+
+        let (min, max) = outliers_threshold(input).unwrap();
+        assert!(min < 1, "Minimum is: {}", min);
+        assert!(10 < max && max <= 101, "Maximum is: {}", max);
     }
 }
