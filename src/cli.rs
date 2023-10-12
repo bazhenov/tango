@@ -199,6 +199,12 @@ pub mod reporting {
                 HumanTime(diff_summary.mean)
             );
             println!(
+                "{:12} {:>10} {:>9.1}%",
+                "∆ mean %",
+                "",
+                diff_summary.mean / base_summary.mean * 100.
+            );
+            println!(
                 "{:12} {:>10} {:>10}",
                 "∆ std. dev.",
                 "",
@@ -636,9 +642,9 @@ mod tests {
         assert_eq!(format!("{}", HumanTime(-1200000.)), "-1.2 ms");
     }
 
-    struct RngIterator(SmallRng);
+    struct RngIterator<T>(T);
 
-    impl Iterator for RngIterator {
+    impl<T: RngCore> Iterator for RngIterator<T> {
         type Item = u32;
 
         fn next(&mut self) -> Option<Self::Item> {
