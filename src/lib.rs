@@ -5,6 +5,8 @@ use std::{
     time::{Duration, Instant},
 };
 
+use rand::{rngs::SmallRng, RngCore};
+
 pub mod cli;
 
 pub fn benchmark_fn<P, O, F: Fn(&P) -> O>(func: F) -> impl BenchmarkFn<P, O> {
@@ -213,4 +215,124 @@ impl<P, O> Benchmark<P, O> {
     fn set_run_mode(&mut self, run_mode: RunMode) {
         self.run_mode = run_mode;
     }
+}
+
+/// Running variance iterator
+///
+/// Provides a running (streaming variance) for a given iterator of observations.
+/// Uses simple variance formula: `Var(X) = E[X^2] - E[X]^2`.
+struct RunningVariance<T> {
+    iter: T,
+    sum: f64,
+    sum_of_squares: f64,
+    n: f64,
+}
+
+impl<T: Iterator<Item = i64>> Iterator for RunningVariance<T> {
+    type Item = f64;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let i = f64::from(self.iter.next()? as f64);
+        self.sum += i;
+        self.sum_of_squares += i.powi(2);
+        self.n += 1.;
+
+        Some((self.sum_of_squares / self.n) - (self.sum / self.n).powi(2))
+    }
+}
+
+impl<I, T: Iterator<Item = I>> From<T> for RunningVariance<T> {
+    fn from(value: T) -> Self {
+        Self {
+            iter: value,
+            sum: 0.,
+            sum_of_squares: 0.,
+            n: 0.,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rand::{rngs::SmallRng, SeedableRng};
+
+    struct RngIterator(SmallRng);
+
+    impl Iterator for RngIterator {
+        type Item = u32;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            Some(self.0.next_u32())
+        }
+    }
+
+    #[test]
+    fn check_running_variance() {
+        let input = [1i64, 2, 3, 4, 5, 6, 7];
+        let variances = RunningVariance::from(input.into_iter());
+        let expected = &[0., 0.25, 0.666, 1.25, 2.0, 2.916];
+
+        for (value, expected_value) in variances.zip(expected.iter()) {
+            assert!(
+                (value - expected_value).abs() < 1e-3,
+                "Expected close to: {}, given: {}",
+                expected_value,
+                value
+            );
+        }
+    }
+
+    #[test]
+    fn check_running_variance_stress_test() {
+        let rng = RngIterator(SmallRng::seed_from_u64(0)).map(|i| i as i64);
+        let mut variances = RunningVariance::from(rng);
+
+        assert!(variances.nth(10000000).unwrap() > 0.)
+    }
+
+    #[test]
+    fn check_filter_outliers() {
+        let input = vec![
+            1i64, -2, 3, -4, 5, -6, 7, -8, 9, -10, //
+            101, -102, 103, -104, 105, -106, 107, -108, 109, -110,
+        ];
+
+        let (min, max) = outliers_threshold(input).unwrap();
+        assert!(min < 1, "Minimum is: {}", min);
+        assert!(10 < max && max <= 101, "Maximum is: {}", max);
+    }
+}
+
+/// Outlier threshold detection
+///
+/// This functions detects optimal threshold for outlier filtering. Algorithm finds a threshold
+/// that split the set of all observations `M` into two different subsets `S` and `O`. Each observation
+/// is considered as a split point. Algorithm chooses split point in such way that it maximizes
+/// the ration of `S` with this observation and without.
+///
+/// For example in a set of observations `[1, 2, 3, 100, 200, 300]` the target observation will be 100.
+/// It is the observation including which will raise variance the most.
+fn outliers_threshold(mut input: Vec<i64>) -> Option<(i64, i64)> {
+    // TODO(bazhenov) sorting should be done by difference with median
+    input.sort_by(|a, b| a.abs().cmp(&b));
+    let variance = RunningVariance::from(input.iter().copied());
+
+    let mut value_and_variance = input
+        .iter()
+        .copied()
+        .zip(variance)
+        .skip(input.len() * 30 / 100); // Looking only 30% topmost values
+
+    let mut prev_variance = 0.;
+    while let Some((value, var)) = value_and_variance.next() {
+        if prev_variance > 0. {
+            if var / prev_variance > 2. {
+                return Some((-value.abs(), value.abs()));
+            }
+        }
+        prev_variance = var;
+    }
+
+    None
 }
