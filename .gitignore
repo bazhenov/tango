@@ -5,3 +5,4 @@ Cargo.lock
 /graphs
 /.*
 /*.csv
+.ipynb_checkpoints
