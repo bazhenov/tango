@@ -89,6 +89,7 @@ pub struct Benchmark<P, O> {
     payload_generator: Box<dyn Generator<Output = P>>,
     funcs: HashMap<String, Box<dyn BenchmarkFn<P, O>>>,
     run_mode: RunMode,
+    reporters: Vec<Box<dyn Reporter>>,
 }
 
 impl<P, O> Benchmark<P, O> {
@@ -97,19 +98,19 @@ impl<P, O> Benchmark<P, O> {
             payload_generator: Box::new(generator),
             funcs: HashMap::new(),
             run_mode: RunMode::Time(Duration::from_millis(100)),
+            reporters: vec![],
         }
+    }
+
+    pub fn add_reporter(&mut self, reporter: impl Reporter + 'static) {
+        self.reporters.push(Box::new(reporter))
     }
 
     pub fn add_function(&mut self, name: impl Into<String>, f: impl BenchmarkFn<P, O> + 'static) {
         self.funcs.insert(name.into(), Box::new(f));
     }
 
-    pub fn run_pair(
-        &mut self,
-        baseline: impl AsRef<str>,
-        candidate: impl AsRef<str>,
-        reporter: &mut dyn Reporter,
-    ) {
+    pub fn run_pair(&mut self, baseline: impl AsRef<str>, candidate: impl AsRef<str>) {
         let baseline_f = self.funcs.get(baseline.as_ref()).unwrap();
         let candidate_f = self.funcs.get(candidate.as_ref()).unwrap();
 
@@ -119,16 +120,20 @@ impl<P, O> Benchmark<P, O> {
             candidate_f.as_ref(),
             self.run_mode,
         );
-        reporter.before_start();
-        reporter.on_complete(
-            baseline.as_ref(),
-            candidate.as_ref(),
-            measurements.as_slice(),
-        );
+        for reporter in self.reporters.iter_mut() {
+            reporter.before_start();
+            reporter.on_complete(
+                baseline.as_ref(),
+                candidate.as_ref(),
+                measurements.as_slice(),
+            );
+        }
     }
 
-    pub fn run_calibration(&mut self, reporter: &mut dyn Reporter) {
-        reporter.before_start();
+    pub fn run_calibration(&mut self) {
+        for reporter in self.reporters.iter_mut() {
+            reporter.before_start();
+        }
         for (name, f) in self.funcs.iter() {
             let measurements = Self::measure(
                 self.payload_generator.as_mut(),
@@ -136,11 +141,13 @@ impl<P, O> Benchmark<P, O> {
                 f.as_ref(),
                 self.run_mode,
             );
-            reporter.on_complete(name, name, measurements.as_slice());
+            for reporter in self.reporters.iter_mut() {
+                reporter.on_complete(name, name, measurements.as_slice());
+            }
         }
     }
 
-    pub fn run_all_against(&mut self, baseline: impl AsRef<str>, reporter: &mut impl Reporter) {
+    pub fn run_all_against(&mut self, baseline: impl AsRef<str>) {
         let baseline_f = self.funcs.get(baseline.as_ref()).unwrap();
         let mut candidates = self
             .funcs
@@ -149,7 +156,9 @@ impl<P, O> Benchmark<P, O> {
             .collect::<Vec<_>>();
         candidates.sort_by(|a, b| a.0.cmp(b.0));
 
-        reporter.before_start();
+        for reporter in self.reporters.iter_mut() {
+            reporter.before_start();
+        }
         for (name, func) in candidates {
             let measurements = Self::measure(
                 self.payload_generator.as_mut(),
@@ -157,7 +166,9 @@ impl<P, O> Benchmark<P, O> {
                 func.as_ref(),
                 self.run_mode,
             );
-            reporter.on_complete(baseline.as_ref(), name, measurements.as_slice());
+            for reporter in self.reporters.iter_mut() {
+                reporter.on_complete(baseline.as_ref(), name, measurements.as_slice());
+            }
         }
     }
 
