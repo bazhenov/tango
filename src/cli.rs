@@ -56,7 +56,7 @@ pub fn run<P, O>(mut benchmark: Benchmark<P, O>) {
     let opts = Opts::parse();
 
     if opts.verbose {
-        benchmark.add_reporter(VerboseReporter::default());
+        benchmark.add_reporter(VerboseReporter);
     } else {
         benchmark.add_reporter(NewConsoleReporter::default());
     }
@@ -91,7 +91,7 @@ pub fn run<P, O>(mut benchmark: Benchmark<P, O>) {
 
 fn determine_run_mode(time: Option<NonZeroU64>, iterations: Option<NonZeroUsize>) -> RunMode {
     let time = time.map(|t| RunMode::Time(Duration::from_millis(u64::from(t))));
-    let iterations = iterations.map(|i| RunMode::Iterations(i));
+    let iterations = iterations.map(RunMode::Iterations);
     time.or(iterations)
         .unwrap_or(RunMode::Time(Duration::from_millis(100)))
 }
@@ -290,7 +290,7 @@ pub mod reporting {
                 baseline_name,
                 n,
                 HumanTime(base_min as f64),
-                HumanTime(base_mean as f64),
+                HumanTime(base_mean),
             );
 
             println!(
@@ -298,7 +298,7 @@ pub mod reporting {
                 candidate_name,
                 "",
                 HumanTime(candidate_min as f64),
-                HumanTime(candidate_mean as f64),
+                HumanTime(candidate_mean),
             );
 
             let diff_min = candidate_min - base_min;
@@ -307,7 +307,7 @@ pub mod reporting {
                 "diff.",
                 "",
                 HumanTime(diff_min as f64),
-                HumanTime(mean_of_diff as f64),
+                HumanTime(mean_of_diff),
             );
 
             let significant = z_score.abs() >= 2.6;
@@ -444,11 +444,7 @@ pub mod reporting {
             );
             print!("{:>10} ", HumanTime(diff_mean));
             print!("{:9.1}% ", diff_mean / base_mean * 100.);
-            print!(
-                "{:5} {:4.1}% ",
-                filtered,
-                filtered as f64 / (n as f64) * 100.
-            );
+            print!("{:5} {:4.1}% ", filtered, filtered as f64 / n * 100.);
             if z_score.abs() >= 2.6 {
                 if diff_mean > 0. {
                     print!("CANDIDATE SLOWER");
@@ -622,7 +618,7 @@ impl<T: Iterator<Item = i64>> Iterator for RunningVariance<T> {
     type Item = f64;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let i = f64::from(self.iter.next()? as f64);
+        let i = self.iter.next()? as f64;
         self.sum += i;
         self.sum_of_squares += i.powi(2);
         self.n += 1.;
@@ -653,27 +649,24 @@ impl<I, T: Iterator<Item = I>> From<T> for RunningVariance<T> {
 /// It is the observation including which will raise variance the most.
 fn outliers_threshold(mut input: Vec<i64>) -> Option<(i64, i64)> {
     // TODO(bazhenov) sorting should be done by difference with median
-    input.sort_by(|a, b| a.abs().cmp(&b.abs()));
+    input.sort_by_key(|a| a.abs());
     let variance = RunningVariance::from(input.iter().copied());
 
     // Looking only 30% topmost values
     let mut outliers_cnt = input.len() * 30 / 100;
     let skip = input.len() - outliers_cnt;
     let mut candidate_outliers = input[skip..].iter().filter(|i| **i < 0).count();
-    let mut value_and_variance = input.iter().copied().zip(variance).skip(skip);
+    let value_and_variance = input.iter().copied().zip(variance).skip(skip);
 
     let mut prev_variance = 0.;
-    while let Some((value, var)) = value_and_variance.next() {
-        if prev_variance > 0. {
-            if var / prev_variance > 1.2 {
-                if let Some((min, max)) = binomial_interval_approximation(outliers_cnt, 0.5) {
-                    if candidate_outliers < min || candidate_outliers > max {
-                        continue;
-                    }
+    for (value, var) in value_and_variance {
+        if prev_variance > 0. && var / prev_variance > 1.2 {
+            if let Some((min, max)) = binomial_interval_approximation(outliers_cnt, 0.5) {
+                if candidate_outliers < min || candidate_outliers > max {
+                    continue;
                 }
-                println!("Ok");
-                return Some((-value.abs(), value.abs()));
             }
+            return Some((-value.abs(), value.abs()));
         }
         prev_variance = var;
         outliers_cnt -= 1;

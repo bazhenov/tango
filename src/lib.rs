@@ -213,7 +213,7 @@ impl<P, O> Benchmark<P, O> {
 
         base_measurements
             .into_iter()
-            .zip(candidate_measurements.into_iter())
+            .zip(candidate_measurements)
             .collect()
     }
 
