@@ -31,3 +31,4 @@ harness = false
 
 [features]
 align = []
+hw_timer = []

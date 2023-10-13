@@ -4,6 +4,7 @@ use std::{
     num::NonZeroUsize,
     time::{Duration, Instant},
 };
+use timer::{ActiveTimer, Timer};
 
 pub mod cli;
 
@@ -31,9 +32,9 @@ where
     F: Fn(&P) -> O,
 {
     fn measure(&self, payload: &P) -> u64 {
-        let start = Instant::now();
+        let start = ActiveTimer::start();
         let result = black_box((self.func)(payload));
-        let time = start.elapsed().as_nanos() as u64;
+        let time = ActiveTimer::stop(start);
         drop(result);
         time
     }
@@ -51,9 +52,9 @@ where
 {
     fn measure(&self, payload: &P) -> u64 {
         let payload = (self.setup)(payload);
-        let start = Instant::now();
+        let start = ActiveTimer::start();
         let result = black_box((self.func)(payload));
-        let time = start.elapsed().as_nanos() as u64;
+        let time = ActiveTimer::stop(start);
         drop(result);
         time
     }
@@ -223,5 +224,61 @@ impl<P, O> Benchmark<P, O> {
 
     fn set_run_mode(&mut self, run_mode: RunMode) {
         self.run_mode = run_mode;
+    }
+}
+
+mod timer {
+    use std::time::Instant;
+
+    #[cfg(all(feature = "hw_timer", target_arch = "x86_64"))]
+    pub(super) type ActiveTimer = x86::RdtscpTimer;
+
+    #[cfg(not(feature = "hw_timer"))]
+    pub(super) type ActiveTimer = PlatformTimer;
+
+    pub(super) trait Timer<T> {
+        fn start() -> T;
+        fn stop(start_time: T) -> u64;
+    }
+
+    pub(super) struct PlatformTimer;
+
+    impl Timer<Instant> for PlatformTimer {
+        #[inline]
+        fn start() -> Instant {
+            Instant::now()
+        }
+
+        #[inline]
+        fn stop(start_time: Instant) -> u64 {
+            start_time.elapsed().as_nanos() as u64
+        }
+    }
+
+    #[cfg(all(feature = "hw_timer", target_arch = "x86_64"))]
+    pub(super) mod x86 {
+        use super::Timer;
+        use std::arch::x86_64::{__rdtscp, _mm_mfence};
+
+        pub struct RdtscpTimer;
+
+        impl Timer<u64> for RdtscpTimer {
+            #[inline]
+            fn start() -> u64 {
+                unsafe {
+                    _mm_mfence();
+                    __rdtscp(&mut 0)
+                }
+            }
+
+            #[inline]
+            fn stop(start: u64) -> u64 {
+                unsafe {
+                    let end = __rdtscp(&mut 0);
+                    _mm_mfence();
+                    end - start
+                }
+            }
+        }
     }
 }
