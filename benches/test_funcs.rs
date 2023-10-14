@@ -53,12 +53,25 @@ impl Generator for RandomStringGenerator {
     }
 }
 
+#[cfg_attr(feature = "align", repr(align(32)))]
+#[cfg_attr(feature = "align", inline(never))]
 pub fn sum(n: usize) -> usize {
     let mut sum = 0;
     for i in 0..black_box(n) {
         sum += black_box(i);
     }
     sum
+}
+
+#[cfg_attr(feature = "align", repr(align(32)))]
+#[cfg_attr(feature = "align", inline(never))]
+pub fn factorial(mut n: usize) -> usize {
+    let mut result = 1usize;
+    while n > 0 {
+        result = result.wrapping_mul(black_box(n));
+        n -= 1;
+    }
+    result
 }
 
 #[cfg_attr(feature = "align", repr(align(32)))]
