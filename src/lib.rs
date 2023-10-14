@@ -1,7 +1,10 @@
 use std::{
     collections::HashMap,
+    fs::File,
     hint::black_box,
+    io::{BufWriter, Write},
     num::NonZeroUsize,
+    path::{Path, PathBuf},
     time::{Duration, Instant},
 };
 use timer::{ActiveTimer, Timer};
@@ -77,7 +80,7 @@ impl<T: Copy> Generator for StaticValue<T> {
 
 pub trait Reporter {
     fn before_start(&mut self) {}
-    fn on_complete(&mut self, baseline: &str, candidate: &str, measurements: &[(u64, u64)]);
+    fn on_complete(&mut self, name: &str, measurements: &[(u64, u64)]);
 }
 
 #[derive(Copy, Clone)]
@@ -88,8 +91,9 @@ pub enum RunMode {
 
 pub struct Benchmark<P, O> {
     payload_generator: Box<dyn Generator<Output = P>>,
-    funcs: HashMap<String, Box<dyn BenchmarkFn<P, O>>>,
+    funcs: HashMap<String, (Box<dyn BenchmarkFn<P, O>>, Box<dyn BenchmarkFn<P, O>>)>,
     run_mode: RunMode,
+    measurements_dir: Option<PathBuf>,
     reporters: Vec<Box<dyn Reporter>>,
 }
 
@@ -99,78 +103,62 @@ impl<P, O> Benchmark<P, O> {
             payload_generator: Box::new(generator),
             funcs: HashMap::new(),
             run_mode: RunMode::Time(Duration::from_millis(100)),
+            measurements_dir: None,
             reporters: vec![],
         }
+    }
+
+    /// Sets a directory location for CSV dump of individual mesurements
+    ///
+    /// The format is as follows
+    /// ```no_run
+    /// b_1,c_1
+    /// b_2,c_2
+    /// ...
+    /// b_n,c_n
+    /// ```
+    /// where `b_1..b_n` are baseline absolute time (in nanoseconds) measurements
+    /// and `c_1..c_n` are candidate time measurements
+    pub fn set_measurements_dir(&mut self, dir: Option<impl AsRef<Path>>) {
+        self.measurements_dir = dir.map(|l| l.as_ref().into())
     }
 
     pub fn add_reporter(&mut self, reporter: impl Reporter + 'static) {
         self.reporters.push(Box::new(reporter))
     }
 
-    pub fn add_function(&mut self, name: impl Into<String>, f: impl BenchmarkFn<P, O> + 'static) {
-        self.funcs.insert(name.into(), Box::new(f));
+    pub fn add_pair(
+        &mut self,
+        name: impl Into<String>,
+        baseline: impl BenchmarkFn<P, O> + 'static,
+        candidate: impl BenchmarkFn<P, O> + 'static,
+    ) {
+        let key = name.into();
+        assert!(!key.is_empty());
+        self.funcs
+            .insert(key, (Box::new(baseline), Box::new(candidate)));
     }
 
-    pub fn run_pair(&mut self, baseline: impl AsRef<str>, candidate: impl AsRef<str>) {
-        let baseline_f = self.funcs.get(baseline.as_ref()).unwrap();
-        let candidate_f = self.funcs.get(candidate.as_ref()).unwrap();
-
-        let measurements = Self::measure(
-            self.payload_generator.as_mut(),
-            baseline_f.as_ref(),
-            candidate_f.as_ref(),
-            self.run_mode,
-        );
-        for reporter in self.reporters.iter_mut() {
-            reporter.before_start();
-            reporter.on_complete(
-                baseline.as_ref(),
-                candidate.as_ref(),
-                measurements.as_slice(),
-            );
+    pub fn run_by_name(&mut self, name: impl AsRef<str>) {
+        for (key, (baseline, candidate)) in &self.funcs {
+            if key.contains(name.as_ref()) {
+                let measurements = Self::measure(
+                    self.payload_generator.as_mut(),
+                    baseline.as_ref(),
+                    candidate.as_ref(),
+                    self.run_mode,
+                    dump_location(key.as_ref(), self.measurements_dir.as_ref()),
+                );
+                for reporter in self.reporters.iter_mut() {
+                    reporter.before_start();
+                    reporter.on_complete(key, measurements.as_slice());
+                }
+            }
         }
     }
 
     pub fn run_calibration(&mut self) {
-        for reporter in self.reporters.iter_mut() {
-            reporter.before_start();
-        }
-        for (name, f) in self.funcs.iter() {
-            let measurements = Self::measure(
-                self.payload_generator.as_mut(),
-                f.as_ref(),
-                f.as_ref(),
-                self.run_mode,
-            );
-            for reporter in self.reporters.iter_mut() {
-                reporter.on_complete(name, name, measurements.as_slice());
-            }
-        }
-    }
-
-    pub fn run_all_against(&mut self, baseline: impl AsRef<str>) {
-        let baseline_f = self.funcs.get(baseline.as_ref()).unwrap();
-        let mut candidates = self
-            .funcs
-            .iter()
-            .filter(|(name, _)| *name != baseline.as_ref())
-            .collect::<Vec<_>>();
-        candidates.sort_by(|a, b| a.0.cmp(b.0));
-
-        for reporter in self.reporters.iter_mut() {
-            reporter.before_start();
-        }
-        for (name, func) in candidates {
-            let measurements = Self::measure(
-                self.payload_generator.as_mut(),
-                baseline_f.as_ref(),
-                func.as_ref(),
-                self.run_mode,
-            );
-            for reporter in self.reporters.iter_mut() {
-                reporter.on_complete(baseline.as_ref(), name, measurements.as_slice());
-            }
-        }
+        todo!();
     }
 
     pub fn measure(
@@ -178,6 +166,7 @@ impl<P, O> Benchmark<P, O> {
         base: &dyn BenchmarkFn<P, O>,
         candidate: &dyn BenchmarkFn<P, O>,
         run_mode: RunMode,
+        dump_path: Option<impl AsRef<Path>>,
     ) -> Vec<(u64, u64)> {
         let mut base_measurements = vec![];
         let mut candidate_measurements = vec![];
@@ -212,6 +201,14 @@ impl<P, O> Benchmark<P, O> {
             }
         }
 
+        if let Some(path) = dump_path {
+            let mut file = BufWriter::new(File::create(path).unwrap());
+
+            for (b, c) in base_measurements.iter().zip(candidate_measurements.iter()) {
+                writeln!(&mut file, "{},{}", b, c).unwrap();
+            }
+        }
+
         base_measurements
             .into_iter()
             .zip(candidate_measurements)
@@ -225,6 +222,10 @@ impl<P, O> Benchmark<P, O> {
     fn set_run_mode(&mut self, run_mode: RunMode) {
         self.run_mode = run_mode;
     }
+}
+
+fn dump_location(name: &str, dir: Option<impl AsRef<Path>>) -> Option<impl AsRef<Path>> {
+    dir.map(|p| p.as_ref().join(format!("{}.csv", name)))
 }
 
 mod timer {

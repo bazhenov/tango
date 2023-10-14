@@ -22,11 +22,21 @@ impl Generator for RandomVec {
 fn main() {
     let mut benchmark = Benchmark::new(RandomStringGenerator::new().unwrap());
 
-    benchmark.add_function("std", benchmark_fn(std));
-    benchmark.add_function("std_count", benchmark_fn(std_count));
-    benchmark.add_function("std_count_rev", benchmark_fn(std_count_rev));
-    benchmark.add_function("std_4925", benchmark_fn(std_4925));
-    benchmark.add_function("std_5000", benchmark_fn(std_5000));
+    benchmark.add_pair(
+        "std-std_count",
+        benchmark_fn(std),
+        benchmark_fn(std_count_rev),
+    );
+    benchmark.add_pair(
+        "std_count-std_count_rev",
+        benchmark_fn(std_count),
+        benchmark_fn(std_count_rev),
+    );
+    benchmark.add_pair(
+        "std_5000-4925",
+        benchmark_fn(std_5000),
+        benchmark_fn(std_4925),
+    );
 
     run(benchmark)
 }

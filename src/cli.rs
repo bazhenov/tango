@@ -8,13 +8,12 @@ use std::{
     time::Duration,
 };
 
-use self::reporting::{FileDumpReporter, NewConsoleReporter, VerboseReporter};
+use self::reporting::{NewConsoleReporter, VerboseReporter};
 
 #[derive(Parser, Debug)]
 enum BenchMode {
     Pair {
-        baseline: String,
-        candidates: Vec<String>,
+        name: Option<String>,
 
         #[arg(long = "bench", default_value_t = true)]
         bench: bool,
@@ -63,20 +62,16 @@ pub fn run<P, O>(mut benchmark: Benchmark<P, O>) {
 
     match opts.subcommand {
         BenchMode::Pair {
-            candidates,
-            baseline,
+            name,
             time,
             iterations,
             path_to_dump,
             bench: _,
         } => {
             benchmark.set_run_mode(determine_run_mode(time, iterations));
-            if let Some(path) = path_to_dump {
-                benchmark.add_reporter(FileDumpReporter::new(path));
-            }
-            for candidate in &candidates {
-                benchmark.run_pair(&baseline, candidate);
-            }
+            benchmark.set_measurements_dir(path_to_dump);
+            let name = name.as_ref().map(String::as_str).unwrap_or("");
+            benchmark.run_by_name(name);
         }
         BenchMode::Calibrate { bench: _ } => {
             benchmark.run_calibration();
@@ -101,8 +96,6 @@ pub mod reporting {
     use crate::Reporter;
     use std::io::Write;
     use std::iter::Sum;
-    use std::num::NonZeroUsize;
-    use std::path::{Path, PathBuf};
     use std::{fs::File, io::BufWriter};
 
     struct Summary<T> {
@@ -147,7 +140,7 @@ pub mod reporting {
     pub(super) struct VerboseReporter;
 
     impl Reporter for VerboseReporter {
-        fn on_complete(&mut self, baseline: &str, candidate: &str, measurements: &[(u64, u64)]) {
+        fn on_complete(&mut self, name: &str, measurements: &[(u64, u64)]) {
             const HR: &str = "----------------------------------";
             let n = measurements.len();
             let diff = measurements
@@ -174,7 +167,7 @@ pub mod reporting {
             let cand_summary = Summary::from(cand);
             let diff_summary = Summary::from(diff);
 
-            println!("{:12} {:>10} {:>10}", "", baseline, candidate);
+            println!("{}", name);
             println!("{:12} {:>10} {:>10}", "n", base_summary.n, cand_summary.n);
             println!(
                 "{:12} {:>10} {:>10}",
@@ -245,7 +238,7 @@ pub mod reporting {
     }
 
     impl Reporter for NewConsoleReporter {
-        fn on_complete(&mut self, baseline_name: &str, candidate_name: &str, input: &[(u64, u64)]) {
+        fn on_complete(&mut self, name: &str, input: &[(u64, u64)]) {
             const HR: &str = "--------------------------------------------------";
 
             if !self.header_printed {
@@ -287,7 +280,7 @@ pub mod reporting {
 
             println!(
                 "B: {:17} {:9} {:>9} {:>9}",
-                baseline_name,
+                name,
                 n,
                 HumanTime(base_min as f64),
                 HumanTime(base_mean),
@@ -295,7 +288,7 @@ pub mod reporting {
 
             println!(
                 "C: {:17} {:9} {:>9} {:>9}",
-                candidate_name,
+                name,
                 "",
                 HumanTime(candidate_min as f64),
                 HumanTime(candidate_mean),
@@ -328,50 +321,6 @@ pub mod reporting {
         }
     }
 
-    /// Dump reporter
-    ///
-    /// Creates single csv-dump with raw measurements for each tested pair of the functions.
-    /// The format is as follows
-    /// ```
-    /// b_1,c_1
-    /// b_2,c_2
-    /// ...
-    /// b_n,c_n
-    /// ```
-    /// where `b_1..b_n` are baseline absolute time (in nanoseconds) measurements
-    /// and `c_1..c_n` are candidate time measurements
-    pub(super) struct FileDumpReporter {
-        /// Path to the directory where dump files will be created
-        path: PathBuf,
-        /// Describes the size of the step between written values.
-        ///
-        /// When `1` all observations are written, when 2 every other is written etc.
-        /// Useful when it's a hassle to deal with all the observations and representative
-        /// sample is enough.
-        skip_factor: NonZeroUsize,
-    }
-
-    impl FileDumpReporter {
-        pub fn new(path: impl AsRef<Path>) -> Self {
-            Self {
-                path: path.as_ref().into(),
-                skip_factor: NonZeroUsize::new(1).unwrap(),
-            }
-        }
-    }
-
-    impl Reporter for FileDumpReporter {
-        fn on_complete(&mut self, baseline: &str, candidate: &str, measurements: &[(u64, u64)]) {
-            let file_name = format!("{}-{}.csv", baseline, candidate);
-            let path = self.path.join(file_name);
-            let mut file = BufWriter::new(File::create(path).unwrap());
-
-            for (b, c) in measurements.iter().step_by(self.skip_factor.into()) {
-                writeln!(&mut file, "{},{}", b, c).unwrap();
-            }
-        }
-    }
-
     #[derive(Default)]
     pub struct ConsoleReporter {
         header_printed: bool,
@@ -385,8 +334,7 @@ pub mod reporting {
     }
 
     impl Reporter for ConsoleReporter {
-        fn on_complete(&mut self, baseline_name: &str, candidate_name: &str, input: &[(u64, u64)]) {
-            let name = format!("{} / {}", baseline_name, candidate_name);
+        fn on_complete(&mut self, name: &str, input: &[(u64, u64)]) {
             let base = input
                 .iter()
                 .map(|(base, _)| *base as i64)
@@ -455,7 +403,7 @@ pub mod reporting {
             println!();
 
             if self.write_data {
-                let file_name = format!("{}-{}.csv", baseline_name, candidate_name);
+                let file_name = format!("{}.csv", name);
                 let mut file = BufWriter::new(File::create(file_name).unwrap());
 
                 // Writing at most 1000 points to csv file. GNUplot can't handle more
