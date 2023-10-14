@@ -3,6 +3,7 @@ use std::{
     fs::File,
     hint::black_box,
     io::{BufWriter, Write},
+    iter::Sum,
     num::NonZeroUsize,
     path::{Path, PathBuf},
     time::{Duration, Instant},
@@ -80,7 +81,13 @@ impl<T: Copy> Generator for StaticValue<T> {
 
 pub trait Reporter {
     fn before_start(&mut self) {}
-    fn on_complete(&mut self, name: &str, measurements: &[(u64, u64)]);
+    fn on_complete(
+        &mut self,
+        name: &str,
+        base: Summary<i64>,
+        candidate: Summary<i64>,
+        measurements: &[i64],
+    );
 }
 
 #[derive(Copy, Clone)]
@@ -142,7 +149,7 @@ impl<P, O> Benchmark<P, O> {
     pub fn run_by_name(&mut self, name: impl AsRef<str>) {
         for (key, (baseline, candidate)) in &self.funcs {
             if key.contains(name.as_ref()) {
-                let measurements = Self::measure(
+                let (base, candidate, diff) = Self::measure(
                     self.payload_generator.as_mut(),
                     baseline.as_ref(),
                     candidate.as_ref(),
@@ -151,7 +158,7 @@ impl<P, O> Benchmark<P, O> {
                 );
                 for reporter in self.reporters.iter_mut() {
                     reporter.before_start();
-                    reporter.on_complete(key, measurements.as_slice());
+                    reporter.on_complete(key, base, candidate, &diff);
                 }
             }
         }
@@ -167,7 +174,7 @@ impl<P, O> Benchmark<P, O> {
         candidate: &dyn BenchmarkFn<P, O>,
         run_mode: RunMode,
         dump_path: Option<impl AsRef<Path>>,
-    ) -> Vec<(u64, u64)> {
+    ) -> (Summary<i64>, Summary<i64>, Vec<i64>) {
         let mut base_measurements = vec![];
         let mut candidate_measurements = vec![];
 
@@ -176,11 +183,11 @@ impl<P, O> Benchmark<P, O> {
                 for i in 0..usize::from(iter) {
                     let payload = generator.next_payload();
                     if i % 2 == 0 {
-                        base_measurements.push(base.measure(&payload));
-                        candidate_measurements.push(candidate.measure(&payload));
+                        base_measurements.push(base.measure(&payload) as i64);
+                        candidate_measurements.push(candidate.measure(&payload) as i64);
                     } else {
-                        candidate_measurements.push(candidate.measure(&payload));
-                        base_measurements.push(base.measure(&payload));
+                        candidate_measurements.push(candidate.measure(&payload) as i64);
+                        base_measurements.push(base.measure(&payload) as i64);
                     }
                 }
             }
@@ -191,11 +198,11 @@ impl<P, O> Benchmark<P, O> {
                     let payload = generator.next_payload();
                     baseline_first = !baseline_first;
                     if baseline_first {
-                        base_measurements.push(base.measure(&payload));
-                        candidate_measurements.push(candidate.measure(&payload));
+                        base_measurements.push(base.measure(&payload) as i64);
+                        candidate_measurements.push(candidate.measure(&payload) as i64);
                     } else {
-                        candidate_measurements.push(candidate.measure(&payload));
-                        base_measurements.push(base.measure(&payload));
+                        candidate_measurements.push(candidate.measure(&payload) as i64);
+                        base_measurements.push(base.measure(&payload) as i64);
                     }
                 }
             }
@@ -209,10 +216,14 @@ impl<P, O> Benchmark<P, O> {
             }
         }
 
-        base_measurements
+        let base = Summary::from(base_measurements.as_slice());
+        let candidate = Summary::from(candidate_measurements.as_slice());
+        let diff = base_measurements
             .into_iter()
             .zip(candidate_measurements)
-            .collect()
+            .map(|(b, c)| c as i64 - b as i64)
+            .collect();
+        (base, candidate, diff)
     }
 
     pub fn list_functions(&self) -> impl Iterator<Item = &str> {
@@ -226,6 +237,43 @@ impl<P, O> Benchmark<P, O> {
 
 fn dump_location(name: &str, dir: Option<impl AsRef<Path>>) -> Option<impl AsRef<Path>> {
     dir.map(|p| p.as_ref().join(format!("{}.csv", name)))
+}
+
+#[derive(Clone, Copy)]
+pub struct Summary<T> {
+    n: usize,
+    min: T,
+    max: T,
+    mean: f64,
+    variance: f64,
+}
+
+impl<T: Ord + Copy + Sum> From<&[T]> for Summary<T>
+where
+    i64: From<T>,
+{
+    fn from(values: &[T]) -> Self {
+        let n = values.len();
+        let min = *values.iter().min().unwrap();
+        let max = *values.iter().max().unwrap();
+        let sum = values.iter().copied().sum::<T>();
+
+        let mean = i64::from(sum) as f64 / n as f64;
+
+        let variance = values
+            .iter()
+            .map(|i| (i64::from(*i) as f64 - mean).powi(2))
+            .sum::<f64>()
+            / (n - 1) as f64;
+
+        Self {
+            n,
+            min,
+            max,
+            mean,
+            variance,
+        }
+    }
 }
 
 mod timer {
