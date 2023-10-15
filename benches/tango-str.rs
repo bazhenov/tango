@@ -20,23 +20,21 @@ impl Generator for RandomVec {
 }
 
 fn main() {
-    let mut benchmark = Benchmark::new(RandomStringGenerator::new().unwrap());
+    let mut payloads = RandomStringGenerator::new().unwrap();
+    let mut benchmark = Benchmark::new();
 
     benchmark.add_pair(
-        "std-std_count",
-        benchmark_fn(std),
-        benchmark_fn(std_count_rev),
+        benchmark_fn("std", std),
+        benchmark_fn("std_count", std_count),
     );
     benchmark.add_pair(
-        "std_count-std_count_rev",
-        benchmark_fn(std_count),
-        benchmark_fn(std_count_rev),
+        benchmark_fn("std_count", std_count),
+        benchmark_fn("std_count_rev", std_count_rev),
     );
     benchmark.add_pair(
-        "std_5000-4925",
-        benchmark_fn(std_5000),
-        benchmark_fn(std_4925),
+        benchmark_fn("std_5000", std_5000),
+        benchmark_fn("std_4925", std_4925),
     );
 
-    run(benchmark)
+    run(benchmark, &mut payloads);
 }

@@ -35,21 +35,17 @@ fn copy_and_sort_stable(input: &Vec<u32>) -> usize {
 }
 
 fn main() {
-    let mut benchmark = Benchmark::new(RandomVec(
-        SmallRng::seed_from_u64(42),
-        NonZeroUsize::new(100).unwrap(),
-    ));
+    let mut payloads = RandomVec(SmallRng::seed_from_u64(42), NonZeroUsize::new(100).unwrap());
+    let mut benchmark = Benchmark::new();
 
     benchmark.add_pair(
-        "stable-unstable",
-        benchmark_fn_with_setup(sort_stable, Clone::clone),
-        benchmark_fn(sort_unstable),
+        benchmark_fn_with_setup("stable", sort_stable, Clone::clone),
+        benchmark_fn("unstable", sort_unstable),
     );
     benchmark.add_pair(
-        "stable-copy_stable",
-        benchmark_fn_with_setup(sort_stable, Clone::clone),
-        benchmark_fn(copy_and_sort_stable),
+        benchmark_fn_with_setup("stable", sort_stable, Clone::clone),
+        benchmark_fn("stable_sort", copy_and_sort_stable),
     );
 
-    run(benchmark)
+    run(benchmark, &mut payloads)
 }

@@ -1,4 +1,4 @@
-use crate::{Benchmark, RunMode};
+use crate::{Benchmark, Generator, RunMode};
 use clap::Parser;
 use core::fmt;
 use statrs::distribution::Normal;
@@ -51,7 +51,7 @@ struct Opts {
     bench: bool,
 }
 
-pub fn run<P, O>(mut benchmark: Benchmark<P, O>) {
+pub fn run<P, O>(mut benchmark: Benchmark<P, O>, payloads: &mut dyn Generator<Output = P>) {
     let opts = Opts::parse();
 
     if opts.verbose {
@@ -69,9 +69,9 @@ pub fn run<P, O>(mut benchmark: Benchmark<P, O>) {
             bench: _,
         } => {
             benchmark.set_run_mode(determine_run_mode(time, iterations));
-            benchmark.set_measurements_dir(path_to_dump);
-            let name = name.as_ref().map(String::as_str).unwrap_or("");
-            benchmark.run_by_name(name);
+            benchmark.set_measurements_dir(path_to_dump.clone());
+            let name = name.as_deref().unwrap_or("");
+            benchmark.run_by_name(payloads, name);
         }
         BenchMode::Calibrate { bench: _ } => {
             benchmark.run_calibration();
@@ -102,18 +102,21 @@ pub mod reporting {
     impl Reporter for VerboseReporter {
         fn on_complete(
             &mut self,
-            name: &str,
-            base: Summary<i64>,
-            candidate: Summary<i64>,
+            base: (&str, Summary<i64>),
+            candidate: (&str, Summary<i64>),
             measurements: &[i64],
         ) {
             const HR: &str = "----------------------------------";
+
+            let (base_name, base) = base;
+            let (candidate_name, candidate) = candidate;
+
             let n = measurements.len();
             let (min, max) =
                 outliers_threshold(measurements.to_vec()).unwrap_or((i64::MIN, i64::MAX));
 
             let measurements = measurements
-                .into_iter()
+                .iter()
                 .copied()
                 .filter(|i| min < *i && *i < max)
                 .collect::<Vec<_>>();
@@ -121,7 +124,7 @@ pub mod reporting {
 
             let diff_summary = Summary::from(measurements.as_slice());
 
-            println!("{}", name);
+            println!("{:12} {:>10} {:>10}", "", base_name, candidate_name);
             println!("{:12} {:>10} {:>10}", "n", base.n, candidate.n);
             println!(
                 "{:12} {:>10} {:>10}",
@@ -131,15 +134,15 @@ pub mod reporting {
             );
             println!(
                 "{:12} {:>10} {:>10}",
-                "max",
-                HumanTime(base.max as f64),
-                HumanTime(candidate.max as f64)
-            );
-            println!(
-                "{:12} {:>10} {:>10}",
                 "mean",
                 HumanTime(base.mean),
                 HumanTime(candidate.mean)
+            );
+            println!(
+                "{:12} {:>10} {:>10}",
+                "max",
+                HumanTime(base.max as f64),
+                HumanTime(candidate.max as f64)
             );
             println!(
                 "{:12} {:>10} {:>10}",
@@ -194,12 +197,14 @@ pub mod reporting {
     impl Reporter for NewConsoleReporter {
         fn on_complete(
             &mut self,
-            name: &str,
-            base: Summary<i64>,
-            candidate: Summary<i64>,
+            base: (&str, Summary<i64>),
+            candidate: (&str, Summary<i64>),
             measurements: &[i64],
         ) {
             const HR: &str = "--------------------------------------------------";
+
+            let (base_name, base) = base;
+            let (candidate_name, candidate) = candidate;
 
             if !self.header_printed {
                 println!("{:>20} {:>9} {:>9} {:>9}", "name", "iters.", "min", "mean");
@@ -217,7 +222,7 @@ pub mod reporting {
 
             println!(
                 "B: {:17} {:9} {:>9} {:>9}",
-                name,
+                base_name,
                 n,
                 HumanTime(base.min as f64),
                 HumanTime(base.mean),
@@ -225,7 +230,7 @@ pub mod reporting {
 
             println!(
                 "C: {:17} {:9} {:>9} {:>9}",
-                name,
+                candidate_name,
                 "",
                 HumanTime(candidate.min as f64),
                 HumanTime(candidate.mean),

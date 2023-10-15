@@ -12,23 +12,33 @@ use timer::{ActiveTimer, Timer};
 
 pub mod cli;
 
-pub fn benchmark_fn<P, O, F: Fn(&P) -> O>(func: F) -> impl BenchmarkFn<P, O> {
-    Func { func }
+pub fn benchmark_fn<P, O, F: Fn(&P) -> O>(
+    name: impl Into<String>,
+    func: F,
+) -> impl BenchmarkFn<P, O> {
+    let name = name.into();
+    assert!(!name.is_empty());
+    Func { name, func }
 }
 
 pub fn benchmark_fn_with_setup<P, O, I, F: Fn(I) -> O, S: Fn(&P) -> I>(
+    name: impl Into<String>,
     func: F,
     setup: S,
 ) -> impl BenchmarkFn<P, O> {
-    SetupFunc { func, setup }
+    let name = name.into();
+    assert!(!name.is_empty());
+    SetupFunc { name, func, setup }
 }
 
 pub trait BenchmarkFn<P, O> {
     fn measure(&self, payload: &P) -> u64;
+    fn name(&self) -> &str;
 }
 
 struct Func<F> {
-    pub func: F,
+    func: F,
+    name: String,
 }
 
 impl<F, P, O> BenchmarkFn<P, O> for Func<F>
@@ -42,11 +52,16 @@ where
         drop(result);
         time
     }
+
+    fn name(&self) -> &str {
+        self.name.as_str()
+    }
 }
 
 struct SetupFunc<S, F> {
     setup: S,
     func: F,
+    name: String,
 }
 
 impl<S, F, P, I, O> BenchmarkFn<P, O> for SetupFunc<S, F>
@@ -61,6 +76,10 @@ where
         let time = ActiveTimer::stop(start);
         drop(result);
         time
+    }
+
+    fn name(&self) -> &str {
+        self.name.as_str()
     }
 }
 
@@ -83,9 +102,8 @@ pub trait Reporter {
     fn before_start(&mut self) {}
     fn on_complete(
         &mut self,
-        name: &str,
-        base: Summary<i64>,
-        candidate: Summary<i64>,
+        base: (&str, Summary<i64>),
+        candidate: (&str, Summary<i64>),
         measurements: &[i64],
     );
 }
@@ -96,18 +114,24 @@ pub enum RunMode {
     Time(Duration),
 }
 
+type FnPair<P, O> = (Box<dyn BenchmarkFn<P, O>>, Box<dyn BenchmarkFn<P, O>>);
+
 pub struct Benchmark<P, O> {
-    payload_generator: Box<dyn Generator<Output = P>>,
-    funcs: HashMap<String, (Box<dyn BenchmarkFn<P, O>>, Box<dyn BenchmarkFn<P, O>>)>,
+    funcs: HashMap<String, FnPair<P, O>>,
     run_mode: RunMode,
     measurements_dir: Option<PathBuf>,
     reporters: Vec<Box<dyn Reporter>>,
 }
 
+impl<P, O> Default for Benchmark<P, O> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<P, O> Benchmark<P, O> {
-    pub fn new(generator: impl Generator<Output = P> + 'static) -> Self {
+    pub fn new() -> Self {
         Self {
-            payload_generator: Box::new(generator),
             funcs: HashMap::new(),
             run_mode: RunMode::Time(Duration::from_millis(100)),
             measurements_dir: None,
@@ -136,21 +160,19 @@ impl<P, O> Benchmark<P, O> {
 
     pub fn add_pair(
         &mut self,
-        name: impl Into<String>,
         baseline: impl BenchmarkFn<P, O> + 'static,
         candidate: impl BenchmarkFn<P, O> + 'static,
     ) {
-        let key = name.into();
-        assert!(!key.is_empty());
+        let key = format!("{}-{}", baseline.name(), candidate.name());
         self.funcs
             .insert(key, (Box::new(baseline), Box::new(candidate)));
     }
 
-    pub fn run_by_name(&mut self, name: impl AsRef<str>) {
+    pub fn run_by_name(&mut self, payloads: &mut dyn Generator<Output = P>, name: impl AsRef<str>) {
         for (key, (baseline, candidate)) in &self.funcs {
             if key.contains(name.as_ref()) {
-                let (base, candidate, diff) = Self::measure(
-                    self.payload_generator.as_mut(),
+                let (base_summary, candidate_summary, diff) = Self::measure(
+                    payloads,
                     baseline.as_ref(),
                     candidate.as_ref(),
                     self.run_mode,
@@ -158,7 +180,11 @@ impl<P, O> Benchmark<P, O> {
                 );
                 for reporter in self.reporters.iter_mut() {
                     reporter.before_start();
-                    reporter.on_complete(key, base, candidate, &diff);
+                    reporter.on_complete(
+                        (baseline.name(), base_summary),
+                        (candidate.name(), candidate_summary),
+                        &diff,
+                    );
                 }
             }
         }
@@ -175,19 +201,19 @@ impl<P, O> Benchmark<P, O> {
         run_mode: RunMode,
         dump_path: Option<impl AsRef<Path>>,
     ) -> (Summary<i64>, Summary<i64>, Vec<i64>) {
-        let mut base_measurements = vec![];
-        let mut candidate_measurements = vec![];
+        let mut base_time = vec![];
+        let mut candidate_time = vec![];
 
         match run_mode {
             RunMode::Iterations(iter) => {
                 for i in 0..usize::from(iter) {
                     let payload = generator.next_payload();
                     if i % 2 == 0 {
-                        base_measurements.push(base.measure(&payload) as i64);
-                        candidate_measurements.push(candidate.measure(&payload) as i64);
+                        base_time.push(base.measure(&payload) as i64);
+                        candidate_time.push(candidate.measure(&payload) as i64);
                     } else {
-                        candidate_measurements.push(candidate.measure(&payload) as i64);
-                        base_measurements.push(base.measure(&payload) as i64);
+                        candidate_time.push(candidate.measure(&payload) as i64);
+                        base_time.push(base.measure(&payload) as i64);
                     }
                 }
             }
@@ -198,30 +224,26 @@ impl<P, O> Benchmark<P, O> {
                     let payload = generator.next_payload();
                     baseline_first = !baseline_first;
                     if baseline_first {
-                        base_measurements.push(base.measure(&payload) as i64);
-                        candidate_measurements.push(candidate.measure(&payload) as i64);
+                        base_time.push(base.measure(&payload) as i64);
+                        candidate_time.push(candidate.measure(&payload) as i64);
                     } else {
-                        candidate_measurements.push(candidate.measure(&payload) as i64);
-                        base_measurements.push(base.measure(&payload) as i64);
+                        candidate_time.push(candidate.measure(&payload) as i64);
+                        base_time.push(base.measure(&payload) as i64);
                     }
                 }
             }
         }
 
         if let Some(path) = dump_path {
-            let mut file = BufWriter::new(File::create(path).unwrap());
-
-            for (b, c) in base_measurements.iter().zip(candidate_measurements.iter()) {
-                writeln!(&mut file, "{},{}", b, c).unwrap();
-            }
+            write_raw_measurements(path, &base_time, &candidate_time);
         }
 
-        let base = Summary::from(base_measurements.as_slice());
-        let candidate = Summary::from(candidate_measurements.as_slice());
-        let diff = base_measurements
+        let base = Summary::from(base_time.as_slice());
+        let candidate = Summary::from(candidate_time.as_slice());
+        let diff = base_time
             .into_iter()
-            .zip(candidate_measurements)
-            .map(|(b, c)| c as i64 - b as i64)
+            .zip(candidate_time)
+            .map(|(b, c)| c - b)
             .collect();
         (base, candidate, diff)
     }
@@ -232,6 +254,18 @@ impl<P, O> Benchmark<P, O> {
 
     fn set_run_mode(&mut self, run_mode: RunMode) {
         self.run_mode = run_mode;
+    }
+}
+
+fn write_raw_measurements(
+    path: impl AsRef<Path>,
+    base_measurements: &[i64],
+    candidate_measurements: &[i64],
+) {
+    let mut file = BufWriter::new(File::create(path).unwrap());
+
+    for (b, c) in base_measurements.iter().zip(candidate_measurements.iter()) {
+        writeln!(&mut file, "{},{}", b, c).unwrap();
     }
 }
 
