@@ -3,12 +3,13 @@ use clap::Parser;
 use core::fmt;
 use statrs::distribution::Normal;
 use std::{
+    fmt::Display,
     num::{NonZeroU64, NonZeroUsize},
     path::PathBuf,
     time::Duration,
 };
 
-use self::reporting::{NewConsoleReporter, VerboseReporter};
+use self::reporting::{ConsoleReporter, VerboseReporter};
 
 #[derive(Parser, Debug)]
 enum BenchMode {
@@ -57,7 +58,7 @@ pub fn run<P, O>(mut benchmark: Benchmark<P, O>, payloads: &mut dyn Generator<Ou
     if opts.verbose {
         benchmark.add_reporter(VerboseReporter);
     } else {
-        benchmark.add_reporter(NewConsoleReporter::default());
+        benchmark.add_reporter(ConsoleReporter::default());
     }
 
     match opts.subcommand {
@@ -93,7 +94,7 @@ fn determine_run_mode(time: Option<NonZeroU64>, iterations: Option<NonZeroUsize>
 
 pub mod reporting {
 
-    use crate::cli::{outliers_threshold, HumanTime};
+    use crate::cli::{colorize, outliers_threshold, HumanTime};
     use crate::{Reporter, Summary};
 
     #[derive(Default)]
@@ -190,27 +191,17 @@ pub mod reporting {
     }
 
     #[derive(Default)]
-    pub(super) struct NewConsoleReporter {
-        header_printed: bool,
-    }
+    pub(super) struct ConsoleReporter;
 
-    impl Reporter for NewConsoleReporter {
+    impl Reporter for ConsoleReporter {
         fn on_complete(
             &mut self,
             base: (&str, Summary<i64>),
             candidate: (&str, Summary<i64>),
             measurements: &[i64],
         ) {
-            const HR: &str = "--------------------------------------------------";
-
             let (base_name, base) = base;
             let (candidate_name, candidate) = candidate;
-
-            if !self.header_printed {
-                println!("{:>20} {:>9} {:>9} {:>9}", "name", "iters.", "min", "mean");
-                println!("{}", HR);
-                self.header_printed = true;
-            }
 
             let n = measurements.len() as f64;
 
@@ -220,46 +211,18 @@ pub mod reporting {
             let std_err = std_dev / n.sqrt();
             let z_score = diff.mean / std_err;
 
+            let significant = z_score > 2.6;
+
+            let speedup = (candidate.mean - base.mean) / base.mean * 100.;
+            let candidate_faster = candidate.mean < base.mean;
             println!(
-                "B: {:17} {:9} {:>9} {:>9}",
+                "{:15} ... {:15} [ {:>8} ... {:>8} ]    {:5.1}%",
                 base_name,
-                n,
-                HumanTime(base.min as f64),
+                colorize(candidate_name, significant, candidate_faster),
                 HumanTime(base.mean),
-            );
-
-            println!(
-                "C: {:17} {:9} {:>9} {:>9}",
-                candidate_name,
-                "",
-                HumanTime(candidate.min as f64),
-                HumanTime(candidate.mean),
-            );
-
-            let min_diff = candidate.min - base.min;
-            println!(
-                "   {:17} {:9} {:>9} {:>9}",
-                "diff.",
-                "",
-                HumanTime(min_diff as f64),
-                HumanTime(diff.mean),
-            );
-
-            let significant = z_score.abs() >= 2.6;
-            println!(
-                "   {:17} {:9} {:>8.1}% {:>8.1}%   {}",
-                "%",
-                "",
-                diff.min as f64 / base.min as f64 * 100.,
-                (diff.mean / base.mean * 100.),
-                match significant {
-                    true if diff.mean > 0. => "C is slower",
-                    true if diff.mean < 0. => "C is faster",
-                    _ => "",
-                }
-            );
-
-            println!("{}", HR);
+                colorize(HumanTime(candidate.mean), significant, candidate_faster),
+                colorize(speedup, significant, speedup < 0.),
+            )
         }
     }
 
@@ -274,6 +237,41 @@ pub mod reporting {
             assert_eq!(stat.max, 4);
             assert_eq!(stat.variance, 2.);
         }
+    }
+}
+
+fn colorize<T: Display>(value: T, do_paint: bool, indicator: bool) -> Colored<T> {
+    if do_paint {
+        let color = if indicator { Color::Green } else { Color::Red };
+        Colored(value, color)
+    } else {
+        Colored(value, Color::Reset)
+    }
+}
+
+enum Color {
+    Red,
+    Green,
+    Reset,
+}
+
+impl Color {
+    fn ascii_color_code(&self) -> &'static str {
+        match self {
+            Color::Red => "\x1B[31m",
+            Color::Green => "\x1B[32m",
+            Color::Reset => "\x1B[0m",
+        }
+    }
+}
+
+struct Colored<T>(T, Color);
+
+impl<T: Display> Display for Colored<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.1.ascii_color_code())
+            .and_then(|_| self.0.fmt(f))
+            .and_then(|_| write!(f, "{}", Color::Reset.ascii_color_code()))
     }
 }
 
