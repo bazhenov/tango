@@ -94,7 +94,7 @@ fn determine_run_mode(time: Option<NonZeroU64>, iterations: Option<NonZeroUsize>
 
 pub mod reporting {
 
-    use crate::cli::{colorize, outliers_threshold, HumanTime};
+    use crate::cli::{colorize, outliers_threshold, Color, Colored, HumanTime};
     use crate::{Reporter, RunResults, Summary};
 
     #[derive(Default)]
@@ -102,8 +102,6 @@ pub mod reporting {
 
     impl Reporter for VerboseReporter {
         fn on_complete(&mut self, results: &RunResults) {
-            const HR: &str = "----------------------------------";
-
             let base = results.base;
             let candidate = results.candidate;
 
@@ -121,71 +119,71 @@ pub mod reporting {
 
             let diff_summary = Summary::from(measurements.as_slice());
 
-            println!(
-                "{:12} {:>10} {:>10}",
-                "", results.base_name, results.candidate_name
-            );
-            println!("{:12} {:>10} {:>10}", "n", base.n, candidate.n);
-            println!(
-                "{:12} {:>10} {:>10}",
-                "min",
-                HumanTime(base.min as f64),
-                HumanTime(candidate.min as f64)
-            );
-            println!(
-                "{:12} {:>10} {:>10}",
-                "mean",
-                HumanTime(base.mean),
-                HumanTime(candidate.mean)
-            );
-            println!(
-                "{:12} {:>10} {:>10}",
-                "max",
-                HumanTime(base.max as f64),
-                HumanTime(candidate.max as f64)
-            );
-            println!(
-                "{:12} {:>10} {:>10}",
-                "std. dev.",
-                HumanTime(base.variance.sqrt()),
-                HumanTime(candidate.variance.sqrt())
-            );
-            println!();
-
-            println!(
-                "{:12} {:>10} {:>10}",
-                "∆ mean",
-                "",
-                HumanTime(diff_summary.mean)
-            );
-            println!(
-                "{:12} {:>10} {:>9.1}%",
-                "∆ mean %",
-                "",
-                diff_summary.mean / base.mean * 100.
-            );
-            println!(
-                "{:12} {:>10} {:>10}",
-                "∆ std. dev.",
-                "",
-                HumanTime(diff_summary.variance.sqrt())
-            );
-            println!("{:12} {:>10} {:>10}", "outliers", "", outliers_filtered);
-
             let std_dev = diff_summary.variance.sqrt();
             let std_err = std_dev / (measurements.len() as f64).sqrt();
             let z_score = diff_summary.mean / std_err;
 
             let significant = z_score.abs() >= 2.6;
-            if significant {
-                println!(
-                    "{:12} {:>10} {:>10}",
-                    "CHANGE",
-                    if diff_summary.mean > 0. { "FASTER" } else { "" },
-                    if diff_summary.mean < 0. { "FASTER" } else { "" }
-                );
-            }
-            println!("{}", HR);
+
+            println!(
+                "{} vs. {}  (n: {}, outliers: {})",
+                Colored(&results.base_name, Color::Bold),
+                Colored(&results.candidate_name, Color::Bold),
+                n,
+                outliers_filtered
+            );
+            println!();
+
+            println!(
+                "    {:12}   {:>15} {:>15} {:>15}",
+                "",
+                Colored(&results.base_name, Color::Bold),
+                Colored(&results.candidate_name, Color::Bold),
+                Colored("∆", Color::Bold),
+            );
+            println!(
+                "    {:12} ╭────────────────────────────────────────────────",
+                ""
+            );
+            println!(
+                "    {:12} │ {:>15} {:>15} {:>15}",
+                "min",
+                HumanTime(base.min as f64),
+                HumanTime(candidate.min as f64),
+                HumanTime((candidate.min - base.min) as f64)
+            );
+            println!(
+                "    {:12} │ {:>15} {:>15} {:>15}  {:+3.1}{}",
+                "mean",
+                HumanTime(base.mean),
+                HumanTime(candidate.mean),
+                colorize(
+                    HumanTime(diff_summary.mean),
+                    significant,
+                    diff_summary.mean < 0.
+                ),
+                colorize(
+                    diff_summary.mean / base.mean * 100.,
+                    significant,
+                    diff_summary.mean < 0.
+                ),
+                colorize("%", significant, diff_summary.mean < 0.)
+            );
+            println!(
+                "    {:12} │ {:>15} {:>15} {:>15}",
+                "max",
+                HumanTime(base.max as f64),
+                HumanTime(candidate.max as f64),
+                HumanTime((candidate.max - base.max) as f64),
+            );
+            println!(
+                "    {:12} │ {:>15} {:>15} {:>15}",
+                "std. dev.",
+                HumanTime(base.variance.sqrt()),
+                HumanTime(candidate.variance.sqrt()),
+                HumanTime(diff_summary.variance.sqrt()),
+            );
+            println!();
         }
     }
 
@@ -246,6 +244,7 @@ fn colorize<T: Display>(value: T, do_paint: bool, indicator: bool) -> Colored<T>
 enum Color {
     Red,
     Green,
+    Bold,
     Reset,
 }
 
@@ -254,6 +253,7 @@ impl Color {
         match self {
             Color::Red => "\x1B[31m",
             Color::Green => "\x1B[32m",
+            Color::Bold => "\x1B[1m",
             Color::Reset => "\x1B[0m",
         }
     }

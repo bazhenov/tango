@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::BTreeMap,
     fs::File,
     hint::black_box,
     io::{BufWriter, Write},
@@ -111,7 +111,7 @@ pub enum RunMode {
 type FnPair<P, O> = (Box<dyn BenchmarkFn<P, O>>, Box<dyn BenchmarkFn<P, O>>);
 
 pub struct Benchmark<P, O> {
-    funcs: HashMap<String, FnPair<P, O>>,
+    funcs: BTreeMap<String, FnPair<P, O>>,
     run_mode: RunMode,
     measurements_dir: Option<PathBuf>,
     reporters: Vec<Box<dyn Reporter>>,
@@ -126,7 +126,7 @@ impl<P, O> Default for Benchmark<P, O> {
 impl<P, O> Benchmark<P, O> {
     pub fn new() -> Self {
         Self {
-            funcs: HashMap::new(),
+            funcs: BTreeMap::new(),
             run_mode: RunMode::Time(Duration::from_millis(100)),
             measurements_dir: None,
             reporters: vec![],
@@ -285,7 +285,6 @@ fn dump_location(name: &str, dir: Option<impl AsRef<Path>>) -> Option<impl AsRef
 
 #[derive(Clone, Copy)]
 pub struct Summary<T> {
-    n: usize,
     min: T,
     max: T,
     mean: f64,
@@ -311,7 +310,6 @@ where
             / (n - 1) as f64;
 
         Self {
-            n,
             min,
             max,
             mean,
