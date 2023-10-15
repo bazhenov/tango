@@ -58,7 +58,7 @@ pub fn run<P, O>(mut benchmark: Benchmark<P, O>, payloads: &mut dyn Generator<Ou
     if opts.verbose {
         benchmark.add_reporter(VerboseReporter);
     } else {
-        benchmark.add_reporter(ConsoleReporter::default());
+        benchmark.add_reporter(ConsoleReporter);
     }
 
     match opts.subcommand {
@@ -95,28 +95,24 @@ fn determine_run_mode(time: Option<NonZeroU64>, iterations: Option<NonZeroUsize>
 pub mod reporting {
 
     use crate::cli::{colorize, outliers_threshold, HumanTime};
-    use crate::{Reporter, Summary};
+    use crate::{Reporter, RunResults, Summary};
 
     #[derive(Default)]
     pub(super) struct VerboseReporter;
 
     impl Reporter for VerboseReporter {
-        fn on_complete(
-            &mut self,
-            base: (&str, Summary<i64>),
-            candidate: (&str, Summary<i64>),
-            measurements: &[i64],
-        ) {
+        fn on_complete(&mut self, results: &RunResults) {
             const HR: &str = "----------------------------------";
 
-            let (base_name, base) = base;
-            let (candidate_name, candidate) = candidate;
+            let base = results.base;
+            let candidate = results.candidate;
 
-            let n = measurements.len();
+            let n = results.measurements.len();
             let (min, max) =
-                outliers_threshold(measurements.to_vec()).unwrap_or((i64::MIN, i64::MAX));
+                outliers_threshold(results.measurements.to_vec()).unwrap_or((i64::MIN, i64::MAX));
 
-            let measurements = measurements
+            let measurements = results
+                .measurements
                 .iter()
                 .copied()
                 .filter(|i| min < *i && *i < max)
@@ -125,7 +121,10 @@ pub mod reporting {
 
             let diff_summary = Summary::from(measurements.as_slice());
 
-            println!("{:12} {:>10} {:>10}", "", base_name, candidate_name);
+            println!(
+                "{:12} {:>10} {:>10}",
+                "", results.base_name, results.candidate_name
+            );
             println!("{:12} {:>10} {:>10}", "n", base.n, candidate.n);
             println!(
                 "{:12} {:>10} {:>10}",
@@ -194,31 +193,26 @@ pub mod reporting {
     pub(super) struct ConsoleReporter;
 
     impl Reporter for ConsoleReporter {
-        fn on_complete(
-            &mut self,
-            base: (&str, Summary<i64>),
-            candidate: (&str, Summary<i64>),
-            measurements: &[i64],
-        ) {
-            let (base_name, base) = base;
-            let (candidate_name, candidate) = candidate;
+        fn on_complete(&mut self, results: &RunResults) {
+            let base = results.base;
+            let candidate = results.candidate;
 
-            let n = measurements.len() as f64;
+            let n = results.measurements.len() as f64;
 
-            let diff = Summary::from(measurements);
+            let diff = Summary::from(results.measurements.as_slice());
 
             let std_dev = diff.variance.sqrt();
             let std_err = std_dev / n.sqrt();
             let z_score = diff.mean / std_err;
 
-            let significant = z_score > 2.6;
+            let significant = z_score.abs() > 2.6;
 
             let speedup = (candidate.mean - base.mean) / base.mean * 100.;
             let candidate_faster = candidate.mean < base.mean;
             println!(
-                "{:15} ... {:15} [ {:>8} ... {:>8} ]    {:5.1}%",
-                base_name,
-                colorize(candidate_name, significant, candidate_faster),
+                "{:20} ... {:20} [ {:>8} ... {:>8} ]    {:5.1}%",
+                results.base_name,
+                colorize(&results.candidate_name, significant, candidate_faster),
                 HumanTime(base.mean),
                 colorize(HumanTime(candidate.mean), significant, candidate_faster),
                 colorize(speedup, significant, speedup < 0.),

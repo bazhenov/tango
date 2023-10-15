@@ -99,13 +99,7 @@ impl<T: Copy> Generator for StaticValue<T> {
 }
 
 pub trait Reporter {
-    fn before_start(&mut self) {}
-    fn on_complete(
-        &mut self,
-        base: (&str, Summary<i64>),
-        candidate: (&str, Summary<i64>),
-        measurements: &[i64],
-    );
+    fn on_complete(&mut self, results: &RunResults);
 }
 
 #[derive(Copy, Clone)]
@@ -178,13 +172,15 @@ impl<P, O> Benchmark<P, O> {
                     self.run_mode,
                     dump_location(key.as_ref(), self.measurements_dir.as_ref()),
                 );
+                let results = RunResults {
+                    base_name: baseline.name().to_owned(),
+                    candidate_name: candidate.name().to_owned(),
+                    base: base_summary,
+                    candidate: candidate_summary,
+                    measurements: diff,
+                };
                 for reporter in self.reporters.iter_mut() {
-                    reporter.before_start();
-                    reporter.on_complete(
-                        (baseline.name(), base_summary),
-                        (candidate.name(), candidate_summary),
-                        &diff,
-                    );
+                    reporter.on_complete(&results);
                 }
             }
         }
@@ -257,14 +253,28 @@ impl<P, O> Benchmark<P, O> {
     }
 }
 
-fn write_raw_measurements(
-    path: impl AsRef<Path>,
-    base_measurements: &[i64],
-    candidate_measurements: &[i64],
-) {
+/// Describes the results of a single benchmark run
+pub struct RunResults {
+    /// name of a baseline function
+    pub base_name: String,
+
+    /// name of a candidate function
+    pub candidate_name: String,
+
+    /// statistical summary of baseline function measurements
+    pub base: Summary<i64>,
+
+    /// statistical summary of candidate function measurements
+    pub candidate: Summary<i64>,
+
+    /// individual measurements of a benchmark (candidate - baseline)
+    pub measurements: Vec<i64>,
+}
+
+fn write_raw_measurements(path: impl AsRef<Path>, base: &[i64], candidate: &[i64]) {
     let mut file = BufWriter::new(File::create(path).unwrap());
 
-    for (b, c) in base_measurements.iter().zip(candidate_measurements.iter()) {
+    for (b, c) in base.iter().zip(candidate) {
         writeln!(&mut file, "{},{}", b, c).unwrap();
     }
 }

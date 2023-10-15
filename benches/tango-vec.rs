@@ -17,10 +17,9 @@ impl Generator for RandomVec {
     }
 }
 
-fn sort_unstable(input: &Vec<u32>) -> usize {
-    let mut copy = input.clone();
-    copy.sort_unstable();
-    copy.len()
+fn sort_unstable(mut input: Vec<u32>) -> usize {
+    input.sort_unstable();
+    input.len()
 }
 
 fn sort_stable(mut input: Vec<u32>) -> usize {
@@ -40,11 +39,11 @@ fn main() {
 
     benchmark.add_pair(
         benchmark_fn_with_setup("stable", sort_stable, Clone::clone),
-        benchmark_fn("unstable", sort_unstable),
+        benchmark_fn_with_setup("unstable", sort_unstable, Clone::clone),
     );
     benchmark.add_pair(
         benchmark_fn_with_setup("stable", sort_stable, Clone::clone),
-        benchmark_fn("stable_sort", copy_and_sort_stable),
+        benchmark_fn("stable_clone_sort", copy_and_sort_stable),
     );
 
     run(benchmark, &mut payloads)
