@@ -28,6 +28,13 @@ enum BenchMode {
         /// write CSV dumps of all the measurements in a given location
         #[arg(short = 'd', long = "dump")]
         path_to_dump: Option<PathBuf>,
+
+        /// disable outlier detection
+        #[arg(short = 'o', long = "no-outliers")]
+        skip_outlier_detection: bool,
+
+        #[arg(short = 'v', long = "verbose", default_value_t = false)]
+        verbose: bool,
     },
     Calibrate {
         #[arg(long = "bench", default_value_t = true)]
@@ -45,9 +52,6 @@ struct Opts {
     #[command(subcommand)]
     subcommand: BenchMode,
 
-    #[arg(short = 'v', long = "verbose", default_value_t = false)]
-    verbose: bool,
-
     #[arg(long = "bench", default_value_t = true)]
     bench: bool,
 }
@@ -55,20 +59,25 @@ struct Opts {
 pub fn run<P, O>(mut benchmark: Benchmark<P, O>, payloads: &mut dyn Generator<Output = P>) {
     let opts = Opts::parse();
 
-    if opts.verbose {
-        benchmark.add_reporter(VerboseReporter);
-    } else {
-        benchmark.add_reporter(ConsoleReporter);
-    }
-
     match opts.subcommand {
         BenchMode::Pair {
             name,
             time,
             iterations,
+            verbose,
             path_to_dump,
+            skip_outlier_detection,
             bench: _,
         } => {
+            if verbose {
+                let mut reporter = VerboseReporter::default();
+                reporter.set_skip_outlier_filtering(skip_outlier_detection);
+                benchmark.add_reporter(reporter);
+            } else {
+                let mut reporter = ConsoleReporter::default();
+                reporter.set_skip_outlier_filtering(skip_outlier_detection);
+                benchmark.add_reporter(reporter);
+            }
             benchmark.set_run_mode(determine_run_mode(time, iterations));
             benchmark.set_measurements_dir(path_to_dump.clone());
             let name = name.as_deref().unwrap_or("");
@@ -98,7 +107,15 @@ pub mod reporting {
     use crate::{Reporter, RunResults, Summary};
 
     #[derive(Default)]
-    pub(super) struct VerboseReporter;
+    pub(super) struct VerboseReporter {
+        skip_outlier_filtering: bool,
+    }
+
+    impl VerboseReporter {
+        pub fn set_skip_outlier_filtering(&mut self, flag: bool) {
+            self.skip_outlier_filtering = flag
+        }
+    }
 
     impl Reporter for VerboseReporter {
         fn on_complete(&mut self, results: &RunResults) {
@@ -106,21 +123,26 @@ pub mod reporting {
             let candidate = results.candidate;
 
             let n = results.measurements.len();
-            let (min, max) =
-                outliers_threshold(results.measurements.to_vec()).unwrap_or((i64::MIN, i64::MAX));
 
-            let measurements = results
-                .measurements
-                .iter()
-                .copied()
-                .filter(|i| min < *i && *i < max)
-                .collect::<Vec<_>>();
-            let outliers_filtered = n - measurements.len();
+            let diff_summary = if self.skip_outlier_filtering {
+                Summary::from(&results.measurements).unwrap()
+            } else {
+                let (min, max) = outliers_threshold(results.measurements.to_vec())
+                    .unwrap_or((i64::MIN, i64::MAX));
 
-            let diff_summary = Summary::from(&measurements).unwrap();
+                let measurements = results
+                    .measurements
+                    .iter()
+                    .copied()
+                    .filter(|i| min < *i && *i < max)
+                    .collect::<Vec<_>>();
+                Summary::from(&measurements).unwrap()
+            };
+
+            let outliers_filtered = n - diff_summary.n;
 
             let std_dev = diff_summary.variance.sqrt();
-            let std_err = std_dev / (measurements.len() as f64).sqrt();
+            let std_err = std_dev / (diff_summary.n as f64).sqrt();
             let z_score = diff_summary.mean / std_err;
 
             let significant = z_score.abs() >= 2.6;
@@ -188,7 +210,15 @@ pub mod reporting {
     }
 
     #[derive(Default)]
-    pub(super) struct ConsoleReporter;
+    pub(super) struct ConsoleReporter {
+        skip_outlier_filtering: bool,
+    }
+
+    impl ConsoleReporter {
+        pub fn set_skip_outlier_filtering(&mut self, flag: bool) {
+            self.skip_outlier_filtering = flag
+        }
+    }
 
     impl Reporter for ConsoleReporter {
         fn on_complete(&mut self, results: &RunResults) {
@@ -197,13 +227,26 @@ pub mod reporting {
 
             let n = results.measurements.len() as f64;
 
-            let diff = Summary::from(&results.measurements).unwrap();
+            let diff = if self.skip_outlier_filtering {
+                Summary::from(&results.measurements).unwrap()
+            } else {
+                let (min, max) = outliers_threshold(results.measurements.to_vec())
+                    .unwrap_or((i64::MIN, i64::MAX));
+
+                let measurements = results
+                    .measurements
+                    .iter()
+                    .copied()
+                    .filter(|i| min < *i && *i < max)
+                    .collect::<Vec<_>>();
+                Summary::from(&measurements).unwrap()
+            };
 
             let std_dev = diff.variance.sqrt();
             let std_err = std_dev / n.sqrt();
             let z_score = diff.mean / std_err;
 
-            let significant = z_score.abs() > 2.6;
+            let significant = z_score.abs() >= 2.6;
 
             let speedup = (candidate.mean - base.mean) / base.mean * 100.;
             let candidate_faster = candidate.mean < base.mean;
@@ -235,7 +278,6 @@ pub mod reporting {
             let _ = Summary::from(<&[i64]>::default());
             let _ = Summary::from(<&[u32]>::default());
             let _ = Summary::from(&Vec::<i64>::default());
-            let _ = Summary::from(Vec::<i64>::default().iter());
         }
     }
 }

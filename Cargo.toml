@@ -13,6 +13,11 @@ statrs = "0.16.0"
 [dev-dependencies]
 criterion = "0.5.1"
 
+[features]
+align = []
+hw_timer = []
+
+
 [[bench]]
 name = "bench"
 harness = false
@@ -29,6 +34,6 @@ harness = false
 name = "tango-sum"
 harness = false
 
-[features]
-align = []
-hw_timer = []
+[[bench]]
+name = "tango-bench"
+harness = false

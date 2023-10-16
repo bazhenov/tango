@@ -1,3 +1,4 @@
+use rand::{rngs::SmallRng, Rng, SeedableRng};
 use std::{
     collections::BTreeMap,
     fs::File,
@@ -5,6 +6,7 @@ use std::{
     io::{BufWriter, Write},
     iter::Sum,
     num::NonZeroUsize,
+    ops::AddAssign,
     path::{Path, PathBuf},
     time::{Duration, Instant},
 };
@@ -286,6 +288,7 @@ fn dump_location(name: &str, dir: Option<impl AsRef<Path>>) -> Option<impl AsRef
 /// Statistical summary for a given iterator of numbers
 #[derive(Clone, Copy)]
 pub struct Summary<T> {
+    n: usize,
     min: T,
     max: T,
     mean: f64,
@@ -293,18 +296,26 @@ pub struct Summary<T> {
 }
 
 impl<'a, T: Ord + Copy + Sum + 'a> Summary<T> {
-    fn from<I, C>(values: C) -> Option<Self>
+    pub fn from<C>(values: C) -> Option<Self>
     where
         i64: From<T>,
-        C: IntoIterator<IntoIter = I> + Clone,
-        I: ExactSizeIterator + Iterator<Item = &'a T>,
+        C: IntoIterator<Item = &'a T> + Copy,
+        T: Default + AddAssign,
     {
-        let n = values.clone().into_iter().len();
-        let min = *values.clone().into_iter().min()?;
-        let max = *values.clone().into_iter().max()?;
-        let sum = values.clone().into_iter().copied().sum::<T>();
+        let first_element = values.into_iter().next()?;
+        let mut min = *first_element;
+        let mut max = *first_element;
 
-        let mean = i64::from(sum) as f64 / n as f64;
+        let mut sum = T::default();
+        let mut n = 0;
+        for i in values {
+            n += 1;
+            sum += *i;
+            max = max.max(*i);
+            min = min.min(*i);
+        }
+
+        let mean = i64::from(sum) as f64 / (n as f64);
 
         let variance = values
             .into_iter()
@@ -313,6 +324,7 @@ impl<'a, T: Ord + Copy + Sum + 'a> Summary<T> {
             / (n - 1) as f64;
 
         Some(Self {
+            n,
             min,
             max,
             mean,

@@ -15,6 +15,25 @@ impl Generator for FixedStringGenerator {
     }
 }
 
+pub struct RandomVec(SmallRng, usize);
+
+impl RandomVec {
+    pub fn new(size: usize) -> Self {
+        Self(SmallRng::seed_from_u64(42), size)
+    }
+}
+
+impl Generator for RandomVec {
+    type Output = Vec<u32>;
+
+    fn next_payload(&mut self) -> Self::Output {
+        let RandomVec(rng, size) = self;
+        let mut v = vec![0; *size];
+        rng.fill(&mut v[..]);
+        v
+    }
+}
+
 #[derive(Clone)]
 pub struct RandomStringGenerator {
     string: String,
