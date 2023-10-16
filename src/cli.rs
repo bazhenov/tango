@@ -260,26 +260,6 @@ pub mod reporting {
             )
         }
     }
-
-    #[cfg(test)]
-    mod tests {
-        use super::*;
-
-        #[test]
-        fn check_summary_statistics() {
-            let stat = Summary::from(&vec![1, 1, 2, 4]).unwrap();
-            assert_eq!(stat.min, 1);
-            assert_eq!(stat.max, 4);
-            assert_eq!(stat.variance, 2.);
-        }
-
-        #[test]
-        fn check_summary_statistics_types() {
-            let _ = Summary::from(<&[i64]>::default());
-            let _ = Summary::from(<&[u32]>::default());
-            let _ = Summary::from(&Vec::<i64>::default());
-        }
-    }
 }
 
 fn colorize<T: Display>(value: T, do_paint: bool, indicator: bool) -> Colored<T> {

@@ -1,12 +1,9 @@
-use rand::{rngs::SmallRng, Rng, SeedableRng};
 use std::{
     collections::BTreeMap,
     fs::File,
     hint::black_box,
     io::{BufWriter, Write},
-    iter::Sum,
     num::NonZeroUsize,
-    ops::AddAssign,
     path::{Path, PathBuf},
     time::{Duration, Instant},
 };
@@ -285,7 +282,12 @@ fn dump_location(name: &str, dir: Option<impl AsRef<Path>>) -> Option<impl AsRef
     dir.map(|p| p.as_ref().join(format!("{}.csv", name)))
 }
 
-/// Statistical summary for a given iterator of numbers
+/// Statistical summary for a given iterator of numbers.
+///
+/// Calculates all the information using single pass over the data. Mean and variance are calculated using
+/// streaming algorithm described in [1].
+///
+/// [1]: Art of Computer Programming, Vol 2, page 232
 #[derive(Clone, Copy)]
 pub struct Summary<T> {
     n: usize,
@@ -295,34 +297,31 @@ pub struct Summary<T> {
     variance: f64,
 }
 
-impl<'a, T: Ord + Copy + Sum + 'a> Summary<T> {
+impl<'a, T: Ord + Copy + 'a> Summary<T> {
     pub fn from<C>(values: C) -> Option<Self>
     where
         i64: From<T>,
-        C: IntoIterator<Item = &'a T> + Copy,
-        T: Default + AddAssign,
+        C: IntoIterator<Item = &'a T>,
     {
-        let first_element = values.into_iter().next()?;
-        let mut min = *first_element;
-        let mut max = *first_element;
-
-        let mut sum = T::default();
-        let mut n = 0;
-        for i in values {
+        let mut iter = values.into_iter();
+        let head = *iter.next()?;
+        let mut min = head;
+        let mut max = head;
+        let mut mean = i64::from(head) as f64;
+        let mut s = 0.;
+        let mut n = 1;
+        while let Some(value) = iter.next() {
             n += 1;
-            sum += *i;
-            max = max.max(*i);
-            min = min.min(*i);
+            max = max.max(*value);
+            min = min.min(*value);
+
+            let value = i64::from(*value) as f64;
+            let mean_p = mean;
+            mean += (value - mean) / n as f64;
+            s += (value - mean_p) * (value - mean);
         }
 
-        let mean = i64::from(sum) as f64 / (n as f64);
-
-        let variance = values
-            .into_iter()
-            .map(|i| (i64::from(*i) as f64 - mean).powi(2))
-            .sum::<f64>()
-            / (n - 1) as f64;
-
+        let variance = s / (n - 1) as f64;
         Some(Self {
             n,
             min,
@@ -386,5 +385,67 @@ mod timer {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        iter::Sum,
+        ops::{AddAssign, Mul, Sub},
+    };
+
+    use super::*;
+
+    #[test]
+    fn check_summary_statistics() {
+        let stat = Summary::from(&vec![1, 1, 2, 4]).unwrap();
+        assert_eq!(stat.min, 1);
+        assert_eq!(stat.max, 4);
+        assert_eq!(stat.variance, 2.);
+
+        for i in 2u32..100 {
+            let range = 1..=i;
+            let values = range.collect::<Vec<_>>();
+            let stat = Summary::from(&values).unwrap();
+
+            let sum = (i * (i + 1)) as f64 / 2.;
+            let expected_mean = sum as f64 / i as f64;
+
+            let expected_variance = naive_variance(values.as_slice());
+
+            assert_eq!(stat.min, 1);
+            assert_eq!(stat.n, i as usize);
+            assert_eq!(stat.max, i);
+            assert_eq!(stat.mean, expected_mean);
+            assert_eq!(stat.variance, expected_variance);
+        }
+    }
+
+    #[test]
+    fn check_summary_statistics_types() {
+        let _ = Summary::from(<&[i64]>::default());
+        let _ = Summary::from(<&[u32]>::default());
+        let _ = Summary::from(&Vec::<i64>::default());
+    }
+
+    #[test]
+    fn check_naive_variance() {
+        assert_eq!(naive_variance(&[1, 2, 3]), 1.0);
+        assert_eq!(naive_variance(&[1, 2, 3, 4, 5]), 2.5);
+    }
+
+    fn naive_variance<T>(values: &[T]) -> f64
+    where
+        T: Sum + Copy,
+        f64: From<T>,
+    {
+        let n = values.len() as f64;
+        let mean = f64::from(values.iter().copied().sum::<T>()) / n;
+        let mut sum_of_squares = 0.;
+        for value in values.into_iter().copied() {
+            sum_of_squares += (f64::from(value) - mean).powi(2);
+        }
+        sum_of_squares / (n - 1.)
     }
 }
