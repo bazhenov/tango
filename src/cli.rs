@@ -117,7 +117,7 @@ pub mod reporting {
                 .collect::<Vec<_>>();
             let outliers_filtered = n - measurements.len();
 
-            let diff_summary = Summary::from(measurements.as_slice());
+            let diff_summary = Summary::from(&measurements).unwrap();
 
             let std_dev = diff_summary.variance.sqrt();
             let std_err = std_dev / (measurements.len() as f64).sqrt();
@@ -197,7 +197,7 @@ pub mod reporting {
 
             let n = results.measurements.len() as f64;
 
-            let diff = Summary::from(results.measurements.as_slice());
+            let diff = Summary::from(&results.measurements).unwrap();
 
             let std_dev = diff.variance.sqrt();
             let std_err = std_dev / n.sqrt();
@@ -224,10 +224,18 @@ pub mod reporting {
 
         #[test]
         fn check_summary_statistics() {
-            let stat = Summary::from(vec![1, 1, 2, 4].as_slice());
+            let stat = Summary::from(&vec![1, 1, 2, 4]).unwrap();
             assert_eq!(stat.min, 1);
             assert_eq!(stat.max, 4);
             assert_eq!(stat.variance, 2.);
+        }
+
+        #[test]
+        fn check_summary_statistics_types() {
+            let _ = Summary::from(<&[i64]>::default());
+            let _ = Summary::from(<&[u32]>::default());
+            let _ = Summary::from(&Vec::<i64>::default());
+            let _ = Summary::from(Vec::<i64>::default().iter());
         }
     }
 }

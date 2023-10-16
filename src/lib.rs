@@ -136,7 +136,7 @@ impl<P, O> Benchmark<P, O> {
     /// Sets a directory location for CSV dump of individual mesurements
     ///
     /// The format is as follows
-    /// ```no_run
+    /// ```txt
     /// b_1,c_1
     /// b_2,c_2
     /// ...
@@ -234,8 +234,8 @@ impl<P, O> Benchmark<P, O> {
             write_raw_measurements(path, &base_time, &candidate_time);
         }
 
-        let base = Summary::from(base_time.as_slice());
-        let candidate = Summary::from(candidate_time.as_slice());
+        let base = Summary::from(&base_time).unwrap();
+        let candidate = Summary::from(&candidate_time).unwrap();
         let diff = base_time
             .into_iter()
             .zip(candidate_time)
@@ -283,6 +283,7 @@ fn dump_location(name: &str, dir: Option<impl AsRef<Path>>) -> Option<impl AsRef
     dir.map(|p| p.as_ref().join(format!("{}.csv", name)))
 }
 
+/// Statistical summary for a given iterator of numbers
 #[derive(Clone, Copy)]
 pub struct Summary<T> {
     min: T,
@@ -291,30 +292,32 @@ pub struct Summary<T> {
     variance: f64,
 }
 
-impl<T: Ord + Copy + Sum> From<&[T]> for Summary<T>
-where
-    i64: From<T>,
-{
-    fn from(values: &[T]) -> Self {
-        let n = values.len();
-        let min = *values.iter().min().unwrap();
-        let max = *values.iter().max().unwrap();
-        let sum = values.iter().copied().sum::<T>();
+impl<'a, T: Ord + Copy + Sum + 'a> Summary<T> {
+    fn from<I, C>(values: C) -> Option<Self>
+    where
+        i64: From<T>,
+        C: IntoIterator<IntoIter = I> + Clone,
+        I: ExactSizeIterator + Iterator<Item = &'a T>,
+    {
+        let n = values.clone().into_iter().len();
+        let min = *values.clone().into_iter().min()?;
+        let max = *values.clone().into_iter().max()?;
+        let sum = values.clone().into_iter().copied().sum::<T>();
 
         let mean = i64::from(sum) as f64 / n as f64;
 
         let variance = values
-            .iter()
+            .into_iter()
             .map(|i| (i64::from(*i) as f64 - mean).powi(2))
             .sum::<f64>()
             / (n - 1) as f64;
 
-        Self {
+        Some(Self {
             min,
             max,
             mean,
             variance,
-        }
+        })
     }
 }
 
