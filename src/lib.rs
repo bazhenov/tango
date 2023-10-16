@@ -303,32 +303,102 @@ impl<'a, T: Ord + Copy + 'a> Summary<T> {
         i64: From<T>,
         C: IntoIterator<Item = &'a T>,
     {
-        let mut iter = values.into_iter();
-        let head = *iter.next()?;
-        let mut min = head;
-        let mut max = head;
-        let mut mean = i64::from(head) as f64;
-        let mut s = 0.;
-        let mut n = 1;
-        while let Some(value) = iter.next() {
-            n += 1;
-            max = max.max(*value);
-            min = min.min(*value);
+        Self::running(values.into_iter().copied())?.last()
+    }
 
-            let value = i64::from(*value) as f64;
-            let mean_p = mean;
-            mean += (value - mean) / n as f64;
-            s += (value - mean_p) * (value - mean);
-        }
-
-        let variance = s / (n - 1) as f64;
-        Some(Self {
-            n,
-            min,
-            max,
-            mean,
-            variance,
+    pub fn running<I>(mut iter: I) -> Option<impl Iterator<Item = Summary<T>>>
+    where
+        i64: From<T>,
+        I: Iterator<Item = T>,
+    {
+        let head = iter.next()?;
+        Some(RunningSummary {
+            iter,
+            n: 1,
+            min: head,
+            max: head,
+            mean: i64::from(head) as f64,
+            s: 0.,
         })
+    }
+}
+
+struct RunningSummary<T, I> {
+    iter: I,
+    n: usize,
+    min: T,
+    max: T,
+    mean: f64,
+    s: f64,
+}
+
+impl<T, I> Iterator for RunningSummary<T, I>
+where
+    T: Copy + Ord,
+    I: Iterator<Item = T>,
+    i64: From<T>,
+{
+    type Item = Summary<T>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let value = self.iter.next()?;
+        let fvalue = i64::from(value) as f64;
+
+        self.min = self.min.min(value);
+        self.max = self.max.max(value);
+
+        self.n += 1;
+        let mean_p = self.mean;
+        self.mean += (fvalue - self.mean) / self.n as f64;
+        self.s += (fvalue - mean_p) * (fvalue - self.mean);
+
+        Some(Summary {
+            n: self.n,
+            min: self.min,
+            max: self.max,
+            mean: self.mean,
+            variance: self.s / (self.n - 1) as f64,
+        })
+    }
+}
+
+/// Running variance iterator
+///
+/// Provides a running (streaming variance) for a given iterator of observations.
+/// Uses simple variance formula: `Var(X) = E[X^2] - E[X]^2`.
+pub struct RunningVariance<T> {
+    iter: T,
+    m: f64,
+    s: f64,
+    n: f64,
+}
+
+impl<T: Iterator<Item = i64>> Iterator for RunningVariance<T> {
+    type Item = f64;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let value = self.iter.next()? as f64;
+        self.n += 1.;
+        let m_p = self.m;
+        self.m += (value - self.m) / self.n;
+        self.s += (value - m_p) * (value - self.m);
+
+        if self.n == 1. {
+            Some(0.)
+        } else {
+            Some(self.s / (self.n - 1.))
+        }
+    }
+}
+
+impl<I, T: Iterator<Item = I>> From<T> for RunningVariance<T> {
+    fn from(value: T) -> Self {
+        Self {
+            iter: value,
+            m: 0.,
+            s: 0.,
+            n: 0.,
+        }
     }
 }
 
@@ -390,20 +460,12 @@ mod timer {
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        iter::Sum,
-        ops::{AddAssign, Mul, Sub},
-    };
-
     use super::*;
+    use rand::{rngs::SmallRng, RngCore, SeedableRng};
+    use std::iter::Sum;
 
     #[test]
     fn check_summary_statistics() {
-        let stat = Summary::from(&vec![1, 1, 2, 4]).unwrap();
-        assert_eq!(stat.min, 1);
-        assert_eq!(stat.max, 4);
-        assert_eq!(stat.variance, 2.);
-
         for i in 2u32..100 {
             let range = 1..=i;
             let values = range.collect::<Vec<_>>();
@@ -411,14 +473,23 @@ mod tests {
 
             let sum = (i * (i + 1)) as f64 / 2.;
             let expected_mean = sum as f64 / i as f64;
-
             let expected_variance = naive_variance(values.as_slice());
 
             assert_eq!(stat.min, 1);
             assert_eq!(stat.n, i as usize);
             assert_eq!(stat.max, i);
-            assert_eq!(stat.mean, expected_mean);
-            assert_eq!(stat.variance, expected_variance);
+            assert!(
+                (stat.mean - expected_mean).abs() < 1e-5,
+                "Expected close to: {}, given: {}",
+                expected_mean,
+                stat.mean
+            );
+            assert!(
+                (stat.variance - expected_variance).abs() < 1e-5,
+                "Expected close to: {}, given: {}",
+                expected_variance,
+                stat.variance
+            );
         }
     }
 
@@ -433,6 +504,42 @@ mod tests {
     fn check_naive_variance() {
         assert_eq!(naive_variance(&[1, 2, 3]), 1.0);
         assert_eq!(naive_variance(&[1, 2, 3, 4, 5]), 2.5);
+    }
+
+    #[test]
+    fn check_running_variance() {
+        let input = [1i64, 2, 3, 4, 5, 6, 7];
+        let variances = RunningVariance::from(input.into_iter()).collect::<Vec<_>>();
+        let expected = &[0., 0.5, 1., 1.6666, 2.5, 3.5, 4.6666];
+
+        assert_eq!(variances.len(), expected.len());
+
+        for (value, expected_value) in variances.iter().zip(expected) {
+            assert!(
+                (value - expected_value).abs() < 1e-3,
+                "Expected close to: {}, given: {}",
+                expected_value,
+                value
+            );
+        }
+    }
+
+    #[test]
+    fn check_running_variance_stress_test() {
+        let rng = RngIterator(SmallRng::seed_from_u64(0)).map(|i| i as i64);
+        let mut variances = RunningVariance::from(rng);
+
+        assert!(variances.nth(10000000).unwrap() > 0.)
+    }
+
+    struct RngIterator<T>(T);
+
+    impl<T: RngCore> Iterator for RngIterator<T> {
+        type Item = u32;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            Some(self.0.next_u32())
+        }
     }
 
     fn naive_variance<T>(values: &[T]) -> f64

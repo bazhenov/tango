@@ -1,4 +1,4 @@
-use crate::{Benchmark, Generator, RunMode};
+use crate::{Benchmark, Generator, RunMode, RunningVariance};
 use clap::Parser;
 use core::fmt;
 use statrs::distribution::Normal;
@@ -319,41 +319,6 @@ impl fmt::Display for HumanTime {
     }
 }
 
-/// Running variance iterator
-///
-/// Provides a running (streaming variance) for a given iterator of observations.
-/// Uses simple variance formula: `Var(X) = E[X^2] - E[X]^2`.
-struct RunningVariance<T> {
-    iter: T,
-    sum: f64,
-    sum_of_squares: f64,
-    n: f64,
-}
-
-impl<T: Iterator<Item = i64>> Iterator for RunningVariance<T> {
-    type Item = f64;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let i = self.iter.next()? as f64;
-        self.sum += i;
-        self.sum_of_squares += i.powi(2);
-        self.n += 1.;
-
-        Some((self.sum_of_squares / self.n) - (self.sum / self.n).powi(2))
-    }
-}
-
-impl<I, T: Iterator<Item = I>> From<T> for RunningVariance<T> {
-    fn from(value: T) -> Self {
-        Self {
-            iter: value,
-            sum: 0.,
-            sum_of_squares: 0.,
-            n: 0.,
-        }
-    }
-}
-
 /// Outlier threshold detection
 ///
 /// This functions detects optimal threshold for outlier filtering. Algorithm finds a threshold
@@ -411,7 +376,6 @@ fn binomial_interval_approximation(n: usize, p: f64) -> Option<(usize, usize)> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::{rngs::SmallRng, RngCore, SeedableRng};
 
     #[test]
     fn check_human_time() {
@@ -427,40 +391,6 @@ mod tests {
         assert_eq!(format!("{}", HumanTime(1200000000.)), "1.2 s");
 
         assert_eq!(format!("{}", HumanTime(-1200000.)), "-1.2 ms");
-    }
-
-    struct RngIterator<T>(T);
-
-    impl<T: RngCore> Iterator for RngIterator<T> {
-        type Item = u32;
-
-        fn next(&mut self) -> Option<Self::Item> {
-            Some(self.0.next_u32())
-        }
-    }
-
-    #[test]
-    fn check_running_variance() {
-        let input = [1i64, 2, 3, 4, 5, 6, 7];
-        let variances = RunningVariance::from(input.into_iter());
-        let expected = &[0., 0.25, 0.666, 1.25, 2.0, 2.916];
-
-        for (value, expected_value) in variances.zip(expected.iter()) {
-            assert!(
-                (value - expected_value).abs() < 1e-3,
-                "Expected close to: {}, given: {}",
-                expected_value,
-                value
-            );
-        }
-    }
-
-    #[test]
-    fn check_running_variance_stress_test() {
-        let rng = RngIterator(SmallRng::seed_from_u64(0)).map(|i| i as i64);
-        let mut variances = RunningVariance::from(rng);
-
-        assert!(variances.nth(10000000).unwrap() > 0.)
     }
 
     #[test]

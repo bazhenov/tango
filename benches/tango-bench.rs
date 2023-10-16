@@ -7,18 +7,24 @@ mod test_funcs;
 
 #[cfg_attr(feature = "align", repr(align(32)))]
 #[cfg_attr(feature = "align", inline(never))]
-fn old_summary(input: &Vec<u32>) -> Summary<u32> {
-    Summary::from(input).unwrap()
+fn old_summary<T: Copy + Ord>(input: &Vec<T>) -> Option<Summary<T>>
+where
+    i64: From<T>,
+{
+    Summary::from(input)
 }
 
 #[cfg_attr(feature = "align", repr(align(32)))]
 #[cfg_attr(feature = "align", inline(never))]
-fn new_summary(input: &Vec<u32>) -> Summary<u32> {
-    Summary::from(input).unwrap()
+fn new_summary<T: Copy + Ord>(input: &Vec<T>) -> Option<Summary<T>>
+where
+    i64: From<T>,
+{
+    Summary::from(input)
 }
 
 fn main() {
-    let mut payloads = RandomVec::new(1_000);
+    let mut payloads = RandomVec::<i64>::new(1_000);
 
     let mut b = Benchmark::new();
     b.add_pair(
