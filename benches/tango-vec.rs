@@ -41,6 +41,7 @@ fn main() {
         benchmark_fn_with_setup("stable", sort_stable, Clone::clone),
         benchmark_fn_with_setup("unstable", sort_unstable, Clone::clone),
     );
+
     benchmark.add_pair(
         benchmark_fn_with_setup("stable", sort_stable, Clone::clone),
         benchmark_fn("stable_clone_sort", copy_and_sort_stable),

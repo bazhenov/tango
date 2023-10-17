@@ -2,7 +2,7 @@ mod test_funcs;
 
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 use rust_pairwise_testing::Generator;
-use test_funcs::{std_4925, std_5000, std_count, std_count_rev, sum, RandomStringGenerator};
+use test_funcs::{std_4950, std_5000, std_count, std_count_rev, sum, RandomStringGenerator};
 
 fn sum_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("sum");
@@ -21,11 +21,11 @@ fn sum_benchmark(c: &mut Criterion) {
 fn utf8_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("utf8");
 
-    group.bench_function("std_length_4925", |b| {
+    group.bench_function("std_length_4950", |b| {
         let mut generator = RandomStringGenerator::new().unwrap();
         b.iter_batched(
             || generator.next_payload(),
-            |s| std_4925(&s),
+            |s| std_4950(&s),
             BatchSize::SmallInput,
         );
     });

@@ -87,7 +87,7 @@ pub fn run<P, O>(mut benchmark: Benchmark<P, O>, payloads: &mut dyn Generator<Ou
             benchmark.run_by_name(payloads, &opts);
         }
         BenchMode::Calibrate { bench: _ } => {
-            benchmark.run_calibration();
+            benchmark.run_calibration(payloads);
         }
         BenchMode::List { bench: _ } => {
             for fn_name in benchmark.list_functions() {
@@ -107,7 +107,7 @@ fn determine_run_mode(time: Option<NonZeroU64>, iterations: Option<NonZeroUsize>
 pub mod reporting {
 
     use crate::cli::{colorize, Color, Colored, HumanTime};
-    use crate::{Reporter, RunResults};
+    use crate::{Reporter, RunResult};
 
     #[derive(Default)]
     pub(super) struct VerboseReporter {
@@ -121,8 +121,8 @@ pub mod reporting {
     }
 
     impl Reporter for VerboseReporter {
-        fn on_complete(&mut self, results: &RunResults) {
-            let base = results.base;
+        fn on_complete(&mut self, results: &RunResult) {
+            let base = results.baseline;
             let candidate = results.candidate;
 
             let significant = results.significant;
@@ -131,7 +131,7 @@ pub mod reporting {
                 "{} vs. {}  (n: {}, outliers: {})",
                 Colored(&results.base_name, Color::Bold),
                 Colored(&results.candidate_name, Color::Bold),
-                results.n,
+                results.diff.n,
                 results.outliers
             );
             println!();
@@ -201,8 +201,8 @@ pub mod reporting {
     }
 
     impl Reporter for ConsoleReporter {
-        fn on_complete(&mut self, results: &RunResults) {
-            let base = results.base;
+        fn on_complete(&mut self, results: &RunResult) {
+            let base = results.baseline;
             let candidate = results.candidate;
 
             let significant = results.significant;

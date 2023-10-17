@@ -99,7 +99,7 @@ impl<T: Copy> Generator for StaticValue<T> {
 }
 
 pub trait Reporter {
-    fn on_complete(&mut self, results: &RunResults);
+    fn on_complete(&mut self, results: &RunResult);
 }
 
 #[derive(Copy, Clone)]
@@ -167,67 +167,90 @@ impl<P, O> Benchmark<P, O> {
 
         for (key, (baseline, candidate)) in &self.funcs {
             if key.contains(name_filter) {
-                let dump_path = dump_location(key.as_ref(), opts.measurements_path.as_ref());
-                let (base_summary, candidate_summary, diff) = Self::measure(
+                let (baseline_summary, candidate_summary, diff) = Self::measure_function_pair(
                     payloads,
                     baseline.as_ref(),
                     candidate.as_ref(),
                     opts.run_mode,
-                    dump_path,
+                    opts.measurements_path.as_ref(),
                 );
 
-                let n = diff.len();
-
-                let diff_summary = if opts.outlier_detection_enabled {
-                    let (min, max) =
-                        outliers_threshold(diff.to_vec()).unwrap_or((i64::MIN, i64::MAX));
-
-                    let measurements = diff
-                        .iter()
-                        .copied()
-                        .filter(|i| min < *i && *i < max)
-                        .collect::<Vec<_>>();
-                    Summary::from(&measurements).unwrap()
-                } else {
-                    Summary::from(&diff).unwrap()
-                };
-
-                let outliers_filtered = n - diff_summary.n;
-
-                let std_dev = diff_summary.variance.sqrt();
-                let std_err = std_dev / (diff_summary.n as f64).sqrt();
-                let z_score = diff_summary.mean / std_err;
-
-                let significant = z_score.abs() >= 2.6;
-
-                let results = RunResults {
-                    base_name: baseline.name().to_owned(),
-                    candidate_name: candidate.name().to_owned(),
-                    base: base_summary,
-                    candidate: candidate_summary,
-                    diff: diff_summary,
-                    significant,
-                    outliers: outliers_filtered,
-                    n: diff_summary.n,
-                };
+                let run_result = calculate_run_result(
+                    baseline.name(),
+                    candidate.name(),
+                    baseline_summary,
+                    candidate_summary,
+                    diff,
+                    opts.outlier_detection_enabled,
+                );
 
                 for reporter in self.reporters.iter_mut() {
-                    reporter.on_complete(&results);
+                    reporter.on_complete(&run_result);
                 }
             }
         }
     }
 
-    pub fn run_calibration(&mut self) {
-        todo!();
+    pub fn run_calibration(&mut self, payloads: &mut dyn Generator<Output = P>) {
+        const TRIES: usize = 10;
+
+        // H0 testing
+        println!("H0 testing...");
+        for (_, (baseline, candidate)) in &self.funcs {
+            let significant = Self::calibrate(payloads, baseline, baseline, TRIES);
+            println!("  {:20} {}/{}", baseline.name(), TRIES - significant, TRIES);
+
+            let significant = Self::calibrate(payloads, candidate, candidate, TRIES);
+            println!(
+                "  {:20} {}/{}",
+                candidate.name(),
+                TRIES - significant,
+                TRIES
+            );
+        }
+
+        println!("H1 testing...");
+        for (_, (baseline, candidate)) in &self.funcs {
+            let significant = Self::calibrate(payloads, baseline, candidate, TRIES);
+            println!(
+                "  {} / {:20} {}/{}",
+                baseline.name(),
+                candidate.name(),
+                significant,
+                TRIES
+            );
+        }
     }
 
-    fn measure(
+    /// Runs a given test multiple times and return the the number of times difference is statistically significant
+    fn calibrate(
+        payloads: &mut (dyn Generator<Output = P>),
+        a: &Box<dyn BenchmarkFn<P, O>>,
+        b: &Box<dyn BenchmarkFn<P, O>>,
+        tries: usize,
+    ) -> usize {
+        let mut succeed = 0;
+        for _ in 0..tries {
+            let (a_summary, b_summary, diff) = Self::measure_function_pair(
+                payloads,
+                a.as_ref(),
+                b.as_ref(),
+                RunMode::Time(Duration::from_millis(1000)),
+                Option::<PathBuf>::None,
+            );
+
+            let result = calculate_run_result(a.name(), b.name(), a_summary, b_summary, diff, true);
+            succeed += usize::from(result.significant);
+        }
+        succeed
+    }
+
+    fn measure_function_pair(
         generator: &mut dyn Generator<Output = P>,
         base: &dyn BenchmarkFn<P, O>,
         candidate: &dyn BenchmarkFn<P, O>,
         run_mode: RunMode,
-        dump_path: Option<impl AsRef<Path>>,
+        dump_location: Option<impl AsRef<Path>>,
     ) -> (Summary<i64>, Summary<i64>, Vec<i64>) {
         let mut base_time = vec![];
         let mut candidate_time = vec![];
@@ -246,9 +269,9 @@ impl<P, O> Benchmark<P, O> {
                 }
             }
             RunMode::Time(duration) => {
-                let deadlline = Instant::now() + duration;
+                let deadline = Instant::now() + duration;
                 let mut baseline_first = false;
-                while Instant::now() < deadlline {
+                while Instant::now() < deadline {
                     let payload = generator.next_payload();
                     baseline_first = !baseline_first;
                     if baseline_first {
@@ -262,8 +285,13 @@ impl<P, O> Benchmark<P, O> {
             }
         }
 
-        if let Some(path) = dump_path {
-            write_raw_measurements(path, &base_time, &candidate_time);
+        let base_time = base_time[base_time.len() / 100..].to_vec();
+        let candidate_time = candidate_time[candidate_time.len() / 100..].to_vec();
+
+        if let Some(path) = dump_location {
+            let file_name = format!("{}-{}.csv", base.name(), candidate.name());
+            let file_path = path.as_ref().join(file_name);
+            write_raw_measurements(file_path, &base_time, &candidate_time);
         }
 
         let base = Summary::from(&base_time).unwrap();
@@ -281,8 +309,48 @@ impl<P, O> Benchmark<P, O> {
     }
 }
 
+fn calculate_run_result(
+    baseline_name: impl Into<String>,
+    candidate_name: impl Into<String>,
+    baseline_summary: Summary<i64>,
+    candidate_summary: Summary<i64>,
+    diff: Vec<i64>,
+    filter_outliers: bool,
+) -> RunResult {
+    let n = diff.len();
+
+    let diff_summary = if filter_outliers {
+        let (min, max) = outliers_threshold(diff.to_vec()).unwrap_or((i64::MIN, i64::MAX));
+
+        let measurements = diff
+            .iter()
+            .copied()
+            .filter(|i| min < *i && *i < max)
+            .collect::<Vec<_>>();
+        Summary::from(&measurements).unwrap()
+    } else {
+        Summary::from(&diff).unwrap()
+    };
+
+    let outliers_filtered = n - diff_summary.n;
+
+    let std_dev = diff_summary.variance.sqrt();
+    let std_err = std_dev / (diff_summary.n as f64).sqrt();
+    let z_score = diff_summary.mean / std_err;
+
+    RunResult {
+        base_name: baseline_name.into(),
+        candidate_name: candidate_name.into(),
+        baseline: baseline_summary,
+        candidate: candidate_summary,
+        diff: diff_summary,
+        significant: z_score.abs() >= 2.6,
+        outliers: outliers_filtered,
+    }
+}
+
 /// Describes the results of a single benchmark run
-pub struct RunResults {
+pub struct RunResult {
     /// name of a baseline function
     pub base_name: String,
 
@@ -290,7 +358,7 @@ pub struct RunResults {
     pub candidate_name: String,
 
     /// statistical summary of baseline function measurements
-    pub base: Summary<i64>,
+    pub baseline: Summary<i64>,
 
     /// statistical summary of candidate function measurements
     pub candidate: Summary<i64>,
@@ -300,9 +368,6 @@ pub struct RunResults {
 
     /// Is difference is statistically significant
     pub significant: bool,
-
-    /// Numbers of observations (after outliers filtering)
-    pub n: usize,
 
     /// Numbers of detected and filtered outliers
     pub outliers: usize,
@@ -314,10 +379,6 @@ fn write_raw_measurements(path: impl AsRef<Path>, base: &[i64], candidate: &[i64
     for (b, c) in base.iter().zip(candidate) {
         writeln!(&mut file, "{},{}", b, c).unwrap();
     }
-}
-
-fn dump_location(name: &str, dir: Option<impl AsRef<Path>>) -> Option<impl AsRef<Path>> {
-    dir.map(|p| p.as_ref().join(format!("{}.csv", name)))
 }
 
 /// Statistical summary for a given iterator of numbers.
@@ -462,11 +523,13 @@ fn outliers_threshold(mut input: Vec<i64>) -> Option<(i64, i64)> {
 
     let mut prev_variance = 0.;
     for (value, var) in value_and_variance {
-        if prev_variance > 0. && var / prev_variance > 1.2 {
+        if prev_variance > 0. && var / prev_variance > 2.0 {
             if let Some((min, max)) = binomial_interval_approximation(outliers_cnt, 0.5) {
                 if candidate_outliers < min || candidate_outliers > max {
                     continue;
                 }
+            } else {
+                // continue;
             }
             return Some((-value.abs(), value.abs()));
         }
@@ -489,7 +552,7 @@ fn binomial_interval_approximation(n: usize, p: f64) -> Option<(usize, usize)> {
     let mu = nf * p;
     let sigma = (nf * p * (1. - p)).sqrt();
     let distribution = Normal::new(mu, sigma).unwrap();
-    let min = distribution.inverse_cdf(0.1).floor() as usize;
+    let min = distribution.inverse_cdf(0.35).floor() as usize;
     let max = n - min;
     Some((min, max))
 }
@@ -525,7 +588,7 @@ mod timer {
     #[cfg(all(feature = "hw_timer", target_arch = "x86_64"))]
     pub(super) mod x86 {
         use super::Timer;
-        use std::arch::x86_64::{__rdtscp, _mm_mfence};
+        use std::arch::x86_64::{__rdtscp, _mm_mfence, _rdtsc};
 
         pub struct RdtscpTimer;
 

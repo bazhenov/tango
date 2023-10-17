@@ -139,6 +139,6 @@ pub fn std_5000(s: &String) -> usize {
 #[cfg_attr(feature = "align", repr(align(32)))]
 #[cfg_attr(feature = "align", inline(never))]
 #[allow(unused)]
-pub fn std_4925(s: &String) -> usize {
-    s.chars().take(4925).count()
+pub fn std_4950(s: &String) -> usize {
+    s.chars().take(4950).count()
 }
