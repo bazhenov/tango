@@ -1,3 +1,4 @@
+use statrs::distribution::Normal;
 use std::{
     collections::BTreeMap,
     fs::File,
@@ -111,8 +112,6 @@ type FnPair<P, O> = (Box<dyn BenchmarkFn<P, O>>, Box<dyn BenchmarkFn<P, O>>);
 
 pub struct Benchmark<P, O> {
     funcs: BTreeMap<String, FnPair<P, O>>,
-    run_mode: RunMode,
-    measurements_dir: Option<PathBuf>,
     reporters: Vec<Box<dyn Reporter>>,
 }
 
@@ -122,17 +121,10 @@ impl<P, O> Default for Benchmark<P, O> {
     }
 }
 
-impl<P, O> Benchmark<P, O> {
-    pub fn new() -> Self {
-        Self {
-            funcs: BTreeMap::new(),
-            run_mode: RunMode::Time(Duration::from_millis(100)),
-            measurements_dir: None,
-            reporters: vec![],
-        }
-    }
+pub struct RunOpts {
+    name_filter: Option<String>,
 
-    /// Sets a directory location for CSV dump of individual mesurements
+    /// Directory location for CSV dump of individual mesurements
     ///
     /// The format is as follows
     /// ```txt
@@ -143,8 +135,17 @@ impl<P, O> Benchmark<P, O> {
     /// ```
     /// where `b_1..b_n` are baseline absolute time (in nanoseconds) measurements
     /// and `c_1..c_n` are candidate time measurements
-    pub fn set_measurements_dir(&mut self, dir: Option<impl AsRef<Path>>) {
-        self.measurements_dir = dir.map(|l| l.as_ref().into())
+    measurements_path: Option<PathBuf>,
+    run_mode: RunMode,
+    outlier_detection_enabled: bool,
+}
+
+impl<P, O> Benchmark<P, O> {
+    pub fn new() -> Self {
+        Self {
+            funcs: BTreeMap::new(),
+            reporters: vec![],
+        }
     }
 
     pub fn add_reporter(&mut self, reporter: impl Reporter + 'static) {
@@ -161,23 +162,55 @@ impl<P, O> Benchmark<P, O> {
             .insert(key, (Box::new(baseline), Box::new(candidate)));
     }
 
-    pub fn run_by_name(&mut self, payloads: &mut dyn Generator<Output = P>, name: impl AsRef<str>) {
+    pub fn run_by_name(&mut self, payloads: &mut dyn Generator<Output = P>, opts: &RunOpts) {
+        let name_filter = opts.name_filter.as_deref().unwrap_or("");
+
         for (key, (baseline, candidate)) in &self.funcs {
-            if key.contains(name.as_ref()) {
+            if key.contains(name_filter) {
+                let dump_path = dump_location(key.as_ref(), opts.measurements_path.as_ref());
                 let (base_summary, candidate_summary, diff) = Self::measure(
                     payloads,
                     baseline.as_ref(),
                     candidate.as_ref(),
-                    self.run_mode,
-                    dump_location(key.as_ref(), self.measurements_dir.as_ref()),
+                    opts.run_mode,
+                    dump_path,
                 );
+
+                let n = diff.len();
+
+                let diff_summary = if opts.outlier_detection_enabled {
+                    let (min, max) =
+                        outliers_threshold(diff.to_vec()).unwrap_or((i64::MIN, i64::MAX));
+
+                    let measurements = diff
+                        .iter()
+                        .copied()
+                        .filter(|i| min < *i && *i < max)
+                        .collect::<Vec<_>>();
+                    Summary::from(&measurements).unwrap()
+                } else {
+                    Summary::from(&diff).unwrap()
+                };
+
+                let outliers_filtered = n - diff_summary.n;
+
+                let std_dev = diff_summary.variance.sqrt();
+                let std_err = std_dev / (diff_summary.n as f64).sqrt();
+                let z_score = diff_summary.mean / std_err;
+
+                let significant = z_score.abs() >= 2.6;
+
                 let results = RunResults {
                     base_name: baseline.name().to_owned(),
                     candidate_name: candidate.name().to_owned(),
                     base: base_summary,
                     candidate: candidate_summary,
-                    measurements: diff,
+                    diff: diff_summary,
+                    significant,
+                    outliers: outliers_filtered,
+                    n: diff_summary.n,
                 };
+
                 for reporter in self.reporters.iter_mut() {
                     reporter.on_complete(&results);
                 }
@@ -189,7 +222,7 @@ impl<P, O> Benchmark<P, O> {
         todo!();
     }
 
-    pub fn measure(
+    fn measure(
         generator: &mut dyn Generator<Output = P>,
         base: &dyn BenchmarkFn<P, O>,
         candidate: &dyn BenchmarkFn<P, O>,
@@ -246,10 +279,6 @@ impl<P, O> Benchmark<P, O> {
     pub fn list_functions(&self) -> impl Iterator<Item = &str> {
         self.funcs.keys().map(String::as_str)
     }
-
-    fn set_run_mode(&mut self, run_mode: RunMode) {
-        self.run_mode = run_mode;
-    }
 }
 
 /// Describes the results of a single benchmark run
@@ -267,7 +296,16 @@ pub struct RunResults {
     pub candidate: Summary<i64>,
 
     /// individual measurements of a benchmark (candidate - baseline)
-    pub measurements: Vec<i64>,
+    pub diff: Summary<i64>,
+
+    /// Is difference is statistically significant
+    pub significant: bool,
+
+    /// Numbers of observations (after outliers filtering)
+    pub n: usize,
+
+    /// Numbers of detected and filtered outliers
+    pub outliers: usize,
 }
 
 fn write_raw_measurements(path: impl AsRef<Path>, base: &[i64], candidate: &[i64]) {
@@ -400,6 +438,60 @@ impl<I, T: Iterator<Item = I>> From<T> for RunningVariance<T> {
             n: 0.,
         }
     }
+}
+
+/// Outlier threshold detection
+///
+/// This functions detects optimal threshold for outlier filtering. Algorithm finds a threshold
+/// that split the set of all observations `M` into two different subsets `S` and `O`. Each observation
+/// is considered as a split point. Algorithm chooses split point in such way that it maximizes
+/// the ration of `S` with this observation and without.
+///
+/// For example in a set of observations `[1, 2, 3, 100, 200, 300]` the target observation will be 100.
+/// It is the observation including which will raise variance the most.
+fn outliers_threshold(mut input: Vec<i64>) -> Option<(i64, i64)> {
+    // TODO(bazhenov) sorting should be done by difference with median
+    input.sort_by_key(|a| a.abs());
+    let variance = RunningVariance::from(input.iter().copied());
+
+    // Looking only 30% topmost values
+    let mut outliers_cnt = input.len() * 30 / 100;
+    let skip = input.len() - outliers_cnt;
+    let mut candidate_outliers = input[skip..].iter().filter(|i| **i < 0).count();
+    let value_and_variance = input.iter().copied().zip(variance).skip(skip);
+
+    let mut prev_variance = 0.;
+    for (value, var) in value_and_variance {
+        if prev_variance > 0. && var / prev_variance > 1.2 {
+            if let Some((min, max)) = binomial_interval_approximation(outliers_cnt, 0.5) {
+                if candidate_outliers < min || candidate_outliers > max {
+                    continue;
+                }
+            }
+            return Some((-value.abs(), value.abs()));
+        }
+        prev_variance = var;
+        outliers_cnt -= 1;
+        if value < 0 {
+            candidate_outliers -= 1;
+        }
+    }
+
+    None
+}
+
+fn binomial_interval_approximation(n: usize, p: f64) -> Option<(usize, usize)> {
+    use statrs::distribution::ContinuousCDF;
+    let nf = n as f64;
+    if nf * p < 10. || nf * (1. - p) < 10. {
+        return None;
+    }
+    let mu = nf * p;
+    let sigma = (nf * p * (1. - p)).sqrt();
+    let distribution = Normal::new(mu, sigma).unwrap();
+    let min = distribution.inverse_cdf(0.1).floor() as usize;
+    let max = n - min;
+    Some((min, max))
 }
 
 mod timer {
@@ -554,5 +646,25 @@ mod tests {
             sum_of_squares += (f64::from(value) - mean).powi(2);
         }
         sum_of_squares / (n - 1.)
+    }
+
+    #[test]
+    fn check_filter_outliers() {
+        let input = vec![
+            1i64, -2, 3, -4, 5, -6, 7, -8, 9, -10, //
+            101, -102,
+        ];
+
+        let (min, max) = outliers_threshold(input).unwrap();
+        assert!(min < 1, "Minimum is: {}", min);
+        assert!(10 < max && max <= 101, "Maximum is: {}", max);
+    }
+
+    #[test]
+    fn check_binomial_approximation() {
+        assert_eq!(
+            binomial_interval_approximation(10000000, 0.5),
+            Some((4997973, 5002027))
+        );
     }
 }

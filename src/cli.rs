@@ -1,7 +1,6 @@
-use crate::{Benchmark, Generator, RunMode, RunningVariance};
+use crate::{Benchmark, Generator, RunMode, RunOpts};
 use clap::Parser;
 use core::fmt;
-use statrs::distribution::Normal;
 use std::{
     fmt::Display,
     num::{NonZeroU64, NonZeroUsize},
@@ -78,10 +77,14 @@ pub fn run<P, O>(mut benchmark: Benchmark<P, O>, payloads: &mut dyn Generator<Ou
                 reporter.set_skip_outlier_filtering(skip_outlier_detection);
                 benchmark.add_reporter(reporter);
             }
-            benchmark.set_run_mode(determine_run_mode(time, iterations));
-            benchmark.set_measurements_dir(path_to_dump.clone());
-            let name = name.as_deref().unwrap_or("");
-            benchmark.run_by_name(payloads, name);
+
+            let opts = RunOpts {
+                name_filter: name,
+                measurements_path: path_to_dump,
+                run_mode: determine_run_mode(time, iterations),
+                outlier_detection_enabled: !skip_outlier_detection,
+            };
+            benchmark.run_by_name(payloads, &opts);
         }
         BenchMode::Calibrate { bench: _ } => {
             benchmark.run_calibration();
@@ -103,8 +106,8 @@ fn determine_run_mode(time: Option<NonZeroU64>, iterations: Option<NonZeroUsize>
 
 pub mod reporting {
 
-    use crate::cli::{colorize, outliers_threshold, Color, Colored, HumanTime};
-    use crate::{Reporter, RunResults, Summary};
+    use crate::cli::{colorize, Color, Colored, HumanTime};
+    use crate::{Reporter, RunResults};
 
     #[derive(Default)]
     pub(super) struct VerboseReporter {
@@ -122,37 +125,14 @@ pub mod reporting {
             let base = results.base;
             let candidate = results.candidate;
 
-            let n = results.measurements.len();
-
-            let diff_summary = if self.skip_outlier_filtering {
-                Summary::from(&results.measurements).unwrap()
-            } else {
-                let (min, max) = outliers_threshold(results.measurements.to_vec())
-                    .unwrap_or((i64::MIN, i64::MAX));
-
-                let measurements = results
-                    .measurements
-                    .iter()
-                    .copied()
-                    .filter(|i| min < *i && *i < max)
-                    .collect::<Vec<_>>();
-                Summary::from(&measurements).unwrap()
-            };
-
-            let outliers_filtered = n - diff_summary.n;
-
-            let std_dev = diff_summary.variance.sqrt();
-            let std_err = std_dev / (diff_summary.n as f64).sqrt();
-            let z_score = diff_summary.mean / std_err;
-
-            let significant = z_score.abs() >= 2.6;
+            let significant = results.significant;
 
             println!(
                 "{} vs. {}  (n: {}, outliers: {})",
                 Colored(&results.base_name, Color::Bold),
                 Colored(&results.candidate_name, Color::Bold),
-                n,
-                outliers_filtered
+                results.n,
+                results.outliers
             );
             println!();
 
@@ -180,16 +160,16 @@ pub mod reporting {
                 HumanTime(base.mean),
                 HumanTime(candidate.mean),
                 colorize(
-                    HumanTime(diff_summary.mean),
+                    HumanTime(results.diff.mean),
                     significant,
-                    diff_summary.mean < 0.
+                    results.diff.mean < 0.
                 ),
                 colorize(
-                    diff_summary.mean / base.mean * 100.,
+                    results.diff.mean / base.mean * 100.,
                     significant,
-                    diff_summary.mean < 0.
+                    results.diff.mean < 0.
                 ),
-                colorize("%", significant, diff_summary.mean < 0.)
+                colorize("%", significant, results.diff.mean < 0.)
             );
             println!(
                 "    {:12} │ {:>15} {:>15} {:>15}",
@@ -203,7 +183,7 @@ pub mod reporting {
                 "std. dev.",
                 HumanTime(base.variance.sqrt()),
                 HumanTime(candidate.variance.sqrt()),
-                HumanTime(diff_summary.variance.sqrt()),
+                HumanTime(results.diff.variance.sqrt()),
             );
             println!();
         }
@@ -225,28 +205,7 @@ pub mod reporting {
             let base = results.base;
             let candidate = results.candidate;
 
-            let n = results.measurements.len() as f64;
-
-            let diff = if self.skip_outlier_filtering {
-                Summary::from(&results.measurements).unwrap()
-            } else {
-                let (min, max) = outliers_threshold(results.measurements.to_vec())
-                    .unwrap_or((i64::MIN, i64::MAX));
-
-                let measurements = results
-                    .measurements
-                    .iter()
-                    .copied()
-                    .filter(|i| min < *i && *i < max)
-                    .collect::<Vec<_>>();
-                Summary::from(&measurements).unwrap()
-            };
-
-            let std_dev = diff.variance.sqrt();
-            let std_err = std_dev / n.sqrt();
-            let z_score = diff.mean / std_err;
-
-            let significant = z_score.abs() >= 2.6;
+            let significant = results.significant;
 
             let speedup = (candidate.mean - base.mean) / base.mean * 100.;
             let candidate_faster = candidate.mean < base.mean;
@@ -319,60 +278,6 @@ impl fmt::Display for HumanTime {
     }
 }
 
-/// Outlier threshold detection
-///
-/// This functions detects optimal threshold for outlier filtering. Algorithm finds a threshold
-/// that split the set of all observations `M` into two different subsets `S` and `O`. Each observation
-/// is considered as a split point. Algorithm chooses split point in such way that it maximizes
-/// the ration of `S` with this observation and without.
-///
-/// For example in a set of observations `[1, 2, 3, 100, 200, 300]` the target observation will be 100.
-/// It is the observation including which will raise variance the most.
-fn outliers_threshold(mut input: Vec<i64>) -> Option<(i64, i64)> {
-    // TODO(bazhenov) sorting should be done by difference with median
-    input.sort_by_key(|a| a.abs());
-    let variance = RunningVariance::from(input.iter().copied());
-
-    // Looking only 30% topmost values
-    let mut outliers_cnt = input.len() * 30 / 100;
-    let skip = input.len() - outliers_cnt;
-    let mut candidate_outliers = input[skip..].iter().filter(|i| **i < 0).count();
-    let value_and_variance = input.iter().copied().zip(variance).skip(skip);
-
-    let mut prev_variance = 0.;
-    for (value, var) in value_and_variance {
-        if prev_variance > 0. && var / prev_variance > 1.2 {
-            if let Some((min, max)) = binomial_interval_approximation(outliers_cnt, 0.5) {
-                if candidate_outliers < min || candidate_outliers > max {
-                    continue;
-                }
-            }
-            return Some((-value.abs(), value.abs()));
-        }
-        prev_variance = var;
-        outliers_cnt -= 1;
-        if value < 0 {
-            candidate_outliers -= 1;
-        }
-    }
-
-    None
-}
-
-fn binomial_interval_approximation(n: usize, p: f64) -> Option<(usize, usize)> {
-    use statrs::distribution::ContinuousCDF;
-    let nf = n as f64;
-    if nf * p < 10. || nf * (1. - p) < 10. {
-        return None;
-    }
-    let mu = nf * p;
-    let sigma = (nf * p * (1. - p)).sqrt();
-    let distribution = Normal::new(mu, sigma).unwrap();
-    let min = distribution.inverse_cdf(0.1).floor() as usize;
-    let max = n - min;
-    Some((min, max))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -391,25 +296,5 @@ mod tests {
         assert_eq!(format!("{}", HumanTime(1200000000.)), "1.2 s");
 
         assert_eq!(format!("{}", HumanTime(-1200000.)), "-1.2 ms");
-    }
-
-    #[test]
-    fn check_filter_outliers() {
-        let input = vec![
-            1i64, -2, 3, -4, 5, -6, 7, -8, 9, -10, //
-            101, -102,
-        ];
-
-        let (min, max) = outliers_threshold(input).unwrap();
-        assert!(min < 1, "Minimum is: {}", min);
-        assert!(10 < max && max <= 101, "Maximum is: {}", max);
-    }
-
-    #[test]
-    fn check_binomial_approximation() {
-        assert_eq!(
-            binomial_interval_approximation(10000000, 0.5),
-            Some((4997973, 5002027))
-        );
     }
 }
