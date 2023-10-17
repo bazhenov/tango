@@ -4,7 +4,6 @@ use std::{
     fs::File,
     hint::black_box,
     io::{BufWriter, Write},
-    num::NonZeroUsize,
     path::{Path, PathBuf},
     time::{Duration, Instant},
 };
@@ -102,12 +101,6 @@ pub trait Reporter {
     fn on_complete(&mut self, results: &RunResult);
 }
 
-#[derive(Copy, Clone)]
-pub enum RunMode {
-    Iterations(NonZeroUsize),
-    Time(Duration),
-}
-
 type FnPair<P, O> = (Box<dyn BenchmarkFn<P, O>>, Box<dyn BenchmarkFn<P, O>>);
 
 pub struct Benchmark<P, O> {
@@ -136,7 +129,8 @@ pub struct RunOpts {
     /// where `b_1..b_n` are baseline absolute time (in nanoseconds) measurements
     /// and `c_1..c_n` are candidate time measurements
     measurements_path: Option<PathBuf>,
-    run_mode: RunMode,
+    max_iterations: usize,
+    max_duration: Duration,
     outlier_detection_enabled: bool,
 }
 
@@ -171,7 +165,8 @@ impl<P, O> Benchmark<P, O> {
                     payloads,
                     baseline.as_ref(),
                     candidate.as_ref(),
-                    opts.run_mode,
+                    opts.max_iterations,
+                    opts.max_duration,
                     opts.measurements_path.as_ref(),
                 );
 
@@ -235,7 +230,8 @@ impl<P, O> Benchmark<P, O> {
                 payloads,
                 a.as_ref(),
                 b.as_ref(),
-                RunMode::Time(Duration::from_millis(1000)),
+                1_000_000,
+                Duration::from_millis(1000),
                 Option::<PathBuf>::None,
             );
 
@@ -249,39 +245,26 @@ impl<P, O> Benchmark<P, O> {
         generator: &mut dyn Generator<Output = P>,
         base: &dyn BenchmarkFn<P, O>,
         candidate: &dyn BenchmarkFn<P, O>,
-        run_mode: RunMode,
+        max_iterations: usize,
+        max_duration: Duration,
         dump_location: Option<impl AsRef<Path>>,
     ) -> (Summary<i64>, Summary<i64>, Vec<i64>) {
-        let mut base_time = vec![];
-        let mut candidate_time = vec![];
+        let mut base_time = Vec::with_capacity(max_iterations);
+        let mut candidate_time = Vec::with_capacity(max_iterations);
 
-        match run_mode {
-            RunMode::Iterations(iter) => {
-                for i in 0..usize::from(iter) {
-                    let payload = generator.next_payload();
-                    if i % 2 == 0 {
-                        base_time.push(base.measure(&payload) as i64);
-                        candidate_time.push(candidate.measure(&payload) as i64);
-                    } else {
-                        candidate_time.push(candidate.measure(&payload) as i64);
-                        base_time.push(base.measure(&payload) as i64);
-                    }
-                }
+        let deadline = Instant::now() + max_duration;
+
+        for i in 0..max_iterations {
+            if i % 10 == 0 && Instant::now() >= deadline {
+                break;
             }
-            RunMode::Time(duration) => {
-                let deadline = Instant::now() + duration;
-                let mut baseline_first = false;
-                while Instant::now() < deadline {
-                    let payload = generator.next_payload();
-                    baseline_first = !baseline_first;
-                    if baseline_first {
-                        base_time.push(base.measure(&payload) as i64);
-                        candidate_time.push(candidate.measure(&payload) as i64);
-                    } else {
-                        candidate_time.push(candidate.measure(&payload) as i64);
-                        base_time.push(base.measure(&payload) as i64);
-                    }
-                }
+            let payload = generator.next_payload();
+            if i % 2 == 0 {
+                base_time.push(base.measure(&payload) as i64);
+                candidate_time.push(candidate.measure(&payload) as i64);
+            } else {
+                candidate_time.push(candidate.measure(&payload) as i64);
+                base_time.push(base.measure(&payload) as i64);
             }
         }
 

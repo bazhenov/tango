@@ -1,4 +1,4 @@
-use crate::{Benchmark, Generator, RunMode, RunOpts};
+use crate::{Benchmark, Generator, RunOpts};
 use clap::Parser;
 use core::fmt;
 use std::{
@@ -78,10 +78,14 @@ pub fn run<P, O>(mut benchmark: Benchmark<P, O>, payloads: &mut dyn Generator<Ou
                 benchmark.add_reporter(reporter);
             }
 
+            let max_iterations = iterations.map(|i| i.into()).unwrap_or(1_000_000);
+            let time = time.map(|i| i.into()).unwrap_or(100);
+
             let opts = RunOpts {
                 name_filter: name,
                 measurements_path: path_to_dump,
-                run_mode: determine_run_mode(time, iterations),
+                max_iterations,
+                max_duration: Duration::from_millis(time),
                 outlier_detection_enabled: !skip_outlier_detection,
             };
             benchmark.run_by_name(payloads, &opts);
@@ -95,13 +99,6 @@ pub fn run<P, O>(mut benchmark: Benchmark<P, O>, payloads: &mut dyn Generator<Ou
             }
         }
     }
-}
-
-fn determine_run_mode(time: Option<NonZeroU64>, iterations: Option<NonZeroUsize>) -> RunMode {
-    let time = time.map(|t| RunMode::Time(Duration::from_millis(u64::from(t))));
-    let iterations = iterations.map(RunMode::Iterations);
-    time.or(iterations)
-        .unwrap_or(RunMode::Time(Duration::from_millis(100)))
 }
 
 pub mod reporting {
