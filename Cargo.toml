@@ -7,6 +7,7 @@ edition = "2021"
 clap = { version = "4.4.6", features = ["derive"] }
 libc = "0.2.148"
 mmap = "0.1.1"
+num-traits = "0.2.17"
 rand = { version = "0.8.5", features = ["small_rng"] }
 statrs = "0.16.0"
 

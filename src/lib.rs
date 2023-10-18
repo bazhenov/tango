@@ -1,5 +1,7 @@
+use num_traits::ToPrimitive;
 use statrs::distribution::Normal;
 use std::{
+    cmp::Ordering,
     collections::BTreeMap,
     fs::File,
     hint::black_box,
@@ -191,11 +193,13 @@ impl<P, O> Benchmark<P, O> {
 
         // H0 testing
         println!("H0 testing...");
-        for (_, (baseline, candidate)) in &self.funcs {
-            let significant = Self::calibrate(payloads, baseline, baseline, TRIES);
+        for (baseline, candidate) in self.funcs.values() {
+            let significant =
+                Self::calibrate(payloads, baseline.as_ref(), baseline.as_ref(), TRIES);
             println!("  {:20} {}/{}", baseline.name(), TRIES - significant, TRIES);
 
-            let significant = Self::calibrate(payloads, candidate, candidate, TRIES);
+            let significant =
+                Self::calibrate(payloads, candidate.as_ref(), candidate.as_ref(), TRIES);
             println!(
                 "  {:20} {}/{}",
                 candidate.name(),
@@ -205,8 +209,9 @@ impl<P, O> Benchmark<P, O> {
         }
 
         println!("H1 testing...");
-        for (_, (baseline, candidate)) in &self.funcs {
-            let significant = Self::calibrate(payloads, baseline, candidate, TRIES);
+        for (baseline, candidate) in self.funcs.values() {
+            let significant =
+                Self::calibrate(payloads, baseline.as_ref(), candidate.as_ref(), TRIES);
             println!(
                 "  {} / {:20} {}/{}",
                 baseline.name(),
@@ -220,18 +225,18 @@ impl<P, O> Benchmark<P, O> {
     /// Runs a given test multiple times and return the the number of times difference is statistically significant
     fn calibrate(
         payloads: &mut (dyn Generator<Output = P>),
-        a: &Box<dyn BenchmarkFn<P, O>>,
-        b: &Box<dyn BenchmarkFn<P, O>>,
+        a: &dyn BenchmarkFn<P, O>,
+        b: &dyn BenchmarkFn<P, O>,
         tries: usize,
     ) -> usize {
         let mut succeed = 0;
         for _ in 0..tries {
             let (a_summary, b_summary, diff) = Self::measure_function_pair(
                 payloads,
-                a.as_ref(),
-                b.as_ref(),
+                a,
+                b,
                 1_000_000,
-                Duration::from_millis(1000),
+                Duration::from_millis(100),
                 Option::<PathBuf>::None,
             );
 
@@ -268,8 +273,8 @@ impl<P, O> Benchmark<P, O> {
             }
         }
 
-        let base_time = base_time[base_time.len() / 100..].to_vec();
-        let candidate_time = candidate_time[candidate_time.len() / 100..].to_vec();
+        // let base_time = base_time[base_time.len() / 100..].to_vec();
+        // let candidate_time = candidate_time[candidate_time.len() / 100..].to_vec();
 
         if let Some(path) = dump_location {
             let file_name = format!("{}-{}.csv", base.name(), candidate.name());
@@ -372,17 +377,17 @@ fn write_raw_measurements(path: impl AsRef<Path>, base: &[i64], candidate: &[i64
 /// [1]: Art of Computer Programming, Vol 2, page 232
 #[derive(Clone, Copy)]
 pub struct Summary<T> {
-    n: usize,
-    min: T,
-    max: T,
-    mean: f64,
-    variance: f64,
+    pub n: usize,
+    pub min: T,
+    pub max: T,
+    pub mean: f64,
+    pub variance: f64,
 }
 
-impl<'a, T: Ord + Copy + 'a> Summary<T> {
+impl<'a, T: PartialOrd + Copy + 'a> Summary<T> {
     pub fn from<C>(values: C) -> Option<Self>
     where
-        i64: From<T>,
+        T: ToPrimitive,
         C: IntoIterator<Item = &'a T>,
     {
         Self::running(values.into_iter().copied())?.last()
@@ -390,7 +395,7 @@ impl<'a, T: Ord + Copy + 'a> Summary<T> {
 
     pub fn running<I>(mut iter: I) -> Option<impl Iterator<Item = Summary<T>>>
     where
-        i64: From<T>,
+        T: ToPrimitive,
         I: Iterator<Item = T>,
     {
         let head = iter.next()?;
@@ -399,7 +404,7 @@ impl<'a, T: Ord + Copy + 'a> Summary<T> {
             n: 1,
             min: head,
             max: head,
-            mean: i64::from(head) as f64,
+            mean: head.to_f64().unwrap(),
             s: 0.,
         })
     }
@@ -416,18 +421,22 @@ struct RunningSummary<T, I> {
 
 impl<T, I> Iterator for RunningSummary<T, I>
 where
-    T: Copy + Ord,
+    T: Copy + PartialOrd,
     I: Iterator<Item = T>,
-    i64: From<T>,
+    T: ToPrimitive,
 {
     type Item = Summary<T>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let value = self.iter.next()?;
-        let fvalue = i64::from(value) as f64;
+        let fvalue = value.to_f64().unwrap();
 
-        self.min = self.min.min(value);
-        self.max = self.max.max(value);
+        if let Some(Ordering::Less) = value.partial_cmp(&self.min) {
+            self.min = value;
+        }
+        if let Some(Ordering::Greater) = value.partial_cmp(&self.max) {
+            self.max = value;
+        }
 
         self.n += 1;
         let mean_p = self.mean;
@@ -496,26 +505,29 @@ impl<I, T: Iterator<Item = I>> From<T> for RunningVariance<T> {
 fn outliers_threshold(mut input: Vec<i64>) -> Option<(i64, i64)> {
     // TODO(bazhenov) sorting should be done by difference with median
     input.sort_by_key(|a| a.abs());
+
     let variance = RunningVariance::from(input.iter().copied());
 
-    // Looking only 30% topmost values
-    let mut outliers_cnt = input.len() * 30 / 100;
+    // Looking only 5% topmost values
+    let mut outliers_cnt = input.len() * 5 / 100;
     let skip = input.len() - outliers_cnt;
     let mut candidate_outliers = input[skip..].iter().filter(|i| **i < 0).count();
     let value_and_variance = input.iter().copied().zip(variance).skip(skip);
 
     let mut prev_variance = 0.;
     for (value, var) in value_and_variance {
-        if prev_variance > 0. && var / prev_variance > 2.0 {
+        if prev_variance > 0. && var / prev_variance > 1.05 {
             if let Some((min, max)) = binomial_interval_approximation(outliers_cnt, 0.5) {
-                if candidate_outliers < min || candidate_outliers > max {
-                    continue;
+                if min > candidate_outliers && candidate_outliers < max {
+                    return Some((-value.abs(), value.abs()));
                 }
             } else {
-                // continue;
+                // Normal approximation of binomial doesn't work for small amount of observations
+                // n * p < 10. But it means that we do not have justification of imbalanced outliers
+                return Some((-value.abs(), value.abs()));
             }
-            return Some((-value.abs(), value.abs()));
         }
+
         prev_variance = var;
         outliers_cnt -= 1;
         if value < 0 {
@@ -535,7 +547,7 @@ fn binomial_interval_approximation(n: usize, p: f64) -> Option<(usize, usize)> {
     let mu = nf * p;
     let sigma = (nf * p * (1. - p)).sqrt();
     let distribution = Normal::new(mu, sigma).unwrap();
-    let min = distribution.inverse_cdf(0.35).floor() as usize;
+    let min = distribution.inverse_cdf(0.25).floor() as usize;
     let max = n - min;
     Some((min, max))
 }
