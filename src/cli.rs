@@ -55,7 +55,7 @@ struct Opts {
     bench: bool,
 }
 
-pub fn run<P, O>(mut benchmark: Benchmark<P, O>, payloads: &mut dyn Generator<Output = P>) {
+pub fn run<P, O>(mut benchmark: Benchmark<P, O>, payloads: &mut [&mut dyn Generator<Output = P>]) {
     let opts = Opts::parse();
 
     match opts.subcommand {
@@ -88,10 +88,12 @@ pub fn run<P, O>(mut benchmark: Benchmark<P, O>, payloads: &mut dyn Generator<Ou
                 max_duration: Duration::from_millis(time),
                 outlier_detection_enabled: !skip_outlier_detection,
             };
-            benchmark.run_by_name(payloads, &opts);
+            for generator in payloads {
+                benchmark.run_by_name(*generator, &opts);
+            }
         }
         BenchMode::Calibrate { bench: _ } => {
-            benchmark.run_calibration(payloads);
+            benchmark.run_calibration(payloads[0]);
         }
         BenchMode::List { bench: _ } => {
             for fn_name in benchmark.list_functions() {
@@ -198,6 +200,10 @@ pub mod reporting {
     }
 
     impl Reporter for ConsoleReporter {
+        fn on_start(&mut self, payloads_name: &str) {
+            println!("{}", payloads_name);
+        }
+
         fn on_complete(&mut self, results: &RunResult) {
             let base = results.baseline;
             let candidate = results.candidate;
@@ -207,7 +213,7 @@ pub mod reporting {
             let speedup = (candidate.mean - base.mean) / base.mean * 100.;
             let candidate_faster = candidate.mean < base.mean;
             println!(
-                "{:20} ... {:20} [ {:>8} ... {:>8} ]    {:5.1}%",
+                "  {:20} ... {:20} [ {:>8} ... {:>8} ]    {:5.1}%",
                 results.base_name,
                 colorize(&results.candidate_name, significant, candidate_faster),
                 HumanTime(base.mean),

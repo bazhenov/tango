@@ -2,6 +2,9 @@ use rand::{rngs::SmallRng, Fill, Rng, SeedableRng};
 use rust_pairwise_testing::Generator;
 use std::{hint::black_box, io, marker::PhantomData};
 
+/// HTML page with a lot of chinese text to test UTF8 decoding speed
+const INPUT_TEXT: &str = include_str!("./input.txt");
+
 #[derive(Clone)]
 pub struct FixedStringGenerator {
     string: String,
@@ -40,7 +43,6 @@ where
 
 #[derive(Clone)]
 pub struct RandomStringGenerator {
-    string: String,
     char_indicies: Vec<usize>,
     rng: SmallRng,
     length: usize,
@@ -49,14 +51,12 @@ pub struct RandomStringGenerator {
 impl RandomStringGenerator {
     #[allow(unused)]
     pub fn new() -> io::Result<Self> {
-        let string = std::fs::read_to_string("./input.txt")?;
-        let char_indicies = string
+        let char_indicies = INPUT_TEXT
             .char_indices()
             .map(|(idx, _)| idx)
             .collect::<Vec<_>>();
         let rng = SmallRng::from_entropy();
         Ok(Self {
-            string,
             char_indicies,
             rng,
             length: 50000,
@@ -73,7 +73,11 @@ impl Generator for RandomStringGenerator {
 
         let from = self.char_indicies[start];
         let to = self.char_indicies[start + self.length];
-        self.string[from..to].to_string()
+        INPUT_TEXT[from..to].to_string()
+    }
+
+    fn name(&self) -> String {
+        format!("RandomString<{}>", self.length)
     }
 }
 
@@ -132,13 +136,6 @@ pub fn std_count_rev(s: &String) -> usize {
 #[cfg_attr(feature = "align", repr(align(32)))]
 #[cfg_attr(feature = "align", inline(never))]
 #[allow(unused)]
-pub fn std_5000(s: &String) -> usize {
-    s.chars().take(5000).count()
-}
-
-#[cfg_attr(feature = "align", repr(align(32)))]
-#[cfg_attr(feature = "align", inline(never))]
-#[allow(unused)]
-pub fn std_4950(s: &String) -> usize {
-    s.chars().take(4950).count()
+pub fn std_take<const N: usize>(s: &String) -> usize {
+    s.chars().take(N).count()
 }

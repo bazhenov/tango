@@ -33,5 +33,5 @@ fn main() {
         benchmark_fn("new", new_summary),
     );
 
-    cli::run(b, &mut payloads)
+    cli::run(b, &mut [&mut payloads])
 }

@@ -1,6 +1,7 @@
 use num_traits::ToPrimitive;
 use statrs::distribution::Normal;
 use std::{
+    any::type_name,
     cmp::Ordering,
     collections::BTreeMap,
     fs::File,
@@ -38,8 +39,8 @@ pub trait BenchmarkFn<P, O> {
 }
 
 struct Func<F> {
-    func: F,
     name: String,
+    func: F,
 }
 
 impl<F, P, O> BenchmarkFn<P, O> for Func<F>
@@ -60,9 +61,9 @@ where
 }
 
 struct SetupFunc<S, F> {
+    name: String,
     setup: S,
     func: F,
-    name: String,
 }
 
 impl<S, F, P, I, O> BenchmarkFn<P, O> for SetupFunc<S, F>
@@ -87,6 +88,10 @@ where
 pub trait Generator {
     type Output;
     fn next_payload(&mut self) -> Self::Output;
+
+    fn name(&self) -> String {
+        type_name::<Self>().to_string()
+    }
 }
 
 pub struct StaticValue<T>(pub T);
@@ -100,7 +105,8 @@ impl<T: Copy> Generator for StaticValue<T> {
 }
 
 pub trait Reporter {
-    fn on_complete(&mut self, results: &RunResult);
+    fn on_start(&mut self, _payloads_name: &str) {}
+    fn on_complete(&mut self, _results: &RunResult) {}
 }
 
 type FnPair<P, O> = (Box<dyn BenchmarkFn<P, O>>, Box<dyn BenchmarkFn<P, O>>);
@@ -160,6 +166,11 @@ impl<P, O> Benchmark<P, O> {
 
     pub fn run_by_name(&mut self, payloads: &mut dyn Generator<Output = P>, opts: &RunOpts) {
         let name_filter = opts.name_filter.as_deref().unwrap_or("");
+
+        let generator_name = payloads.name();
+        for reporter in self.reporters.iter_mut() {
+            reporter.on_start(generator_name.as_str());
+        }
 
         for (key, (baseline, candidate)) in &self.funcs {
             if key.contains(name_filter) {
@@ -516,7 +527,7 @@ fn outliers_threshold(mut input: Vec<i64>) -> Option<(i64, i64)> {
 
     let mut prev_variance = 0.;
     for (value, var) in value_and_variance {
-        if prev_variance > 0. && var / prev_variance > 1.05 {
+        if prev_variance > 0. && var / prev_variance > 1.1 {
             if let Some((min, max)) = binomial_interval_approximation(outliers_cnt, 0.5) {
                 if min > candidate_outliers && candidate_outliers < max {
                     return Some((-value.abs(), value.abs()));
@@ -583,7 +594,7 @@ mod timer {
     #[cfg(all(feature = "hw_timer", target_arch = "x86_64"))]
     pub(super) mod x86 {
         use super::Timer;
-        use std::arch::x86_64::{__rdtscp, _mm_mfence, _rdtsc};
+        use std::arch::x86_64::{__rdtscp, _mm_mfence};
 
         pub struct RdtscpTimer;
 

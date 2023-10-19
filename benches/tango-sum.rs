@@ -9,6 +9,16 @@ fn main() {
 
     benchmark.add_pair(
         benchmark_fn("sum_50000", |_| sum(5000)),
+        benchmark_fn("sum_50000", |_| sum(5000)),
+    );
+
+    benchmark.add_pair(
+        benchmark_fn("factorial_500", |_| factorial(500)),
+        benchmark_fn("factorial_500", |_| factorial(500)),
+    );
+
+    benchmark.add_pair(
+        benchmark_fn("sum_50000", |_| sum(5000)),
         benchmark_fn("sum_49500", |_| sum(4950)),
     );
 
@@ -17,5 +27,5 @@ fn main() {
         benchmark_fn("factorial_495", |_| factorial(495)),
     );
 
-    run(benchmark, &mut StaticValue(()));
+    run(benchmark, &mut [&mut StaticValue(())]);
 }
