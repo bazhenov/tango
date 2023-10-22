@@ -24,15 +24,7 @@ name = "bench"
 harness = false
 
 [[bench]]
-name = "tango-vec"
-harness = false
-
-[[bench]]
-name = "tango-str"
-harness = false
-
-[[bench]]
-name = "tango-sum"
+name = "tango"
 harness = false
 
 [[bench]]

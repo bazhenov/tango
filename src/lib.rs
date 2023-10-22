@@ -247,11 +247,12 @@ impl<P, O> Benchmark<P, O> {
                 a,
                 b,
                 1_000_000,
-                Duration::from_millis(100),
+                Duration::from_millis(1000),
                 Option::<PathBuf>::None,
             );
 
-            let result = calculate_run_result(a.name(), b.name(), a_summary, b_summary, diff, true);
+            let result =
+                calculate_run_result(a.name(), b.name(), a_summary, b_summary, diff, false);
             succeed += usize::from(result.significant);
         }
         succeed
@@ -284,8 +285,8 @@ impl<P, O> Benchmark<P, O> {
             }
         }
 
-        // let base_time = base_time[base_time.len() / 100..].to_vec();
-        // let candidate_time = candidate_time[candidate_time.len() / 100..].to_vec();
+        // let base_time = base_time[base_time.len() / 50..].to_vec();
+        // let candidate_time = candidate_time[candidate_time.len() / 50..].to_vec();
 
         if let Some(path) = dump_location {
             let file_name = format!("{}-{}.csv", base.name(), candidate.name());
@@ -319,7 +320,10 @@ fn calculate_run_result(
     let n = diff.len();
 
     let diff_summary = if filter_outliers {
-        let (min, max) = outliers_threshold(diff.to_vec()).unwrap_or((i64::MIN, i64::MAX));
+        let input = diff.to_vec();
+        // Ignore no more than 1% of observations
+        let max_outliers = input.len() / 200;
+        let (min, max) = outliers_threshold(input, max_outliers).unwrap_or((i64::MIN, i64::MAX));
 
         let measurements = diff
             .iter()
@@ -343,7 +347,11 @@ fn calculate_run_result(
         baseline: baseline_summary,
         candidate: candidate_summary,
         diff: diff_summary,
-        significant: z_score.abs() >= 2.6,
+        // significant result is far away from 0 and have more than 0.5%
+        // base/candidate difference
+        // z_score = 2.6 corresponds to 99% significance level
+        significant: z_score.abs() >= 2.6
+            && (diff_summary.mean / candidate_summary.mean).abs() > 0.005,
         outliers: outliers_filtered,
     }
 }
@@ -513,29 +521,33 @@ impl<I, T: Iterator<Item = I>> From<T> for RunningVariance<T> {
 ///
 /// For example in a set of observations `[1, 2, 3, 100, 200, 300]` the target observation will be 100.
 /// It is the observation including which will raise variance the most.
-fn outliers_threshold(mut input: Vec<i64>) -> Option<(i64, i64)> {
+/// `outliers_cnt` - maximum number of outliers to ignore.
+fn outliers_threshold(mut input: Vec<i64>, mut outliers_cnt: usize) -> Option<(i64, i64)> {
     // TODO(bazhenov) sorting should be done by difference with median
     input.sort_by_key(|a| a.abs());
 
     let variance = RunningVariance::from(input.iter().copied());
 
-    // Looking only 5% topmost values
-    let mut outliers_cnt = input.len() * 5 / 100;
+    // Looking only topmost values
     let skip = input.len() - outliers_cnt;
     let mut candidate_outliers = input[skip..].iter().filter(|i| **i < 0).count();
     let value_and_variance = input.iter().copied().zip(variance).skip(skip);
 
     let mut prev_variance = 0.;
     for (value, var) in value_and_variance {
-        if prev_variance > 0. && var / prev_variance > 1.1 {
-            if let Some((min, max)) = binomial_interval_approximation(outliers_cnt, 0.5) {
-                if min > candidate_outliers && candidate_outliers < max {
+        if prev_variance > 0. {
+            let deviance = (var / prev_variance) - 1.;
+            let target = 100. / ((input.len() - outliers_cnt) as f64);
+            if deviance > target {
+                if let Some((min, max)) = binomial_interval_approximation(outliers_cnt, 0.5, 0.5) {
+                    if min > candidate_outliers && candidate_outliers < max {
+                        return Some((-value.abs(), value.abs()));
+                    }
+                } else {
+                    // Normal approximation of binomial doesn't work for small amount of observations
+                    // n * p < 10. But it means that we do not have justification of imbalanced outliers
                     return Some((-value.abs(), value.abs()));
                 }
-            } else {
-                // Normal approximation of binomial doesn't work for small amount of observations
-                // n * p < 10. But it means that we do not have justification of imbalanced outliers
-                return Some((-value.abs(), value.abs()));
             }
         }
 
@@ -549,7 +561,7 @@ fn outliers_threshold(mut input: Vec<i64>) -> Option<(i64, i64)> {
     None
 }
 
-fn binomial_interval_approximation(n: usize, p: f64) -> Option<(usize, usize)> {
+fn binomial_interval_approximation(n: usize, p: f64, width: f64) -> Option<(usize, usize)> {
     use statrs::distribution::ContinuousCDF;
     let nf = n as f64;
     if nf * p < 10. || nf * (1. - p) < 10. {
@@ -558,7 +570,7 @@ fn binomial_interval_approximation(n: usize, p: f64) -> Option<(usize, usize)> {
     let mu = nf * p;
     let sigma = (nf * p * (1. - p)).sqrt();
     let distribution = Normal::new(mu, sigma).unwrap();
-    let min = distribution.inverse_cdf(0.25).floor() as usize;
+    let min = distribution.inverse_cdf(width / 2.).floor() as usize;
     let max = n - min;
     Some((min, max))
 }
@@ -724,7 +736,7 @@ mod tests {
             101, -102,
         ];
 
-        let (min, max) = outliers_threshold(input).unwrap();
+        let (min, max) = outliers_threshold(input, 3).unwrap();
         assert!(min < 1, "Minimum is: {}", min);
         assert!(10 < max && max <= 101, "Maximum is: {}", max);
     }
@@ -732,7 +744,7 @@ mod tests {
     #[test]
     fn check_binomial_approximation() {
         assert_eq!(
-            binomial_interval_approximation(10000000, 0.5),
+            binomial_interval_approximation(10000000, 0.5, 0.2),
             Some((4997973, 5002027))
         );
     }
