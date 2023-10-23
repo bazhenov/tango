@@ -20,7 +20,7 @@ hw_timer = []
 
 
 [[bench]]
-name = "bench"
+name = "criterion"
 harness = false
 
 [[bench]]

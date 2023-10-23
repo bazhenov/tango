@@ -2,10 +2,10 @@ mod test_funcs;
 
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 use rust_pairwise_testing::Generator;
-use test_funcs::{std_count, std_count_rev, std_take, sum, RandomStringGenerator};
+use test_funcs::{factorial, std_count, std_count_rev, std_take, sum, RandomStringGenerator};
 
 fn sum_benchmark(c: &mut Criterion) {
-    let mut group = c.benchmark_group("sum");
+    let mut group = c.benchmark_group("arithmetic");
 
     group.bench_function("sum_50000", |b| {
         b.iter(|| sum(50000));
@@ -13,6 +13,14 @@ fn sum_benchmark(c: &mut Criterion) {
 
     group.bench_function("sum_49500", |b| {
         b.iter(|| sum(49500));
+    });
+
+    group.bench_function("factorial_500", |b| {
+        b.iter(|| factorial(500));
+    });
+
+    group.bench_function("factorial_495", |b| {
+        b.iter(|| factorial(495));
     });
 
     group.finish()
