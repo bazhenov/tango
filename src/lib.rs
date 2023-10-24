@@ -511,13 +511,35 @@ impl<I, T: Iterator<Item = I>> From<T> for RunningVariance<T> {
 
 /// Outlier detection algorithm based on interquartile range
 ///
-/// Outliers are observations are 3 IQR away from the corresponding quartile.
+/// Outliers are observations are 5 IQR away from the corresponding quartile.
 fn iqr_variance_thresholds(mut input: Vec<i64>) -> Option<(i64, i64)> {
     input.sort();
     let (q1_idx, q3_idx) = (input.len() / 4, input.len() * 3 / 4);
     if q1_idx < q3_idx && q3_idx < input.len() {
         let iqr = input[q3_idx] - input[q1_idx];
-        Some((input[q1_idx] - iqr * 3, input[q3_idx] + iqr * 3))
+        let low_threshold = input[q1_idx] - iqr * 5;
+        let high_threshold = input[q3_idx] + iqr * 5;
+
+        // Calculating the indicies of the thresholds in an dataset
+        let low_threshold_idx = match input[0..q1_idx].binary_search(&low_threshold) {
+            Ok(idx) => idx,
+            Err(idx) => idx,
+        };
+
+        let high_threshold_idx = match input[q3_idx..].binary_search(&high_threshold) {
+            Ok(idx) => idx,
+            Err(idx) => idx,
+        };
+
+        if low_threshold_idx == 0 || high_threshold_idx >= input.len() {
+            return None;
+        }
+
+        // Calculating the equal number of observations which should be removed from each "side" of observations
+        let outliers_cnt = low_threshold_idx.min(input.len() - high_threshold_idx);
+
+        Some((input[outliers_cnt], input[input.len() - outliers_cnt]))
+        // Some((low_threshold, high_threshold))
     } else {
         None
     }
