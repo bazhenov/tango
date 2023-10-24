@@ -7,7 +7,7 @@ if [ -f "${FILE}" ]; then
 fi
 
 for i in {1..30}; do
-    cargo bench --bench=criterion -- factorial >> "${FILE}"
+    cargo bench --bench=criterion factorial -- --warm-up-time 1 --measurement-time 1 >> "${FILE}"
 done
 
 echo "factorial_500"
