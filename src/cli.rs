@@ -154,7 +154,7 @@ pub mod reporting {
                 HumanTime((candidate.min - base.min) as f64)
             );
             println!(
-                "    {:12} │ {:>15} {:>15} {:>15}  {:+3.1}{}",
+                "    {:12} │ {:>15} {:>15} {:>15}  {:+4.2}{}",
                 "mean",
                 HumanTime(base.mean),
                 HumanTime(candidate.mean),
@@ -207,18 +207,20 @@ pub mod reporting {
         fn on_complete(&mut self, results: &RunResult) {
             let base = results.baseline;
             let candidate = results.candidate;
+            let diff = results.diff;
 
             let significant = results.significant;
 
-            let speedup = (candidate.mean - base.mean) / base.mean * 100.;
-            let candidate_faster = candidate.mean < base.mean;
+            let speedup = diff.mean / base.mean * 100.;
+            let candidate_faster = diff.mean < 0.;
             println!(
-                "  {:20} ... {:20} [ {:>8} ... {:>8} ]    {:>+5.1}%",
+                "  {:20} ... {:20} [ {:>8} ... {:>8} ]    {:>+5.2}{}",
                 results.base_name,
                 colorize(&results.candidate_name, significant, candidate_faster),
                 HumanTime(base.mean),
                 colorize(HumanTime(candidate.mean), significant, candidate_faster),
-                colorize(speedup, significant, speedup < 0.),
+                colorize(speedup, significant, candidate_faster),
+                colorize("%", significant, candidate_faster)
             )
         }
     }
