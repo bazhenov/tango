@@ -251,8 +251,7 @@ impl<P, O> Benchmark<P, O> {
                 Option::<PathBuf>::None,
             );
 
-            let result =
-                calculate_run_result(a.name(), b.name(), a_summary, b_summary, diff, false);
+            let result = calculate_run_result(a.name(), b.name(), a_summary, b_summary, diff, true);
             succeed += usize::from(result.significant);
         }
         succeed
@@ -321,9 +320,7 @@ fn calculate_run_result(
 
     let diff_summary = if filter_outliers {
         let input = diff.to_vec();
-        // Ignore no more than 1% of observations
-        let max_outliers = input.len() / 200;
-        let (min, max) = outliers_threshold(input, max_outliers).unwrap_or((i64::MIN, i64::MAX));
+        let (min, max) = iqr_variance_thresholds(input).unwrap_or((i64::MIN, i64::MAX));
 
         let measurements = diff
             .iter()
@@ -512,6 +509,20 @@ impl<I, T: Iterator<Item = I>> From<T> for RunningVariance<T> {
     }
 }
 
+/// Outlier detection algorithm based on interquartile range
+///
+/// Outliers are observations are 3 IQR away from the corresponding quartile.
+fn iqr_variance_thresholds(mut input: Vec<i64>) -> Option<(i64, i64)> {
+    input.sort();
+    let (q1_idx, q3_idx) = (input.len() / 4, input.len() * 3 / 4);
+    if q1_idx < q3_idx && q3_idx < input.len() {
+        let iqr = input[q3_idx] - input[q1_idx];
+        Some((input[q1_idx] - iqr * 3, input[q3_idx] + iqr * 3))
+    } else {
+        None
+    }
+}
+
 /// Outlier threshold detection
 ///
 /// This functions detects optimal threshold for outlier filtering. Algorithm finds a threshold
@@ -522,7 +533,7 @@ impl<I, T: Iterator<Item = I>> From<T> for RunningVariance<T> {
 /// For example in a set of observations `[1, 2, 3, 100, 200, 300]` the target observation will be 100.
 /// It is the observation including which will raise variance the most.
 /// `outliers_cnt` - maximum number of outliers to ignore.
-fn outliers_threshold(mut input: Vec<i64>, mut outliers_cnt: usize) -> Option<(i64, i64)> {
+fn max_variance_thresholds(mut input: Vec<i64>, mut outliers_cnt: usize) -> Option<(i64, i64)> {
     // TODO(bazhenov) sorting should be done by difference with median
     input.sort_by_key(|a| a.abs());
 
@@ -736,7 +747,7 @@ mod tests {
             101, -102,
         ];
 
-        let (min, max) = outliers_threshold(input, 3).unwrap();
+        let (min, max) = max_variance_thresholds(input, 3).unwrap();
         assert!(min < 1, "Minimum is: {}", min);
         assert!(10 < max && max <= 101, "Maximum is: {}", max);
     }
