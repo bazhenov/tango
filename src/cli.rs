@@ -214,7 +214,7 @@ pub mod reporting {
             let speedup = diff.mean / base.mean * 100.;
             let candidate_faster = diff.mean < 0.;
             println!(
-                "  {:20} ... {:20} [ {:>8} ... {:>8} ]    {:>+5.2}{}",
+                "  {:20} ... {:20} [ {:>8} ... {:>8} ]    {:>+7.2}{}",
                 results.base_name,
                 colorize(&results.candidate_name, significant, candidate_faster),
                 HumanTime(base.mean),
