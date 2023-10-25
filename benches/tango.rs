@@ -3,7 +3,7 @@ use rand::{rngs::SmallRng, Rng, SeedableRng};
 use rust_pairwise_testing::{
     benchmark_fn, benchmark_fn_with_setup, cli::run, Benchmark, Generator, StaticValue,
 };
-use test_funcs::{factorial, std, std_count, std_count_rev, std_take, sum, RandomStringGenerator};
+use test_funcs::{factorial, std, std_count, std_count_rev, std_take, sum, RandomString};
 
 mod test_funcs;
 
@@ -46,24 +46,27 @@ fn copy_and_sort_stable<T: Ord + Copy, N>(input: &Vec<T>, _: &N) -> T {
 fn main() {
     let mut benchmark = Benchmark::new();
 
+    #[cfg(feature = "aa_test")]
+    {
+        benchmark.add_pair(
+            benchmark_fn("sum_50000", |_, _| sum(5000)),
+            benchmark_fn("sum_50000", |_, _| sum(5000)),
+        );
+
+        benchmark.add_pair(
+            benchmark_fn("factorial_500", |_, _| factorial(500)),
+            benchmark_fn("factorial_500", |_, _| factorial(500)),
+        );
+    }
+
     benchmark.add_pair(
         benchmark_fn("sum_50000", |_, _| sum(5000)),
         benchmark_fn("sum_49500", |_, _| sum(4950)),
     );
 
     benchmark.add_pair(
-        benchmark_fn("sum_50000", |_, _| sum(5000)),
-        benchmark_fn("sum_50000", |_, _| sum(5000)),
-    );
-
-    benchmark.add_pair(
         benchmark_fn("factorial_500", |_, _| factorial(500)),
         benchmark_fn("factorial_495", |_, _| factorial(495)),
-    );
-
-    benchmark.add_pair(
-        benchmark_fn("factorial_500", |_, _| factorial(500)),
-        benchmark_fn("factorial_500", |_, _| factorial(500)),
     );
 
     run(benchmark, &mut [&mut StaticValue((), ())]);
@@ -79,11 +82,11 @@ fn main() {
         benchmark_fn("std_count_rev", std_count_rev),
     );
     str.add_pair(
-        benchmark_fn("std_5000", std_take::<5000, _>),
-        benchmark_fn("std_4950", std_take::<4950, _>),
+        benchmark_fn("std_5000", |h, n| std_take(5000, h, n)),
+        benchmark_fn("std_4950", |h, n| std_take(4950, h, n)),
     );
 
-    run(str, &mut [&mut RandomStringGenerator::new().unwrap()]);
+    run(str, &mut [&mut RandomString::new().unwrap()]);
 
     let mut benchmark = Benchmark::new();
 

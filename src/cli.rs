@@ -90,8 +90,8 @@ pub fn run<H, N, O>(
                 max_iterations,
                 max_duration: Duration::from_millis(time),
                 outlier_detection_enabled: !skip_outlier_detection,
-                haystack_frequency: 1000,
-                needle_frequency: 1,
+                iterations_per_haystack: 100,
+                iterations_per_needle: 1,
             };
             for generator in payloads {
                 benchmark.run_by_name(*generator, &opts);

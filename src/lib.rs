@@ -1,4 +1,4 @@
-use num_traits::ToPrimitive;
+use num_traits::{Pow, ToPrimitive};
 use statrs::distribution::Normal;
 use std::{
     any::type_name,
@@ -138,6 +138,7 @@ impl<H, N, O> Default for Benchmark<H, N, O> {
 }
 
 pub struct RunOpts {
+    /// Filter for function and benchmark names to be filtered
     name_filter: Option<String>,
 
     /// Directory location for CSV dump of individual mesurements
@@ -155,8 +156,15 @@ pub struct RunOpts {
     max_iterations: usize,
     max_duration: Duration,
     outlier_detection_enabled: bool,
-    haystack_frequency: usize,
-    needle_frequency: usize,
+
+    /// The number of iteration per one generated haystack
+    iterations_per_haystack: usize,
+
+    /// The number of iteration per one generated needle.
+    ///
+    /// Usually should be 1 unless you want to stress the same code path in a benchmark
+    /// multiple times.
+    iterations_per_needle: usize,
 }
 
 impl<H, N, O> Benchmark<H, N, O> {
@@ -219,34 +227,21 @@ impl<H, N, O> Benchmark<H, N, O> {
     pub fn run_calibration(&mut self, payloads: &mut dyn Generator<Haystack = H, Needle = N>) {
         const TRIES: usize = 10;
 
-        // H0 testing
         println!("H0 testing...");
         for (baseline, candidate) in self.funcs.values() {
-            let significant =
-                Self::calibrate(payloads, baseline.as_ref(), baseline.as_ref(), TRIES);
-            println!("  {:20} {}/{}", baseline.name(), TRIES - significant, TRIES);
-
-            let significant =
-                Self::calibrate(payloads, candidate.as_ref(), candidate.as_ref(), TRIES);
-            println!(
-                "  {:20} {}/{}",
-                candidate.name(),
-                TRIES - significant,
-                TRIES
-            );
+            for f in [baseline.as_ref(), candidate.as_ref()] {
+                let significant = Self::calibrate(payloads, f, f, TRIES);
+                let successes = TRIES - significant;
+                println!("    {:30} ... {}/{}", f.name(), successes, TRIES);
+            }
         }
 
         println!("H1 testing...");
         for (baseline, candidate) in self.funcs.values() {
             let significant =
                 Self::calibrate(payloads, baseline.as_ref(), candidate.as_ref(), TRIES);
-            println!(
-                "  {} / {:20} {}/{}",
-                baseline.name(),
-                candidate.name(),
-                significant,
-                TRIES
-            );
+            let name = format!("{} / {}", baseline.name(), candidate.name());
+            println!("    {:30} ... {}/{}", name, significant, TRIES);
         }
     }
 
@@ -264,8 +259,8 @@ impl<H, N, O> Benchmark<H, N, O> {
             max_iterations: 1_000_000,
             max_duration: Duration::from_millis(1000),
             outlier_detection_enabled: true,
-            haystack_frequency: 1,
-            needle_frequency: 1,
+            iterations_per_haystack: 100,
+            iterations_per_needle: 1,
         };
         for _ in 0..tries {
             let (a_summary, b_summary, diff) = measure_function_pair(payloads, a, b, &opts);
@@ -297,21 +292,31 @@ fn measure_function_pair<H, N, O>(
     let mut haystack = generator.next_haystack();
     let mut needle = generator.next_needle();
 
-    let iterations_choices = (1..=iterations.min(100)).into_iter().collect::<Vec<_>>();
+    // Generating exponentially larger numbers (1, 10, 100, ...) up to the estimated number
+    // of iterations/ms.
+    let mut iterations_choices = (0..=iterations.min(1000).ilog10())
+        .into_iter()
+        .map(|f| 10.pow(f) as usize)
+        .cycle();
 
     for i in 0..opts.max_iterations {
-        if i % 10 == 0 && Instant::now() >= deadline {
+        // Trying not to stress benchmarking loop with very frequent timer calls
+        // First predicate fires approximatley each millisecond
+        if i % iterations == 0 && Instant::now() >= deadline {
             break;
         }
-        if i % opts.haystack_frequency == 0 {
+        if i % opts.iterations_per_haystack == 0 {
             haystack = generator.next_haystack();
         }
-        if i % opts.needle_frequency == 0 {
+        if i % opts.iterations_per_needle == 0 {
             needle = generator.next_needle();
         }
 
-        let iterations = iterations_choices[(i / 2) % iterations_choices.len()];
+        let iterations = iterations_choices.next().unwrap();
 
+        // !!! IMPORTANT !!!
+        // baseline and candidate should be called in different order in those two branches.
+        // This equalize the probability of facing unfortunate circumstances like cache misses for both functions
         let (base_sample, candidate_sample) = if i % 2 == 0 {
             let base_sample = base.measure(&haystack, &needle, iterations);
             let candidate_sample = candidate.measure(&haystack, &needle, iterations);
@@ -327,9 +332,6 @@ fn measure_function_pair<H, N, O>(
         base_time.push(base_sample as i64 / iterations as i64);
         candidate_time.push(candidate_sample as i64 / iterations as i64);
     }
-
-    // let base_time = base_time[base_time.len() / 50..].to_vec();
-    // let candidate_time = candidate_time[candidate_time.len() / 50..].to_vec();
 
     if let Some(path) = opts.measurements_path.as_ref() {
         let file_name = format!("{}-{}.csv", base.name(), candidate.name());
@@ -377,8 +379,8 @@ fn estimate_iterations_per_ms<H, N, O>(
 fn calculate_run_result(
     baseline_name: impl Into<String>,
     candidate_name: impl Into<String>,
-    baseline_summary: Summary<i64>,
-    candidate_summary: Summary<i64>,
+    baseline: Summary<i64>,
+    candidate: Summary<i64>,
     diff: Vec<i64>,
     filter_outliers: bool,
 ) -> RunResult {
@@ -407,14 +409,13 @@ fn calculate_run_result(
     RunResult {
         base_name: baseline_name.into(),
         candidate_name: candidate_name.into(),
-        baseline: baseline_summary,
-        candidate: candidate_summary,
+        baseline,
+        candidate,
         diff: diff_summary,
         // significant result is far away from 0 and have more than 0.5%
         // base/candidate difference
         // z_score = 2.6 corresponds to 99% significance level
-        significant: z_score.abs() >= 2.6
-            && (diff_summary.mean / candidate_summary.mean).abs() > 0.005,
+        significant: z_score.abs() >= 2.6 && (diff_summary.mean / candidate.mean).abs() > 0.005,
         outliers: outliers_filtered,
     }
 }

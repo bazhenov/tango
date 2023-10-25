@@ -17,7 +17,7 @@ criterion = "0.5.1"
 [features]
 align = []
 hw_timer = []
-
+aa_test = []
 
 [[bench]]
 name = "criterion"

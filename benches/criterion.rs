@@ -2,7 +2,7 @@ mod test_funcs;
 
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 use rust_pairwise_testing::Generator;
-use test_funcs::{factorial, std_count, std_count_rev, std_take, sum, RandomStringGenerator};
+use test_funcs::{factorial, std_count, std_count_rev, std_take, sum, RandomString};
 
 fn sum_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("arithmetic");
@@ -30,25 +30,25 @@ fn utf8_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("utf8");
 
     group.bench_function("std_length_4950", |b| {
-        let mut generator = RandomStringGenerator::new().unwrap();
+        let mut generator = RandomString::new().unwrap();
         b.iter_batched(
             || generator.next_haystack(),
-            |s| std_take::<4950, _>(&s, &()),
+            |s| std_take(4950, &s, &()),
             BatchSize::SmallInput,
         );
     });
 
     group.bench_function("std_length_5000", |b| {
-        let mut generator = RandomStringGenerator::new().unwrap();
+        let mut generator = RandomString::new().unwrap();
         b.iter_batched(
             || generator.next_haystack(),
-            |s| std_take::<5000, _>(&s, &()),
+            |s| std_take(5000, &s, &()),
             BatchSize::SmallInput,
         );
     });
 
     group.bench_function("std_count", |b| {
-        let mut generator = RandomStringGenerator::new().unwrap();
+        let mut generator = RandomString::new().unwrap();
         b.iter_batched(
             || generator.next_haystack(),
             |s| std_count(&s, &()),
@@ -57,7 +57,7 @@ fn utf8_benchmark(c: &mut Criterion) {
     });
 
     group.bench_function("std_count_rev", |b| {
-        let mut generator = RandomStringGenerator::new().unwrap();
+        let mut generator = RandomString::new().unwrap();
         b.iter_batched(
             || generator.next_haystack(),
             |s| std_count_rev(&s, &()),

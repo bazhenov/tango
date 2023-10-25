@@ -48,20 +48,20 @@ where
 }
 
 #[derive(Clone)]
-pub struct RandomStringGenerator {
+pub struct RandomString {
     char_indicies: Vec<usize>,
     rng: SmallRng,
     length: usize,
 }
 
-impl RandomStringGenerator {
+impl RandomString {
     #[allow(unused)]
     pub fn new() -> io::Result<Self> {
         let char_indicies = INPUT_TEXT
             .char_indices()
             .map(|(idx, _)| idx)
             .collect::<Vec<_>>();
-        let rng = SmallRng::from_entropy();
+        let rng = SmallRng::seed_from_u64(42);
         Ok(Self {
             char_indicies,
             rng,
@@ -69,7 +69,7 @@ impl RandomStringGenerator {
         })
     }
 }
-impl Generator for RandomStringGenerator {
+impl Generator for RandomString {
     type Haystack = String;
     type Needle = ();
 
@@ -145,6 +145,6 @@ pub fn std_count_rev<T>(s: &String, _: &T) -> usize {
 #[cfg_attr(feature = "align", repr(align(32)))]
 #[cfg_attr(feature = "align", inline(never))]
 #[allow(unused)]
-pub fn std_take<const N: usize, T>(s: &String, _: &T) -> usize {
-    s.chars().take(N).count()
+pub fn std_take<T>(n: usize, s: &String, _: &T) -> usize {
+    s.chars().take(black_box(n)).count()
 }
