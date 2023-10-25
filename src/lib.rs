@@ -166,14 +166,16 @@ impl<P, O> Benchmark<P, O> {
 
     pub fn run_by_name(&mut self, payloads: &mut dyn Generator<Output = P>, opts: &RunOpts) {
         let name_filter = opts.name_filter.as_deref().unwrap_or("");
-
         let generator_name = payloads.name();
-        for reporter in self.reporters.iter_mut() {
-            reporter.on_start(generator_name.as_str());
-        }
-
+        let mut start_reported = false;
         for (key, (baseline, candidate)) in &self.funcs {
-            if key.contains(name_filter) {
+            if key.contains(name_filter) || generator_name.contains(name_filter) {
+                if !start_reported {
+                    for reporter in self.reporters.iter_mut() {
+                        reporter.on_start(generator_name.as_str());
+                    }
+                    start_reported = true;
+                }
                 let (baseline_summary, candidate_summary, diff) = Self::measure_function_pair(
                     payloads,
                     baseline.as_ref(),
