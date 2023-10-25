@@ -14,27 +14,27 @@ use timer::{ActiveTimer, Timer};
 
 pub mod cli;
 
-pub fn benchmark_fn<P, O, F: Fn(&P) -> O>(
+pub fn benchmark_fn<H, N, O, F: Fn(&H, &N) -> O>(
     name: impl Into<String>,
     func: F,
-) -> impl BenchmarkFn<P, O> {
+) -> impl BenchmarkFn<H, N, O> {
     let name = name.into();
     assert!(!name.is_empty());
     Func { name, func }
 }
 
-pub fn benchmark_fn_with_setup<P, O, I, F: Fn(I) -> O, S: Fn(&P) -> I>(
+pub fn benchmark_fn_with_setup<H, N, O, I: Clone, F: Fn(I, &N) -> O, S: Fn(&H) -> I>(
     name: impl Into<String>,
     func: F,
     setup: S,
-) -> impl BenchmarkFn<P, O> {
+) -> impl BenchmarkFn<H, N, O> {
     let name = name.into();
     assert!(!name.is_empty());
     SetupFunc { name, func, setup }
 }
 
-pub trait BenchmarkFn<P, O> {
-    fn measure(&self, payload: &P) -> u64;
+pub trait BenchmarkFn<H, N, O> {
+    fn measure(&self, haystack: &H, needle: &N, iterations: usize) -> u64;
     fn name(&self) -> &str;
 }
 
@@ -43,13 +43,16 @@ struct Func<F> {
     func: F,
 }
 
-impl<F, P, O> BenchmarkFn<P, O> for Func<F>
+impl<F, H, N, O> BenchmarkFn<H, N, O> for Func<F>
 where
-    F: Fn(&P) -> O,
+    F: Fn(&H, &N) -> O,
 {
-    fn measure(&self, payload: &P) -> u64 {
+    fn measure(&self, haystack: &H, needle: &N, iterations: usize) -> u64 {
+        let mut result = Vec::with_capacity(iterations);
         let start = ActiveTimer::start();
-        let result = black_box((self.func)(payload));
+        for _ in 0..iterations {
+            result.push(black_box((self.func)(haystack, needle)));
+        }
         let time = ActiveTimer::stop(start);
         drop(result);
         time
@@ -66,17 +69,21 @@ struct SetupFunc<S, F> {
     func: F,
 }
 
-impl<S, F, P, I, O> BenchmarkFn<P, O> for SetupFunc<S, F>
+impl<S, F, H, N, I, O> BenchmarkFn<H, N, O> for SetupFunc<S, F>
 where
-    S: Fn(&P) -> I,
-    F: Fn(I) -> O,
+    S: Fn(&H) -> I,
+    F: Fn(I, &N) -> O,
+    I: Clone,
 {
-    fn measure(&self, payload: &P) -> u64 {
-        let payload = (self.setup)(payload);
+    fn measure(&self, haystack: &H, needle: &N, iterations: usize) -> u64 {
+        let mut results = Vec::with_capacity(iterations);
+        let haystack = (self.setup)(haystack);
         let start = ActiveTimer::start();
-        let result = black_box((self.func)(payload));
+        for _ in 0..iterations {
+            results.push(black_box((self.func)(haystack.clone(), needle)));
+        }
         let time = ActiveTimer::stop(start);
-        drop(result);
+        drop(results);
         time
     }
 
@@ -86,21 +93,29 @@ where
 }
 
 pub trait Generator {
-    type Output;
-    fn next_payload(&mut self) -> Self::Output;
+    type Haystack;
+    type Needle;
+
+    fn next_haystack(&mut self) -> Self::Haystack;
+    fn next_needle(&mut self) -> Self::Needle;
 
     fn name(&self) -> String {
         type_name::<Self>().to_string()
     }
 }
 
-pub struct StaticValue<T>(pub T);
+pub struct StaticValue<H, N>(pub H, pub N);
 
-impl<T: Copy> Generator for StaticValue<T> {
-    type Output = T;
+impl<H: Copy, N: Copy> Generator for StaticValue<H, N> {
+    type Haystack = H;
+    type Needle = N;
 
-    fn next_payload(&mut self) -> Self::Output {
+    fn next_haystack(&mut self) -> Self::Haystack {
         self.0
+    }
+
+    fn next_needle(&mut self) -> Self::Needle {
+        self.1
     }
 }
 
@@ -109,14 +124,14 @@ pub trait Reporter {
     fn on_complete(&mut self, _results: &RunResult) {}
 }
 
-type FnPair<P, O> = (Box<dyn BenchmarkFn<P, O>>, Box<dyn BenchmarkFn<P, O>>);
+type FnPair<H, N, O> = (Box<dyn BenchmarkFn<H, N, O>>, Box<dyn BenchmarkFn<H, N, O>>);
 
-pub struct Benchmark<P, O> {
-    funcs: BTreeMap<String, FnPair<P, O>>,
+pub struct Benchmark<H, N, O> {
+    funcs: BTreeMap<String, FnPair<H, N, O>>,
     reporters: Vec<Box<dyn Reporter>>,
 }
 
-impl<P, O> Default for Benchmark<P, O> {
+impl<H, N, O> Default for Benchmark<H, N, O> {
     fn default() -> Self {
         Self::new()
     }
@@ -140,9 +155,11 @@ pub struct RunOpts {
     max_iterations: usize,
     max_duration: Duration,
     outlier_detection_enabled: bool,
+    haystack_frequency: usize,
+    needle_frequency: usize,
 }
 
-impl<P, O> Benchmark<P, O> {
+impl<H, N, O> Benchmark<H, N, O> {
     pub fn new() -> Self {
         Self {
             funcs: BTreeMap::new(),
@@ -156,15 +173,19 @@ impl<P, O> Benchmark<P, O> {
 
     pub fn add_pair(
         &mut self,
-        baseline: impl BenchmarkFn<P, O> + 'static,
-        candidate: impl BenchmarkFn<P, O> + 'static,
+        baseline: impl BenchmarkFn<H, N, O> + 'static,
+        candidate: impl BenchmarkFn<H, N, O> + 'static,
     ) {
         let key = format!("{}-{}", baseline.name(), candidate.name());
         self.funcs
             .insert(key, (Box::new(baseline), Box::new(candidate)));
     }
 
-    pub fn run_by_name(&mut self, payloads: &mut dyn Generator<Output = P>, opts: &RunOpts) {
+    pub fn run_by_name(
+        &mut self,
+        payloads: &mut dyn Generator<Haystack = H, Needle = N>,
+        opts: &RunOpts,
+    ) {
         let name_filter = opts.name_filter.as_deref().unwrap_or("");
         let generator_name = payloads.name();
         let mut start_reported = false;
@@ -176,14 +197,8 @@ impl<P, O> Benchmark<P, O> {
                     }
                     start_reported = true;
                 }
-                let (baseline_summary, candidate_summary, diff) = Self::measure_function_pair(
-                    payloads,
-                    baseline.as_ref(),
-                    candidate.as_ref(),
-                    opts.max_iterations,
-                    opts.max_duration,
-                    opts.measurements_path.as_ref(),
-                );
+                let (baseline_summary, candidate_summary, diff) =
+                    measure_function_pair(payloads, baseline.as_ref(), candidate.as_ref(), &opts);
 
                 let run_result = calculate_run_result(
                     baseline.name(),
@@ -201,7 +216,7 @@ impl<P, O> Benchmark<P, O> {
         }
     }
 
-    pub fn run_calibration(&mut self, payloads: &mut dyn Generator<Output = P>) {
+    pub fn run_calibration(&mut self, payloads: &mut dyn Generator<Haystack = H, Needle = N>) {
         const TRIES: usize = 10;
 
         // H0 testing
@@ -237,21 +252,23 @@ impl<P, O> Benchmark<P, O> {
 
     /// Runs a given test multiple times and return the the number of times difference is statistically significant
     fn calibrate(
-        payloads: &mut (dyn Generator<Output = P>),
-        a: &dyn BenchmarkFn<P, O>,
-        b: &dyn BenchmarkFn<P, O>,
+        payloads: &mut (dyn Generator<Haystack = H, Needle = N>),
+        a: &dyn BenchmarkFn<H, N, O>,
+        b: &dyn BenchmarkFn<H, N, O>,
         tries: usize,
     ) -> usize {
         let mut succeed = 0;
+        let opts = RunOpts {
+            name_filter: None,
+            measurements_path: None,
+            max_iterations: 1_000_000,
+            max_duration: Duration::from_millis(1000),
+            outlier_detection_enabled: true,
+            haystack_frequency: 1,
+            needle_frequency: 1,
+        };
         for _ in 0..tries {
-            let (a_summary, b_summary, diff) = Self::measure_function_pair(
-                payloads,
-                a,
-                b,
-                1_000_000,
-                Duration::from_millis(1000),
-                Option::<PathBuf>::None,
-            );
+            let (a_summary, b_summary, diff) = measure_function_pair(payloads, a, b, &opts);
 
             let result = calculate_run_result(a.name(), b.name(), a_summary, b_summary, diff, true);
             succeed += usize::from(result.significant);
@@ -259,55 +276,102 @@ impl<P, O> Benchmark<P, O> {
         succeed
     }
 
-    fn measure_function_pair(
-        generator: &mut dyn Generator<Output = P>,
-        base: &dyn BenchmarkFn<P, O>,
-        candidate: &dyn BenchmarkFn<P, O>,
-        max_iterations: usize,
-        max_duration: Duration,
-        dump_location: Option<impl AsRef<Path>>,
-    ) -> (Summary<i64>, Summary<i64>, Vec<i64>) {
-        let mut base_time = Vec::with_capacity(max_iterations);
-        let mut candidate_time = Vec::with_capacity(max_iterations);
-
-        let deadline = Instant::now() + max_duration;
-
-        for i in 0..max_iterations {
-            if i % 10 == 0 && Instant::now() >= deadline {
-                break;
-            }
-            let payload = generator.next_payload();
-            if i % 2 == 0 {
-                base_time.push(base.measure(&payload) as i64);
-                candidate_time.push(candidate.measure(&payload) as i64);
-            } else {
-                candidate_time.push(candidate.measure(&payload) as i64);
-                base_time.push(base.measure(&payload) as i64);
-            }
-        }
-
-        // let base_time = base_time[base_time.len() / 50..].to_vec();
-        // let candidate_time = candidate_time[candidate_time.len() / 50..].to_vec();
-
-        if let Some(path) = dump_location {
-            let file_name = format!("{}-{}.csv", base.name(), candidate.name());
-            let file_path = path.as_ref().join(file_name);
-            write_raw_measurements(file_path, &base_time, &candidate_time);
-        }
-
-        let base = Summary::from(&base_time).unwrap();
-        let candidate = Summary::from(&candidate_time).unwrap();
-        let diff = base_time
-            .into_iter()
-            .zip(candidate_time)
-            .map(|(b, c)| c - b)
-            .collect();
-        (base, candidate, diff)
-    }
-
     pub fn list_functions(&self) -> impl Iterator<Item = &str> {
         self.funcs.keys().map(String::as_str)
     }
+}
+
+fn measure_function_pair<H, N, O>(
+    generator: &mut dyn Generator<Haystack = H, Needle = N>,
+    base: &dyn BenchmarkFn<H, N, O>,
+    candidate: &dyn BenchmarkFn<H, N, O>,
+    opts: &RunOpts,
+) -> (Summary<i64>, Summary<i64>, Vec<i64>) {
+    let mut base_time = Vec::with_capacity(opts.max_iterations);
+    let mut candidate_time = Vec::with_capacity(opts.max_iterations);
+
+    let iterations = estimate_iterations_per_ms(generator, base, candidate);
+
+    let deadline = Instant::now() + opts.max_duration;
+
+    let mut haystack = generator.next_haystack();
+    let mut needle = generator.next_needle();
+
+    let iterations_choices = (1..=iterations.min(100)).into_iter().collect::<Vec<_>>();
+
+    for i in 0..opts.max_iterations {
+        if i % 10 == 0 && Instant::now() >= deadline {
+            break;
+        }
+        if i % opts.haystack_frequency == 0 {
+            haystack = generator.next_haystack();
+        }
+        if i % opts.needle_frequency == 0 {
+            needle = generator.next_needle();
+        }
+
+        let iterations = iterations_choices[(i / 2) % iterations_choices.len()];
+
+        let (base_sample, candidate_sample) = if i % 2 == 0 {
+            let base_sample = base.measure(&haystack, &needle, iterations);
+            let candidate_sample = candidate.measure(&haystack, &needle, iterations);
+
+            (base_sample, candidate_sample)
+        } else {
+            let candidate_sample = candidate.measure(&haystack, &needle, iterations);
+            let base_sample = base.measure(&haystack, &needle, iterations);
+
+            (base_sample, candidate_sample)
+        };
+
+        base_time.push(base_sample as i64 / iterations as i64);
+        candidate_time.push(candidate_sample as i64 / iterations as i64);
+    }
+
+    // let base_time = base_time[base_time.len() / 50..].to_vec();
+    // let candidate_time = candidate_time[candidate_time.len() / 50..].to_vec();
+
+    if let Some(path) = opts.measurements_path.as_ref() {
+        let file_name = format!("{}-{}.csv", base.name(), candidate.name());
+        let file_path = path.join(file_name);
+        write_raw_measurements(file_path, &base_time, &candidate_time);
+    }
+
+    let base = Summary::from(&base_time).unwrap();
+    let candidate = Summary::from(&candidate_time).unwrap();
+    let diff = base_time
+        .into_iter()
+        .zip(candidate_time)
+        .map(|(b, c)| c - b)
+        .collect();
+    (base, candidate, diff)
+}
+
+/// Estimates the number of iterations achievable in 1 ms by given pair of functions.
+///
+/// If functions are to slow to be executed in 1ms, the number of iterations will be 1.
+fn estimate_iterations_per_ms<H, N, O>(
+    generator: &mut dyn Generator<Haystack = H, Needle = N>,
+    base: &dyn BenchmarkFn<H, N, O>,
+    candidate: &dyn BenchmarkFn<H, N, O>,
+) -> usize {
+    let haystack = generator.next_haystack();
+    let needle = generator.next_needle();
+
+    // Measure the amount of iterations achievable in (factor * 1ms) and later divide by factor
+    // to calculate average number of iterations per 1ms
+    let factor = 10;
+    let duration = Duration::from_millis(1);
+    let deadline = Instant::now() + duration * factor;
+    let mut iterations = 0;
+    while Instant::now() < deadline {
+        candidate.measure(&haystack, &needle, 1);
+        base.measure(&haystack, &needle, 1);
+        iterations += 1;
+    }
+
+    let rounding_factor = 10;
+    1.max(iterations / factor as usize / rounding_factor * rounding_factor)
 }
 
 fn calculate_run_result(
@@ -517,7 +581,7 @@ impl<I, T: Iterator<Item = I>> From<T> for RunningVariance<T> {
 fn iqr_variance_thresholds(mut input: Vec<i64>) -> Option<(i64, i64)> {
     input.sort();
     let (q1_idx, q3_idx) = (input.len() / 4, input.len() * 3 / 4);
-    if q1_idx < q3_idx && q3_idx < input.len() {
+    if q1_idx < q3_idx && input[q1_idx] < input[q3_idx] && q3_idx < input.len() {
         let iqr = input[q3_idx] - input[q1_idx];
         let low_threshold = input[q1_idx] - iqr * 5;
         let high_threshold = input[q3_idx] + iqr * 5;

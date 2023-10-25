@@ -8,7 +8,7 @@ mod test_funcs;
 
 #[cfg_attr(feature = "align", repr(align(32)))]
 #[cfg_attr(feature = "align", inline(never))]
-fn old_summary<T: Copy + Ord>(input: &Vec<T>) -> Option<Summary<T>>
+fn old_summary<T: Copy + Ord, N>(input: &Vec<T>, _: &N) -> Option<Summary<T>>
 where
     T: ToPrimitive,
 {
@@ -17,7 +17,7 @@ where
 
 #[cfg_attr(feature = "align", repr(align(32)))]
 #[cfg_attr(feature = "align", inline(never))]
-fn new_summary<T: Copy + Ord>(input: &Vec<T>) -> Option<Summary<T>>
+fn new_summary<T: Copy + Ord, N>(input: &Vec<T>, _: &N) -> Option<Summary<T>>
 where
     T: ToPrimitive,
 {

@@ -11,11 +11,14 @@ pub struct FixedStringGenerator {
 }
 
 impl Generator for FixedStringGenerator {
-    type Output = String;
+    type Haystack = String;
+    type Needle = ();
 
-    fn next_payload(&mut self) -> Self::Output {
+    fn next_haystack(&mut self) -> Self::Haystack {
         self.string.clone()
     }
+
+    fn next_needle(&mut self) -> Self::Needle {}
 }
 
 pub struct RandomVec<T>(SmallRng, usize, PhantomData<T>);
@@ -31,14 +34,17 @@ impl<T: Default + Copy> Generator for RandomVec<T>
 where
     [T]: Fill,
 {
-    type Output = Vec<T>;
+    type Haystack = Vec<T>;
+    type Needle = ();
 
-    fn next_payload(&mut self) -> Self::Output {
+    fn next_haystack(&mut self) -> Self::Haystack {
         let RandomVec(rng, size, _) = self;
         let mut v = vec![T::default(); *size];
         rng.fill(&mut v[..]);
         v
     }
+
+    fn next_needle(&mut self) -> Self::Needle {}
 }
 
 #[derive(Clone)]
@@ -64,9 +70,10 @@ impl RandomStringGenerator {
     }
 }
 impl Generator for RandomStringGenerator {
-    type Output = String;
+    type Haystack = String;
+    type Needle = ();
 
-    fn next_payload(&mut self) -> Self::Output {
+    fn next_haystack(&mut self) -> Self::Haystack {
         let start = self
             .rng
             .gen_range(0..self.char_indicies.len() - self.length);
@@ -79,6 +86,8 @@ impl Generator for RandomStringGenerator {
     fn name(&self) -> String {
         format!("RandomString<{}>", self.length)
     }
+
+    fn next_needle(&mut self) -> Self::Needle {}
 }
 
 #[cfg_attr(feature = "align", repr(align(32)))]
@@ -107,14 +116,14 @@ pub fn factorial(mut n: usize) -> usize {
 #[cfg_attr(feature = "align", repr(align(32)))]
 #[cfg_attr(feature = "align", inline(never))]
 #[allow(unused)]
-pub fn std(s: &String) -> usize {
+pub fn std<T>(s: &String, _: &T) -> usize {
     s.chars().count()
 }
 
 #[cfg_attr(feature = "align", repr(align(32)))]
 #[cfg_attr(feature = "align", inline(never))]
 #[allow(unused)]
-pub fn std_count(s: &String) -> usize {
+pub fn std_count<T>(s: &String, _: &T) -> usize {
     let mut l = 0;
     for _ in s.chars() {
         l += 1;
@@ -125,7 +134,7 @@ pub fn std_count(s: &String) -> usize {
 #[cfg_attr(feature = "align", repr(align(32)))]
 #[cfg_attr(feature = "align", inline(never))]
 #[allow(unused)]
-pub fn std_count_rev(s: &String) -> usize {
+pub fn std_count_rev<T>(s: &String, _: &T) -> usize {
     let mut l = 0;
     for _ in s.chars().rev() {
         l += 1;
@@ -136,6 +145,6 @@ pub fn std_count_rev(s: &String) -> usize {
 #[cfg_attr(feature = "align", repr(align(32)))]
 #[cfg_attr(feature = "align", inline(never))]
 #[allow(unused)]
-pub fn std_take<const N: usize>(s: &String) -> usize {
+pub fn std_take<const N: usize, T>(s: &String, _: &T) -> usize {
     s.chars().take(N).count()
 }

@@ -10,9 +10,10 @@ mod test_funcs;
 struct RandomVec(SmallRng, usize);
 
 impl Generator for RandomVec {
-    type Output = Vec<u32>;
+    type Haystack = Vec<u32>;
+    type Needle = ();
 
-    fn next_payload(&mut self) -> Self::Output {
+    fn next_haystack(&mut self) -> Self::Haystack {
         let RandomVec(rng, size) = self;
         let mut v = vec![0; *size];
         rng.fill(&mut v[..]);
@@ -22,19 +23,21 @@ impl Generator for RandomVec {
     fn name(&self) -> String {
         format!("RandomVec<{}>", self.1)
     }
+
+    fn next_needle(&mut self) -> Self::Needle {}
 }
 
-fn sort_unstable<T: Ord + Copy>(mut input: Vec<T>) -> T {
+fn sort_unstable<T: Ord + Copy, N>(mut input: Vec<T>, _: &N) -> T {
     input.sort_unstable();
     input[input.len() / 2]
 }
 
-fn sort_stable<T: Ord + Copy>(mut input: Vec<T>) -> T {
+fn sort_stable<T: Ord + Copy, N>(mut input: Vec<T>, _: &N) -> T {
     input.sort();
     input[input.len() / 2]
 }
 
-fn copy_and_sort_stable<T: Ord + Copy>(input: &Vec<T>) -> T {
+fn copy_and_sort_stable<T: Ord + Copy, N>(input: &Vec<T>, _: &N) -> T {
     let mut input = input.clone();
     input.sort();
     input[input.len() / 2]
@@ -44,16 +47,26 @@ fn main() {
     let mut benchmark = Benchmark::new();
 
     benchmark.add_pair(
-        benchmark_fn("sum_50000", |_| sum(5000)),
-        benchmark_fn("sum_49500", |_| sum(4950)),
+        benchmark_fn("sum_50000", |_, _| sum(5000)),
+        benchmark_fn("sum_49500", |_, _| sum(4950)),
     );
 
     benchmark.add_pair(
-        benchmark_fn("factorial_500", |_| factorial(500)),
-        benchmark_fn("factorial_495", |_| factorial(495)),
+        benchmark_fn("sum_50000", |_, _| sum(5000)),
+        benchmark_fn("sum_50000", |_, _| sum(5000)),
     );
 
-    run(benchmark, &mut [&mut StaticValue(())]);
+    benchmark.add_pair(
+        benchmark_fn("factorial_500", |_, _| factorial(500)),
+        benchmark_fn("factorial_495", |_, _| factorial(495)),
+    );
+
+    benchmark.add_pair(
+        benchmark_fn("factorial_500", |_, _| factorial(500)),
+        benchmark_fn("factorial_500", |_, _| factorial(500)),
+    );
+
+    run(benchmark, &mut [&mut StaticValue((), ())]);
 
     let mut str = Benchmark::new();
 
@@ -66,8 +79,8 @@ fn main() {
         benchmark_fn("std_count_rev", std_count_rev),
     );
     str.add_pair(
-        benchmark_fn("std_5000", std_take::<5000>),
-        benchmark_fn("std_4950", std_take::<4950>),
+        benchmark_fn("std_5000", std_take::<5000, _>),
+        benchmark_fn("std_4950", std_take::<4950, _>),
     );
 
     run(str, &mut [&mut RandomStringGenerator::new().unwrap()]);

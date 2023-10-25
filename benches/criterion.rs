@@ -32,8 +32,8 @@ fn utf8_benchmark(c: &mut Criterion) {
     group.bench_function("std_length_4950", |b| {
         let mut generator = RandomStringGenerator::new().unwrap();
         b.iter_batched(
-            || generator.next_payload(),
-            |s| std_take::<4950>(&s),
+            || generator.next_haystack(),
+            |s| std_take::<4950, _>(&s, &()),
             BatchSize::SmallInput,
         );
     });
@@ -41,8 +41,8 @@ fn utf8_benchmark(c: &mut Criterion) {
     group.bench_function("std_length_5000", |b| {
         let mut generator = RandomStringGenerator::new().unwrap();
         b.iter_batched(
-            || generator.next_payload(),
-            |s| std_take::<5000>(&s),
+            || generator.next_haystack(),
+            |s| std_take::<5000, _>(&s, &()),
             BatchSize::SmallInput,
         );
     });
@@ -50,8 +50,8 @@ fn utf8_benchmark(c: &mut Criterion) {
     group.bench_function("std_count", |b| {
         let mut generator = RandomStringGenerator::new().unwrap();
         b.iter_batched(
-            || generator.next_payload(),
-            |s| std_count(&s),
+            || generator.next_haystack(),
+            |s| std_count(&s, &()),
             BatchSize::SmallInput,
         );
     });
@@ -59,8 +59,8 @@ fn utf8_benchmark(c: &mut Criterion) {
     group.bench_function("std_count_rev", |b| {
         let mut generator = RandomStringGenerator::new().unwrap();
         b.iter_batched(
-            || generator.next_payload(),
-            |s| std_count_rev(&s),
+            || generator.next_haystack(),
+            |s| std_count_rev(&s, &()),
             BatchSize::SmallInput,
         );
     });

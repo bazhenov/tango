@@ -55,7 +55,10 @@ struct Opts {
     bench: bool,
 }
 
-pub fn run<P, O>(mut benchmark: Benchmark<P, O>, payloads: &mut [&mut dyn Generator<Output = P>]) {
+pub fn run<H, N, O>(
+    mut benchmark: Benchmark<H, N, O>,
+    payloads: &mut [&mut dyn Generator<Haystack = H, Needle = N>],
+) {
     let opts = Opts::parse();
 
     match opts.subcommand {
@@ -87,6 +90,8 @@ pub fn run<P, O>(mut benchmark: Benchmark<P, O>, payloads: &mut [&mut dyn Genera
                 max_iterations,
                 max_duration: Duration::from_millis(time),
                 outlier_detection_enabled: !skip_outlier_detection,
+                haystack_frequency: 1000,
+                needle_frequency: 1,
             };
             for generator in payloads {
                 benchmark.run_by_name(*generator, &opts);
