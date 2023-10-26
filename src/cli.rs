@@ -72,13 +72,9 @@ pub fn run<H, N, O>(
             bench: _,
         } => {
             if verbose {
-                let mut reporter = VerboseReporter::default();
-                reporter.set_skip_outlier_filtering(skip_outlier_detection);
-                benchmark.add_reporter(reporter);
+                benchmark.add_reporter(VerboseReporter);
             } else {
-                let mut reporter = ConsoleReporter::default();
-                reporter.set_skip_outlier_filtering(skip_outlier_detection);
-                benchmark.add_reporter(reporter);
+                benchmark.add_reporter(ConsoleReporter);
             }
 
             let max_iterations = iterations.map(|i| i.into()).unwrap_or(1_000_000);
@@ -90,7 +86,7 @@ pub fn run<H, N, O>(
                 max_iterations,
                 max_duration: Duration::from_millis(time),
                 outlier_detection_enabled: !skip_outlier_detection,
-                iterations_per_haystack: 100,
+                iterations_per_haystack: 1,
                 iterations_per_needle: 1,
             };
             for generator in payloads {
@@ -114,15 +110,7 @@ pub mod reporting {
     use crate::{Reporter, RunResult};
 
     #[derive(Default)]
-    pub(super) struct VerboseReporter {
-        skip_outlier_filtering: bool,
-    }
-
-    impl VerboseReporter {
-        pub fn set_skip_outlier_filtering(&mut self, flag: bool) {
-            self.skip_outlier_filtering = flag
-        }
-    }
+    pub(super) struct VerboseReporter;
 
     impl Reporter for VerboseReporter {
         fn on_complete(&mut self, results: &RunResult) {
@@ -194,15 +182,7 @@ pub mod reporting {
     }
 
     #[derive(Default)]
-    pub(super) struct ConsoleReporter {
-        skip_outlier_filtering: bool,
-    }
-
-    impl ConsoleReporter {
-        pub fn set_skip_outlier_filtering(&mut self, flag: bool) {
-            self.skip_outlier_filtering = flag
-        }
-    }
+    pub(super) struct ConsoleReporter;
 
     impl Reporter for ConsoleReporter {
         fn on_start(&mut self, payloads_name: &str) {

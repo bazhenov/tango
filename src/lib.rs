@@ -1,5 +1,4 @@
 use num_traits::{Pow, ToPrimitive};
-use statrs::distribution::Normal;
 use std::{
     any::type_name,
     cmp::Ordering,
@@ -612,69 +611,6 @@ fn iqr_variance_thresholds(mut input: Vec<i64>) -> Option<(i64, i64)> {
     }
 }
 
-/// Outlier threshold detection
-///
-/// This functions detects optimal threshold for outlier filtering. Algorithm finds a threshold
-/// that split the set of all observations `M` into two different subsets `S` and `O`. Each observation
-/// is considered as a split point. Algorithm chooses split point in such way that it maximizes
-/// the ration of `S` with this observation and without.
-///
-/// For example in a set of observations `[1, 2, 3, 100, 200, 300]` the target observation will be 100.
-/// It is the observation including which will raise variance the most.
-/// `outliers_cnt` - maximum number of outliers to ignore.
-fn max_variance_thresholds(mut input: Vec<i64>, mut outliers_cnt: usize) -> Option<(i64, i64)> {
-    // TODO(bazhenov) sorting should be done by difference with median
-    input.sort_by_key(|a| a.abs());
-
-    let variance = RunningVariance::from(input.iter().copied());
-
-    // Looking only topmost values
-    let skip = input.len() - outliers_cnt;
-    let mut candidate_outliers = input[skip..].iter().filter(|i| **i < 0).count();
-    let value_and_variance = input.iter().copied().zip(variance).skip(skip);
-
-    let mut prev_variance = 0.;
-    for (value, var) in value_and_variance {
-        if prev_variance > 0. {
-            let deviance = (var / prev_variance) - 1.;
-            let target = 100. / ((input.len() - outliers_cnt) as f64);
-            if deviance > target {
-                if let Some((min, max)) = binomial_interval_approximation(outliers_cnt, 0.5, 0.5) {
-                    if min > candidate_outliers && candidate_outliers < max {
-                        return Some((-value.abs(), value.abs()));
-                    }
-                } else {
-                    // Normal approximation of binomial doesn't work for small amount of observations
-                    // n * p < 10. But it means that we do not have justification of imbalanced outliers
-                    return Some((-value.abs(), value.abs()));
-                }
-            }
-        }
-
-        prev_variance = var;
-        outliers_cnt -= 1;
-        if value < 0 {
-            candidate_outliers -= 1;
-        }
-    }
-
-    None
-}
-
-fn binomial_interval_approximation(n: usize, p: f64, width: f64) -> Option<(usize, usize)> {
-    use statrs::distribution::ContinuousCDF;
-    let nf = n as f64;
-    if nf * p < 10. || nf * (1. - p) < 10. {
-        return None;
-    }
-    let mu = nf * p;
-    let sigma = (nf * p * (1. - p)).sqrt();
-    let distribution = Normal::new(mu, sigma).unwrap();
-    let min = distribution.inverse_cdf(width / 2.).floor() as usize;
-    let max = n - min;
-    Some((min, max))
-}
-
 mod timer {
     use std::time::Instant;
 
@@ -827,25 +763,5 @@ mod tests {
             sum_of_squares += (f64::from(value) - mean).powi(2);
         }
         sum_of_squares / (n - 1.)
-    }
-
-    #[test]
-    fn check_filter_outliers() {
-        let input = vec![
-            1i64, -2, 3, -4, 5, -6, 7, -8, 9, -10, //
-            101, -102,
-        ];
-
-        let (min, max) = max_variance_thresholds(input, 3).unwrap();
-        assert!(min < 1, "Minimum is: {}", min);
-        assert!(10 < max && max <= 101, "Maximum is: {}", max);
-    }
-
-    #[test]
-    fn check_binomial_approximation() {
-        assert_eq!(
-            binomial_interval_approximation(10000000, 0.5, 0.2),
-            Some((4997973, 5002027))
-        );
     }
 }

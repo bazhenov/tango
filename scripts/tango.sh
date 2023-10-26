@@ -7,7 +7,7 @@ if [ -f "${FILE}" ]; then
 fi
 
 for i in {1..30}; do
-    cargo bench --bench=tango -- pair factorial_495 -t 1000 -v >> "${FILE}"
+    cargo bench --bench=tango -- pair std_495 -t 1000 -v -o >> "${FILE}"
 done
 
-cat "${FILE}" | grep 'mean' | awk '{print $8}'
+cat "${FILE}" | grep 'mean' | awk '{print $10}' | sed 's/%//'
