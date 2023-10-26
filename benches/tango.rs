@@ -49,8 +49,8 @@ fn main() {
     #[cfg(feature = "aa_test")]
     {
         benchmark.add_pair(
-            benchmark_fn("sum_50000", |_, _| sum(5000)),
-            benchmark_fn("sum_50000", |_, _| sum(5000)),
+            benchmark_fn("sum_5000", |_, _| sum(5000)),
+            benchmark_fn("sum_5000", |_, _| sum(5000)),
         );
 
         benchmark.add_pair(
@@ -60,8 +60,8 @@ fn main() {
     }
 
     benchmark.add_pair(
-        benchmark_fn("sum_50000", |_, _| sum(5000)),
-        benchmark_fn("sum_49500", |_, _| sum(4950)),
+        benchmark_fn("sum_5000", |_, _| sum(5000)),
+        benchmark_fn("sum_4950", |_, _| sum(4950)),
     );
 
     benchmark.add_pair(

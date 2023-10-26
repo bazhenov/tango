@@ -1,3 +1,5 @@
+#![cfg_attr(feature = "align", feature(fn_align))]
+
 mod test_funcs;
 
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
@@ -7,12 +9,12 @@ use test_funcs::{factorial, std_count, std_count_rev, std_take, sum, RandomStrin
 fn sum_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("arithmetic");
 
-    group.bench_function("sum_50000", |b| {
-        b.iter(|| sum(50000));
+    group.bench_function("sum_5000", |b| {
+        b.iter(|| sum(5000));
     });
 
-    group.bench_function("sum_49500", |b| {
-        b.iter(|| sum(49500));
+    group.bench_function("sum_4950", |b| {
+        b.iter(|| sum(4950));
     });
 
     group.bench_function("factorial_500", |b| {
