@@ -3,6 +3,7 @@ use std::{
     any::type_name,
     cmp::Ordering,
     collections::BTreeMap,
+    fmt::Display,
     fs::File,
     hint::black_box,
     io::{BufWriter, Write},
@@ -116,10 +117,14 @@ impl<H: Copy, N: Copy> Generator for StaticValue<H, N> {
     fn next_needle(&mut self) -> Self::Needle {
         self.1
     }
+
+    fn name(&self) -> String {
+        format!("StaticValue")
+    }
 }
 
 pub trait Reporter {
-    fn on_start(&mut self, _payloads_name: &str) {}
+    fn on_start(&mut self, _generator_name: &str) {}
     fn on_complete(&mut self, _results: &RunResult) {}
 }
 

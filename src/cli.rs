@@ -75,7 +75,7 @@ pub fn run<H, N, O>(
             let mut reporter: Box<dyn Reporter> = if verbose {
                 Box::new(VerboseReporter)
             } else {
-                Box::new(ConsoleReporter)
+                Box::new(ConsoleReporter::default())
             };
 
             let mut opts = settings;
@@ -189,11 +189,13 @@ pub mod reporting {
     }
 
     #[derive(Default)]
-    pub(super) struct ConsoleReporter;
+    pub(super) struct ConsoleReporter {
+        current_generator_name: Option<String>,
+    }
 
     impl Reporter for ConsoleReporter {
-        fn on_start(&mut self, payloads_name: &str) {
-            println!("{}", payloads_name);
+        fn on_start(&mut self, generator_name: &str) {
+            self.current_generator_name = Some(generator_name.into());
         }
 
         fn on_complete(&mut self, results: &RunResult) {
@@ -206,7 +208,8 @@ pub mod reporting {
             let speedup = diff.mean / base.mean * 100.;
             let candidate_faster = diff.mean < 0.;
             println!(
-                "  {:20} ... {:20} [ {:>8} ... {:>8} ]    {:>+7.2}{}",
+                "{:20}  {:>30} / {:30} [ {:>8} ... {:>8} ]    {:>+7.2}{}",
+                self.current_generator_name.take().as_deref().unwrap_or(""),
                 results.base_name,
                 colorize(&results.candidate_name, significant, candidate_faster),
                 HumanTime(base.mean),
