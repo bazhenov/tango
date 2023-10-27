@@ -1,4 +1,4 @@
-use crate::{Benchmark, Generator, RunOpts};
+use crate::{Benchmark, Generator, MeasurementSettings, Reporter};
 use clap::Parser;
 use core::fmt;
 use std::{
@@ -18,8 +18,8 @@ enum BenchMode {
         #[arg(long = "bench", default_value_t = true)]
         bench: bool,
 
-        #[arg(short = 'i', long = "iterations")]
-        iterations: Option<NonZeroUsize>,
+        #[arg(short = 's', long = "samples")]
+        samples: Option<NonZeroUsize>,
 
         #[arg(short = 't', long = "time")]
         time: Option<NonZeroU64>,
@@ -57,6 +57,7 @@ struct Opts {
 
 pub fn run<H, N, O>(
     mut benchmark: Benchmark<H, N, O>,
+    settings: MeasurementSettings,
     payloads: &mut [&mut dyn Generator<Haystack = H, Needle = N>],
 ) {
     let opts = Opts::parse();
@@ -65,31 +66,38 @@ pub fn run<H, N, O>(
         BenchMode::Pair {
             name,
             time,
-            iterations,
+            samples,
             verbose,
             path_to_dump,
             skip_outlier_detection,
             bench: _,
         } => {
-            if verbose {
-                benchmark.add_reporter(VerboseReporter);
+            let mut reporter: Box<dyn Reporter> = if verbose {
+                Box::new(VerboseReporter)
             } else {
-                benchmark.add_reporter(ConsoleReporter);
+                Box::new(ConsoleReporter)
+            };
+
+            let mut opts = settings;
+            if let Some(samples) = samples {
+                opts.max_samples = samples.into()
+            }
+            if let Some(millis) = time {
+                opts.max_duration = Duration::from_millis(millis.into());
+            }
+            if skip_outlier_detection {
+                opts.outlier_detection_enabled = false;
             }
 
-            let max_iterations = iterations.map(|i| i.into()).unwrap_or(1_000_000);
-            let time = time.map(|i| i.into()).unwrap_or(100);
-
-            let opts = RunOpts {
-                name_filter: name,
-                measurements_path: path_to_dump,
-                max_samples: max_iterations,
-                max_duration: Duration::from_millis(time),
-                outlier_detection_enabled: !skip_outlier_detection,
-                ..Default::default()
-            };
+            let name_filter = name.as_deref().unwrap_or("");
             for generator in payloads {
-                benchmark.run_by_name(*generator, &opts);
+                benchmark.run_by_name(
+                    *generator,
+                    reporter.as_mut(),
+                    name_filter,
+                    &opts,
+                    path_to_dump.as_ref(),
+                );
             }
         }
         BenchMode::Calibrate { bench: _ } => {

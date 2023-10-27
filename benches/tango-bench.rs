@@ -27,11 +27,11 @@ where
 fn main() {
     let mut payloads = RandomVec::<i64>::new(1_000);
 
-    let mut b = Benchmark::new();
+    let mut b = Benchmark::default();
     b.add_pair(
         benchmark_fn("old", old_summary),
         benchmark_fn("new", new_summary),
     );
 
-    cli::run(b, &mut [&mut payloads])
+    cli::run(b, Default::default(), &mut [&mut payloads])
 }

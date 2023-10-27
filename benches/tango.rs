@@ -44,7 +44,7 @@ fn copy_and_sort_stable<T: Ord + Copy, N>(input: &Vec<T>, _: &N) -> T {
 }
 
 fn main() {
-    let mut benchmark = Benchmark::new();
+    let mut benchmark = Benchmark::default();
 
     #[cfg(feature = "aa_test")]
     {
@@ -69,9 +69,13 @@ fn main() {
         benchmark_fn("factorial_495", |_, _| factorial(495)),
     );
 
-    run(benchmark, &mut [&mut StaticValue((), ())]);
+    run(
+        benchmark,
+        Default::default(),
+        &mut [&mut StaticValue((), ())],
+    );
 
-    let mut str = Benchmark::new();
+    let mut str = Benchmark::default();
 
     str.add_pair(
         benchmark_fn("str_std", str_std),
@@ -86,9 +90,13 @@ fn main() {
         benchmark_fn("str_4950", |h, n| str_take(4950, h, n)),
     );
 
-    run(str, &mut [&mut RandomString::new().unwrap()]);
+    run(
+        str,
+        Default::default(),
+        &mut [&mut RandomString::new().unwrap()],
+    );
 
-    let mut benchmark = Benchmark::new();
+    let mut benchmark = Benchmark::default();
 
     benchmark.add_pair(
         benchmark_fn_with_setup("stable", sort_stable, Clone::clone),
@@ -102,6 +110,7 @@ fn main() {
 
     run(
         benchmark,
+        Default::default(),
         &mut [
             &mut RandomVec(SmallRng::seed_from_u64(42), 100),
             &mut RandomVec(SmallRng::seed_from_u64(42), 1000),

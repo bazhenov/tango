@@ -12,6 +12,7 @@ rand = { version = "0.8.5", features = ["small_rng"] }
 
 [dev-dependencies]
 criterion = "0.5.1"
+ordsearch = { version = "0.2.*", features = ["nightly"] }
 
 [features]
 align = []
@@ -24,6 +25,10 @@ harness = false
 
 [[bench]]
 name = "tango"
+harness = false
+
+[[bench]]
+name = "ordsearch"
 harness = false
 
 [[bench]]

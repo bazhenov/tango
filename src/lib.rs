@@ -125,55 +125,29 @@ pub trait Reporter {
 
 type FnPair<H, N, O> = (Box<dyn BenchmarkFn<H, N, O>>, Box<dyn BenchmarkFn<H, N, O>>);
 
-pub struct Benchmark<H, N, O> {
-    funcs: BTreeMap<String, FnPair<H, N, O>>,
-    reporters: Vec<Box<dyn Reporter>>,
-}
-
-impl<H, N, O> Default for Benchmark<H, N, O> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-pub struct RunOpts {
-    /// Filter for function and benchmark names to be filtered
-    name_filter: Option<String>,
-
-    /// Directory location for CSV dump of individual mesurements
-    ///
-    /// The format is as follows
-    /// ```txt
-    /// b_1,c_1
-    /// b_2,c_2
-    /// ...
-    /// b_n,c_n
-    /// ```
-    /// where `b_1..b_n` are baseline absolute time (in nanoseconds) measurements
-    /// and `c_1..c_n` are candidate time measurements
-    measurements_path: Option<PathBuf>,
-    max_samples: usize,
-    max_duration: Duration,
-    outlier_detection_enabled: bool,
+// TODO(bazhenov) nice occasion to use builder
+#[derive(Clone, Copy, Debug)]
+pub struct MeasurementSettings {
+    pub max_samples: usize,
+    pub max_duration: Duration,
+    pub outlier_detection_enabled: bool,
 
     /// The number of samples per one generated haystack
-    samples_per_haystack: usize,
+    pub samples_per_haystack: usize,
 
     /// The number of samples per one generated needle.
     ///
     /// Usually should be 1 unless you want to stress the same code path in a benchmark
     /// multiple times.
-    samples_per_needle: usize,
+    pub samples_per_needle: usize,
 
     /// The number of iterations in a sample for each of 2 tested functions
-    max_iterations_per_sample: usize,
+    pub max_iterations_per_sample: usize,
 }
 
-impl Default for RunOpts {
+impl Default for MeasurementSettings {
     fn default() -> Self {
         Self {
-            name_filter: None,
-            measurements_path: None,
             max_samples: 1_000_000,
             max_duration: Duration::from_millis(100),
             outlier_detection_enabled: true,
@@ -184,14 +158,21 @@ impl Default for RunOpts {
     }
 }
 
-impl<H, N, O> Benchmark<H, N, O> {
-    pub fn new() -> Self {
+pub struct Benchmark<H, N, O> {
+    funcs: BTreeMap<String, FnPair<H, N, O>>,
+    reporters: Vec<Box<dyn Reporter>>,
+}
+
+impl<H, N, O> Default for Benchmark<H, N, O> {
+    fn default() -> Self {
         Self {
             funcs: BTreeMap::new(),
             reporters: vec![],
         }
     }
+}
 
+impl<H, N, O> Benchmark<H, N, O> {
     pub fn add_reporter(&mut self, reporter: impl Reporter + 'static) {
         self.reporters.push(Box::new(reporter))
     }
@@ -209,21 +190,26 @@ impl<H, N, O> Benchmark<H, N, O> {
     pub fn run_by_name(
         &mut self,
         payloads: &mut dyn Generator<Haystack = H, Needle = N>,
-        opts: &RunOpts,
+        reporter: &mut dyn Reporter,
+        name_filter: &str,
+        opts: &MeasurementSettings,
+        samples_dump: Option<impl AsRef<Path>>,
     ) {
-        let name_filter = opts.name_filter.as_deref().unwrap_or("");
         let generator_name = payloads.name();
         let mut start_reported = false;
         for (key, (baseline, candidate)) in &self.funcs {
             if key.contains(name_filter) || generator_name.contains(name_filter) {
                 if !start_reported {
-                    for reporter in self.reporters.iter_mut() {
-                        reporter.on_start(generator_name.as_str());
-                    }
+                    reporter.on_start(generator_name.as_str());
                     start_reported = true;
                 }
-                let (baseline_summary, candidate_summary, diff) =
-                    measure_function_pair(payloads, baseline.as_ref(), candidate.as_ref(), opts);
+                let (baseline_summary, candidate_summary, diff) = measure_function_pair(
+                    payloads,
+                    baseline.as_ref(),
+                    candidate.as_ref(),
+                    opts,
+                    samples_dump.as_ref(),
+                );
 
                 let run_result = calculate_run_result(
                     (baseline.name(), baseline_summary),
@@ -232,9 +218,7 @@ impl<H, N, O> Benchmark<H, N, O> {
                     opts.outlier_detection_enabled,
                 );
 
-                for reporter in self.reporters.iter_mut() {
-                    reporter.on_complete(&run_result);
-                }
+                reporter.on_complete(&run_result);
             }
         }
     }
@@ -268,14 +252,14 @@ impl<H, N, O> Benchmark<H, N, O> {
         tries: usize,
     ) -> usize {
         let mut succeed = 0;
-        let opts = RunOpts {
+        let opts = MeasurementSettings {
             max_samples: 1_000_000,
             max_duration: Duration::from_millis(1000),
-            outlier_detection_enabled: true,
             ..Default::default()
         };
         for _ in 0..tries {
-            let (a_summary, b_summary, diff) = measure_function_pair(payloads, a, b, &opts);
+            let (a_summary, b_summary, diff) =
+                measure_function_pair(payloads, a, b, &opts, Option::<PathBuf>::None);
 
             let result =
                 calculate_run_result((a.name(), a_summary), (b.name(), b_summary), diff, true);
@@ -289,11 +273,25 @@ impl<H, N, O> Benchmark<H, N, O> {
     }
 }
 
+/// Measure the difference in performance of two functions
+///
+/// Provides a way to save a raw dump of measurements into directory
+///
+/// The format is as follows
+/// ```txt
+/// b_1,c_1
+/// b_2,c_2
+/// ...
+/// b_n,c_n
+/// ```
+/// where `b_1..b_n` are baseline absolute time (in nanoseconds) measurements
+/// and `c_1..c_n` are candidate time measurements
 fn measure_function_pair<H, N, O>(
     generator: &mut dyn Generator<Haystack = H, Needle = N>,
     base: &dyn BenchmarkFn<H, N, O>,
     candidate: &dyn BenchmarkFn<H, N, O>,
-    opts: &RunOpts,
+    opts: &MeasurementSettings,
+    samples_dump_location: Option<impl AsRef<Path>>,
 ) -> (Summary<i64>, Summary<i64>, Vec<i64>) {
     let mut base_samples = Vec::with_capacity(opts.max_samples);
     let mut candidate_samples = Vec::with_capacity(opts.max_samples);
@@ -306,7 +304,8 @@ fn measure_function_pair<H, N, O>(
 
     // Generating number sequence (1, 5, 10, 15, ...) up to the estimated number of iterations/ms
     let mut iterations_choices = (0..=iterations_per_ms.min(opts.max_iterations_per_sample))
-        .map(|f| 1.max(f / 5))
+        .step_by(5)
+        .map(|i| 1.max(i))
         .cycle();
 
     for i in 0..opts.max_samples {
@@ -342,9 +341,9 @@ fn measure_function_pair<H, N, O>(
         candidate_samples.push(candidate_sample as i64 / iterations as i64);
     }
 
-    if let Some(path) = opts.measurements_path.as_ref() {
+    if let Some(path) = samples_dump_location {
         let file_name = format!("{}-{}.csv", base.name(), candidate.name());
-        let file_path = path.join(file_name);
+        let file_path = path.as_ref().join(file_name);
         write_raw_measurements(file_path, &base_samples, &candidate_samples);
     }
 
