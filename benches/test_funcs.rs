@@ -116,14 +116,14 @@ pub fn factorial(mut n: usize) -> usize {
 #[cfg_attr(feature = "align", repr(align(32)))]
 #[cfg_attr(feature = "align", inline(never))]
 #[allow(unused)]
-pub fn std<T>(s: &String, _: &T) -> usize {
+pub fn str_std<T>(s: &String, _: &T) -> usize {
     s.chars().count()
 }
 
 #[cfg_attr(feature = "align", repr(align(32)))]
 #[cfg_attr(feature = "align", inline(never))]
 #[allow(unused)]
-pub fn std_count<T>(s: &String, _: &T) -> usize {
+pub fn str_count<T>(s: &String, _: &T) -> usize {
     let mut l = 0;
     for _ in s.chars() {
         l += 1;
@@ -134,7 +134,7 @@ pub fn std_count<T>(s: &String, _: &T) -> usize {
 #[cfg_attr(feature = "align", repr(align(32)))]
 #[cfg_attr(feature = "align", inline(never))]
 #[allow(unused)]
-pub fn std_count_rev<T>(s: &String, _: &T) -> usize {
+pub fn str_count_rev<T>(s: &String, _: &T) -> usize {
     let mut l = 0;
     for _ in s.chars().rev() {
         l += 1;
@@ -145,6 +145,6 @@ pub fn std_count_rev<T>(s: &String, _: &T) -> usize {
 #[cfg_attr(feature = "align", repr(align(32)))]
 #[cfg_attr(feature = "align", inline(never))]
 #[allow(unused)]
-pub fn std_take<T>(n: usize, s: &String, _: &T) -> usize {
+pub fn str_take<T>(n: usize, s: &String, _: &T) -> usize {
     s.chars().take(black_box(n)).count()
 }

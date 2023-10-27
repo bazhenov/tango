@@ -3,7 +3,7 @@ use rand::{rngs::SmallRng, Rng, SeedableRng};
 use rust_pairwise_testing::{
     benchmark_fn, benchmark_fn_with_setup, cli::run, Benchmark, Generator, StaticValue,
 };
-use test_funcs::{factorial, std, std_count, std_count_rev, std_take, sum, RandomString};
+use test_funcs::{factorial, str_count, str_count_rev, str_std, str_take, sum, RandomString};
 
 mod test_funcs;
 
@@ -74,16 +74,16 @@ fn main() {
     let mut str = Benchmark::new();
 
     str.add_pair(
-        benchmark_fn("std", std),
-        benchmark_fn("std_count", std_count),
+        benchmark_fn("str_std", str_std),
+        benchmark_fn("str_count", str_count),
     );
     str.add_pair(
-        benchmark_fn("std_count", std_count),
-        benchmark_fn("std_count_rev", std_count_rev),
+        benchmark_fn("str_count", str_count),
+        benchmark_fn("str_count_rev", str_count_rev),
     );
     str.add_pair(
-        benchmark_fn("std_5000", |h, n| std_take(5000, h, n)),
-        benchmark_fn("std_4950", |h, n| std_take(4950, h, n)),
+        benchmark_fn("str_5000", |h, n| str_take(5000, h, n)),
+        benchmark_fn("str_4950", |h, n| str_take(4950, h, n)),
     );
 
     run(str, &mut [&mut RandomString::new().unwrap()]);

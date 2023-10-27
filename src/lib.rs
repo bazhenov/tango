@@ -1,4 +1,4 @@
-use num_traits::{Pow, ToPrimitive};
+use num_traits::ToPrimitive;
 use std::{
     any::type_name,
     cmp::Ordering,
@@ -291,11 +291,10 @@ fn measure_function_pair<H, N, O>(
     let mut haystack = generator.next_haystack();
     let mut needle = generator.next_needle();
 
-    // Generating exponentially larger numbers (1, 10, 100, ...) up to the estimated number
-    // of iterations/ms.
-    let mut iterations_choices = (0..=iterations.min(1000).ilog10())
+    // Generating number sequence (1, 5, 10, 15, ...) up to the estimated number of iterations/ms
+    let mut iterations_choices = (0..=iterations.min(50))
         .into_iter()
-        .map(|f| 10.pow(f) as usize)
+        .map(|f| 1.max(f / 5))
         .cycle();
 
     for i in 0..opts.max_iterations {
