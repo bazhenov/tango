@@ -83,11 +83,10 @@ pub fn run<H, N, O>(
             let opts = RunOpts {
                 name_filter: name,
                 measurements_path: path_to_dump,
-                max_iterations,
+                max_samples: max_iterations,
                 max_duration: Duration::from_millis(time),
                 outlier_detection_enabled: !skip_outlier_detection,
-                iterations_per_haystack: 1,
-                iterations_per_needle: 1,
+                ..Default::default()
             };
             for generator in payloads {
                 benchmark.run_by_name(*generator, &opts);

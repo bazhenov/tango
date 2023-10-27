@@ -152,18 +152,36 @@ pub struct RunOpts {
     /// where `b_1..b_n` are baseline absolute time (in nanoseconds) measurements
     /// and `c_1..c_n` are candidate time measurements
     measurements_path: Option<PathBuf>,
-    max_iterations: usize,
+    max_samples: usize,
     max_duration: Duration,
     outlier_detection_enabled: bool,
 
-    /// The number of iteration per one generated haystack
-    iterations_per_haystack: usize,
+    /// The number of samples per one generated haystack
+    samples_per_haystack: usize,
 
-    /// The number of iteration per one generated needle.
+    /// The number of samples per one generated needle.
     ///
     /// Usually should be 1 unless you want to stress the same code path in a benchmark
     /// multiple times.
-    iterations_per_needle: usize,
+    samples_per_needle: usize,
+
+    /// The number of iterations in a sample for each of 2 tested functions
+    max_iterations_per_sample: usize,
+}
+
+impl Default for RunOpts {
+    fn default() -> Self {
+        Self {
+            name_filter: None,
+            measurements_path: None,
+            max_samples: 1_000_000,
+            max_duration: Duration::from_millis(100),
+            outlier_detection_enabled: true,
+            samples_per_haystack: 1,
+            samples_per_needle: 1,
+            max_iterations_per_sample: 50,
+        }
+    }
 }
 
 impl<H, N, O> Benchmark<H, N, O> {
@@ -253,13 +271,10 @@ impl<H, N, O> Benchmark<H, N, O> {
     ) -> usize {
         let mut succeed = 0;
         let opts = RunOpts {
-            name_filter: None,
-            measurements_path: None,
-            max_iterations: 1_000_000,
+            max_samples: 1_000_000,
             max_duration: Duration::from_millis(1000),
             outlier_detection_enabled: true,
-            iterations_per_haystack: 100,
-            iterations_per_needle: 1,
+            ..Default::default()
         };
         for _ in 0..tries {
             let (a_summary, b_summary, diff) = measure_function_pair(payloads, a, b, &opts);
@@ -281,8 +296,8 @@ fn measure_function_pair<H, N, O>(
     candidate: &dyn BenchmarkFn<H, N, O>,
     opts: &RunOpts,
 ) -> (Summary<i64>, Summary<i64>, Vec<i64>) {
-    let mut base_time = Vec::with_capacity(opts.max_iterations);
-    let mut candidate_time = Vec::with_capacity(opts.max_iterations);
+    let mut base_time = Vec::with_capacity(opts.max_samples);
+    let mut candidate_time = Vec::with_capacity(opts.max_samples);
 
     let iterations = estimate_iterations_per_ms(generator, base, candidate);
 
@@ -292,21 +307,21 @@ fn measure_function_pair<H, N, O>(
     let mut needle = generator.next_needle();
 
     // Generating number sequence (1, 5, 10, 15, ...) up to the estimated number of iterations/ms
-    let mut iterations_choices = (0..=iterations.min(50))
+    let mut iterations_choices = (0..=iterations.min(opts.max_iterations_per_sample))
         .into_iter()
         .map(|f| 1.max(f / 5))
         .cycle();
 
-    for i in 0..opts.max_iterations {
+    for i in 0..opts.max_samples {
         // Trying not to stress benchmarking loop with very frequent timer calls
         // First predicate fires approximatley each millisecond
         if i % iterations == 0 && Instant::now() >= deadline {
             break;
         }
-        if i % opts.iterations_per_haystack == 0 {
+        if i % opts.samples_per_haystack == 0 {
             haystack = generator.next_haystack();
         }
-        if i % opts.iterations_per_needle == 0 {
+        if i % opts.samples_per_needle == 0 {
             needle = generator.next_needle();
         }
 
