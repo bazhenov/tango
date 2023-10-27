@@ -223,13 +223,11 @@ impl<H, N, O> Benchmark<H, N, O> {
                     start_reported = true;
                 }
                 let (baseline_summary, candidate_summary, diff) =
-                    measure_function_pair(payloads, baseline.as_ref(), candidate.as_ref(), &opts);
+                    measure_function_pair(payloads, baseline.as_ref(), candidate.as_ref(), opts);
 
                 let run_result = calculate_run_result(
-                    baseline.name(),
-                    candidate.name(),
-                    baseline_summary,
-                    candidate_summary,
+                    (baseline.name(), baseline_summary),
+                    (candidate.name(), candidate_summary),
                     diff,
                     opts.outlier_detection_enabled,
                 );
@@ -279,7 +277,8 @@ impl<H, N, O> Benchmark<H, N, O> {
         for _ in 0..tries {
             let (a_summary, b_summary, diff) = measure_function_pair(payloads, a, b, &opts);
 
-            let result = calculate_run_result(a.name(), b.name(), a_summary, b_summary, diff, true);
+            let result =
+                calculate_run_result((a.name(), a_summary), (b.name(), b_summary), diff, true);
             succeed += usize::from(result.significant);
         }
         succeed
@@ -296,32 +295,29 @@ fn measure_function_pair<H, N, O>(
     candidate: &dyn BenchmarkFn<H, N, O>,
     opts: &RunOpts,
 ) -> (Summary<i64>, Summary<i64>, Vec<i64>) {
-    let mut base_time = Vec::with_capacity(opts.max_samples);
-    let mut candidate_time = Vec::with_capacity(opts.max_samples);
+    let mut base_samples = Vec::with_capacity(opts.max_samples);
+    let mut candidate_samples = Vec::with_capacity(opts.max_samples);
 
-    let iterations = estimate_iterations_per_ms(generator, base, candidate);
-
+    let iterations_per_ms = estimate_iterations_per_ms(generator, base, candidate);
     let deadline = Instant::now() + opts.max_duration;
 
     let mut haystack = generator.next_haystack();
     let mut needle = generator.next_needle();
 
     // Generating number sequence (1, 5, 10, 15, ...) up to the estimated number of iterations/ms
-    let mut iterations_choices = (0..=iterations.min(opts.max_iterations_per_sample))
-        .into_iter()
+    let mut iterations_choices = (0..=iterations_per_ms.min(opts.max_iterations_per_sample))
         .map(|f| 1.max(f / 5))
         .cycle();
 
     for i in 0..opts.max_samples {
-        // Trying not to stress benchmarking loop with very frequent timer calls
-        // First predicate fires approximatley each millisecond
-        if i % iterations == 0 && Instant::now() >= deadline {
+        // Trying not to stress benchmarking loop with to much of clock calls
+        if i % iterations_per_ms == 0 && Instant::now() >= deadline {
             break;
         }
-        if i % opts.samples_per_haystack == 0 {
+        if (i + 1) % opts.samples_per_haystack == 0 {
             haystack = generator.next_haystack();
         }
-        if i % opts.samples_per_needle == 0 {
+        if (i + 1) % opts.samples_per_needle == 0 {
             needle = generator.next_needle();
         }
 
@@ -342,21 +338,21 @@ fn measure_function_pair<H, N, O>(
             (base_sample, candidate_sample)
         };
 
-        base_time.push(base_sample as i64 / iterations as i64);
-        candidate_time.push(candidate_sample as i64 / iterations as i64);
+        base_samples.push(base_sample as i64 / iterations as i64);
+        candidate_samples.push(candidate_sample as i64 / iterations as i64);
     }
 
     if let Some(path) = opts.measurements_path.as_ref() {
         let file_name = format!("{}-{}.csv", base.name(), candidate.name());
         let file_path = path.join(file_name);
-        write_raw_measurements(file_path, &base_time, &candidate_time);
+        write_raw_measurements(file_path, &base_samples, &candidate_samples);
     }
 
-    let base = Summary::from(&base_time).unwrap();
-    let candidate = Summary::from(&candidate_time).unwrap();
-    let diff = base_time
+    let base = Summary::from(&base_samples).unwrap();
+    let candidate = Summary::from(&candidate_samples).unwrap();
+    let diff = base_samples
         .into_iter()
-        .zip(candidate_time)
+        .zip(candidate_samples)
         .map(|(b, c)| c - b)
         .collect();
     (base, candidate, diff)
@@ -367,33 +363,30 @@ fn measure_function_pair<H, N, O>(
 /// If functions are to slow to be executed in 1ms, the number of iterations will be 1.
 fn estimate_iterations_per_ms<H, N, O>(
     generator: &mut dyn Generator<Haystack = H, Needle = N>,
-    base: &dyn BenchmarkFn<H, N, O>,
-    candidate: &dyn BenchmarkFn<H, N, O>,
+    a: &dyn BenchmarkFn<H, N, O>,
+    b: &dyn BenchmarkFn<H, N, O>,
 ) -> usize {
     let haystack = generator.next_haystack();
     let needle = generator.next_needle();
 
-    // Measure the amount of iterations achievable in (factor * 1ms) and later divide by factor
+    // Measure the amount of iterations achievable in (factor * 1ms) and later divide by this factor
     // to calculate average number of iterations per 1ms
     let factor = 10;
     let duration = Duration::from_millis(1);
     let deadline = Instant::now() + duration * factor;
     let mut iterations = 0;
     while Instant::now() < deadline {
-        candidate.measure(&haystack, &needle, 1);
-        base.measure(&haystack, &needle, 1);
+        b.measure(&haystack, &needle, 1);
+        a.measure(&haystack, &needle, 1);
         iterations += 1;
     }
 
-    let rounding_factor = 10;
-    1.max(iterations / factor as usize / rounding_factor * rounding_factor)
+    1.max(iterations / factor as usize)
 }
 
-fn calculate_run_result(
-    baseline_name: impl Into<String>,
-    candidate_name: impl Into<String>,
-    baseline: Summary<i64>,
-    candidate: Summary<i64>,
+fn calculate_run_result<N: Into<String>>(
+    baseline: (N, Summary<i64>),
+    candidate: (N, Summary<i64>),
     diff: Vec<i64>,
     filter_outliers: bool,
 ) -> RunResult {
@@ -420,15 +413,15 @@ fn calculate_run_result(
     let z_score = diff_summary.mean / std_err;
 
     RunResult {
-        base_name: baseline_name.into(),
-        candidate_name: candidate_name.into(),
-        baseline,
-        candidate,
+        base_name: baseline.0.into(),
+        candidate_name: candidate.0.into(),
+        baseline: baseline.1,
+        candidate: candidate.1,
         diff: diff_summary,
         // significant result is far away from 0 and have more than 0.5%
         // base/candidate difference
         // z_score = 2.6 corresponds to 99% significance level
-        significant: z_score.abs() >= 2.6 && (diff_summary.mean / candidate.mean).abs() > 0.005,
+        significant: z_score.abs() >= 2.6 && (diff_summary.mean / candidate.1.mean).abs() > 0.005,
         outliers: outliers_filtered,
     }
 }
@@ -562,12 +555,15 @@ where
 ///
 /// Outliers are observations are 5 IQR away from the corresponding quartile.
 fn iqr_variance_thresholds(mut input: Vec<i64>) -> Option<(i64, i64)> {
+    const FACTOR: i64 = 5;
+
     input.sort();
     let (q1_idx, q3_idx) = (input.len() / 4, input.len() * 3 / 4);
     if q1_idx < q3_idx && input[q1_idx] < input[q3_idx] && q3_idx < input.len() {
         let iqr = input[q3_idx] - input[q1_idx];
-        let low_threshold = input[q1_idx] - iqr * 5;
-        let high_threshold = input[q3_idx] + iqr * 5;
+
+        let low_threshold = input[q1_idx] - iqr * FACTOR;
+        let high_threshold = input[q3_idx] + iqr * FACTOR;
 
         // Calculating the indicies of the thresholds in an dataset
         let low_threshold_idx = match input[0..q1_idx].binary_search(&low_threshold) {
