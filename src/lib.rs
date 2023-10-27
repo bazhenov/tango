@@ -480,29 +480,28 @@ pub struct Summary<T> {
     pub variance: f64,
 }
 
-impl<'a, T: PartialOrd + Copy + 'a> Summary<T> {
+impl<'a, T: PartialOrd + Copy + Default + 'a> Summary<T> {
     pub fn from<C>(values: C) -> Option<Self>
     where
         T: ToPrimitive,
         C: IntoIterator<Item = &'a T>,
     {
-        Self::running(values.into_iter().copied())?.last()
+        Self::running(values.into_iter().copied()).last()
     }
 
-    pub fn running<I>(mut iter: I) -> Option<impl Iterator<Item = Summary<T>>>
+    pub fn running<I>(iter: I) -> impl Iterator<Item = Summary<T>>
     where
         T: ToPrimitive,
         I: Iterator<Item = T>,
     {
-        let head = iter.next()?;
-        Some(RunningSummary {
+        RunningSummary {
             iter,
-            n: 1,
-            min: head,
-            max: head,
-            mean: head.to_f64().unwrap(),
+            n: 0,
+            min: T::default(),
+            max: T::default(),
+            mean: 0.,
             s: 0.,
-        })
+        }
     }
 }
 
@@ -527,6 +526,11 @@ where
         let value = self.iter.next()?;
         let fvalue = value.to_f64().unwrap();
 
+        if self.n == 0 {
+            self.min = value;
+            self.max = value;
+        }
+
         if let Some(Ordering::Less) = value.partial_cmp(&self.min) {
             self.min = value;
         }
@@ -538,54 +542,19 @@ where
         let mean_p = self.mean;
         self.mean += (fvalue - self.mean) / self.n as f64;
         self.s += (fvalue - mean_p) * (fvalue - self.mean);
+        let variance = if self.n > 1 {
+            self.s / (self.n - 1) as f64
+        } else {
+            0.
+        };
 
         Some(Summary {
             n: self.n,
             min: self.min,
             max: self.max,
             mean: self.mean,
-            variance: self.s / (self.n - 1) as f64,
+            variance,
         })
-    }
-}
-
-/// Running variance iterator
-///
-/// Provides a running (streaming variance) for a given iterator of observations.
-/// Uses simple variance formula: `Var(X) = E[X^2] - E[X]^2`.
-pub struct RunningVariance<T> {
-    iter: T,
-    m: f64,
-    s: f64,
-    n: f64,
-}
-
-impl<T: Iterator<Item = i64>> Iterator for RunningVariance<T> {
-    type Item = f64;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let value = self.iter.next()? as f64;
-        self.n += 1.;
-        let m_p = self.m;
-        self.m += (value - self.m) / self.n;
-        self.s += (value - m_p) * (value - self.m);
-
-        if self.n == 1. {
-            Some(0.)
-        } else {
-            Some(self.s / (self.n - 1.))
-        }
-    }
-}
-
-impl<I, T: Iterator<Item = I>> From<T> for RunningVariance<T> {
-    fn from(value: T) -> Self {
-        Self {
-            iter: value,
-            m: 0.,
-            s: 0.,
-            n: 0.,
-        }
     }
 }
 
@@ -732,7 +701,9 @@ mod tests {
     #[test]
     fn check_running_variance() {
         let input = [1i64, 2, 3, 4, 5, 6, 7];
-        let variances = RunningVariance::from(input.into_iter()).collect::<Vec<_>>();
+        let variances = Summary::running(input.into_iter())
+            .map(|s| s.variance)
+            .collect::<Vec<_>>();
         let expected = &[0., 0.5, 1., 1.6666, 2.5, 3.5, 4.6666];
 
         assert_eq!(variances.len(), expected.len());
@@ -750,7 +721,7 @@ mod tests {
     #[test]
     fn check_running_variance_stress_test() {
         let rng = RngIterator(SmallRng::seed_from_u64(0)).map(|i| i as i64);
-        let mut variances = RunningVariance::from(rng);
+        let mut variances = Summary::running(rng).map(|s| s.variance);
 
         assert!(variances.nth(10000000).unwrap() > 0.)
     }
