@@ -2,6 +2,7 @@
 
 extern crate rust_pairwise_testing;
 
+use clap::Error;
 use ordsearch::OrderedCollection;
 use rust_pairwise_testing::{benchmark_fn, cli, Benchmark, Generator, MeasurementSettings};
 use std::{
@@ -129,7 +130,13 @@ fn search_vec<T: Copy + Ord>(
         .copied()
 }
 
-fn main() {
+fn create_benchmark<T>(
+    max_value: usize,
+) -> Benchmark<(Rc<Vec<T>>, Rc<OrderedCollection<T>>, Rc<BTreeSet<T>>), T, Option<T>>
+where
+    T: Copy + Ord + TryFrom<usize> + 'static,
+    <T as TryFrom<usize>>::Error: fmt::Debug,
+{
     let mut b = Benchmark::default();
 
     b.add_pair(
@@ -141,14 +148,19 @@ fn main() {
         benchmark_fn("ord", search_ord),
     );
 
-    let mut payloads = (10..20)
+    let sizes = [
+        8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4069, 8192, 16384, 32768, 65536,
+    ];
+
+    let generators = sizes
         .into_iter()
-        .map(|i| 2usize.pow(i))
-        .map(|size| RandomVec::<u32>::new(size, u32::max_value() as usize))
-        .collect::<Vec<_>>();
+        .map(|size| RandomVec::<T>::new(size, max_value));
+    b.add_generators(generators);
 
-    let mut refs = payloads.iter_mut().map(|i| i as _).collect::<Vec<_>>();
+    b
+}
 
+fn main() {
     let settings = MeasurementSettings {
         max_samples: 1_000_000,
         max_duration: Duration::from_millis(100),
@@ -158,7 +170,14 @@ fn main() {
         max_iterations_per_sample: 1,
     };
 
-    cli::run(b, settings, &mut refs[..]);
+    cli::run(create_benchmark::<u8>(u8::max_value() as usize), settings);
+    cli::run(create_benchmark::<u16>(u16::max_value() as usize), settings);
+    cli::run(create_benchmark::<u32>(u32::max_value() as usize), settings);
+    cli::run(create_benchmark::<u64>(u64::max_value() as usize), settings);
+    cli::run(
+        create_benchmark::<u128>(u128::max_value() as usize),
+        settings,
+    );
 }
 
 fn pseudorandom_iter<T>(max: usize) -> impl Iterator<Item = T>

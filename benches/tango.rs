@@ -45,6 +45,7 @@ fn copy_and_sort_stable<T: Ord + Copy, N>(input: &Vec<T>, _: &N) -> T {
 
 fn main() {
     let mut benchmark = Benchmark::default();
+    benchmark.add_generator(StaticValue((), ()));
 
     #[cfg(feature = "aa_test")]
     {
@@ -69,13 +70,10 @@ fn main() {
         benchmark_fn("factorial_495", |_, _| factorial(495)),
     );
 
-    run(
-        benchmark,
-        Default::default(),
-        &mut [&mut StaticValue((), ())],
-    );
+    run(benchmark, Default::default());
 
     let mut str = Benchmark::default();
+    str.add_generator(RandomString::new().unwrap());
 
     str.add_pair(
         benchmark_fn("str_std", str_std),
@@ -90,13 +88,13 @@ fn main() {
         benchmark_fn("str_4950", |h, n| str_take(4950, h, n)),
     );
 
-    run(
-        str,
-        Default::default(),
-        &mut [&mut RandomString::new().unwrap()],
-    );
+    run(str, Default::default());
 
     let mut benchmark = Benchmark::default();
+
+    for size in [100, 1_000, 10_000, 100_000] {
+        benchmark.add_generator(RandomVec(SmallRng::seed_from_u64(42), size));
+    }
 
     benchmark.add_pair(
         benchmark_fn_with_setup("stable", sort_stable, Clone::clone),
@@ -108,14 +106,5 @@ fn main() {
         benchmark_fn("stable_clone_sort", copy_and_sort_stable),
     );
 
-    run(
-        benchmark,
-        Default::default(),
-        &mut [
-            &mut RandomVec(SmallRng::seed_from_u64(42), 100),
-            &mut RandomVec(SmallRng::seed_from_u64(42), 1000),
-            &mut RandomVec(SmallRng::seed_from_u64(42), 10000),
-            &mut RandomVec(SmallRng::seed_from_u64(42), 100000),
-        ],
-    )
+    run(benchmark, Default::default())
 }

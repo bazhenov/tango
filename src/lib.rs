@@ -164,6 +164,7 @@ impl Default for MeasurementSettings {
 
 pub struct Benchmark<H, N, O> {
     funcs: BTreeMap<String, FnPair<H, N, O>>,
+    generators: Vec<Box<dyn Generator<Haystack = H, Needle = N>>>,
     reporters: Vec<Box<dyn Reporter>>,
 }
 
@@ -171,6 +172,7 @@ impl<H, N, O> Default for Benchmark<H, N, O> {
     fn default() -> Self {
         Self {
             funcs: BTreeMap::new(),
+            generators: vec![],
             reporters: vec![],
         }
     }
@@ -179,6 +181,19 @@ impl<H, N, O> Default for Benchmark<H, N, O> {
 impl<H, N, O> Benchmark<H, N, O> {
     pub fn add_reporter(&mut self, reporter: impl Reporter + 'static) {
         self.reporters.push(Box::new(reporter))
+    }
+
+    pub fn add_generator(&mut self, generator: impl Generator<Haystack = H, Needle = N> + 'static) {
+        self.generators.push(Box::new(generator))
+    }
+
+    pub fn add_generators<T>(&mut self, generators: impl IntoIterator<Item = T>)
+    where
+        T: Generator<Haystack = H, Needle = N> + 'static,
+    {
+        for generator in generators {
+            self.add_generator(generator);
+        }
     }
 
     pub fn add_pair(
@@ -193,47 +208,49 @@ impl<H, N, O> Benchmark<H, N, O> {
 
     pub fn run_by_name(
         &mut self,
-        payloads: &mut dyn Generator<Haystack = H, Needle = N>,
         reporter: &mut dyn Reporter,
         name_filter: &str,
         opts: &MeasurementSettings,
         samples_dump: Option<impl AsRef<Path>>,
     ) {
-        let generator_name = payloads.name();
-        let mut start_reported = false;
-        for (key, (baseline, candidate)) in &self.funcs {
-            if key.contains(name_filter) || generator_name.contains(name_filter) {
-                if !start_reported {
-                    reporter.on_start(generator_name.as_str());
-                    start_reported = true;
+        for generator in self.generators.iter_mut() {
+            let generator_name = generator.name();
+            let mut start_reported = false;
+            for (key, (baseline, candidate)) in &self.funcs {
+                if key.contains(name_filter) || generator_name.contains(name_filter) {
+                    if !start_reported {
+                        reporter.on_start(generator_name.as_str());
+                        start_reported = true;
+                    }
+                    let (baseline_summary, candidate_summary, diff) = measure_function_pair(
+                        generator.as_mut(),
+                        baseline.as_ref(),
+                        candidate.as_ref(),
+                        opts,
+                        samples_dump.as_ref(),
+                    );
+
+                    let run_result = calculate_run_result(
+                        (baseline.name(), baseline_summary),
+                        (candidate.name(), candidate_summary),
+                        diff,
+                        opts.outlier_detection_enabled,
+                    );
+
+                    reporter.on_complete(&run_result);
                 }
-                let (baseline_summary, candidate_summary, diff) = measure_function_pair(
-                    payloads,
-                    baseline.as_ref(),
-                    candidate.as_ref(),
-                    opts,
-                    samples_dump.as_ref(),
-                );
-
-                let run_result = calculate_run_result(
-                    (baseline.name(), baseline_summary),
-                    (candidate.name(), candidate_summary),
-                    diff,
-                    opts.outlier_detection_enabled,
-                );
-
-                reporter.on_complete(&run_result);
             }
         }
     }
 
-    pub fn run_calibration(&mut self, payloads: &mut dyn Generator<Haystack = H, Needle = N>) {
+    pub fn run_calibration(&mut self) {
         const TRIES: usize = 10;
 
+        let generator = self.generators[0].as_mut();
         println!("H0 testing...");
         for (baseline, candidate) in self.funcs.values() {
             for f in [baseline.as_ref(), candidate.as_ref()] {
-                let significant = Self::calibrate(payloads, f, f, TRIES);
+                let significant = Self::calibrate(generator, f, f, TRIES);
                 let successes = TRIES - significant;
                 println!("    {:30} ... {}/{}", f.name(), successes, TRIES);
             }
@@ -242,7 +259,7 @@ impl<H, N, O> Benchmark<H, N, O> {
         println!("H1 testing...");
         for (baseline, candidate) in self.funcs.values() {
             let significant =
-                Self::calibrate(payloads, baseline.as_ref(), candidate.as_ref(), TRIES);
+                Self::calibrate(generator, baseline.as_ref(), candidate.as_ref(), TRIES);
             let name = format!("{} / {}", baseline.name(), candidate.name());
             println!("    {:30} ... {}/{}", name, significant, TRIES);
         }

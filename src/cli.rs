@@ -1,4 +1,4 @@
-use crate::{Benchmark, Generator, MeasurementSettings, Reporter};
+use crate::{Benchmark, MeasurementSettings, Reporter};
 use clap::Parser;
 use core::fmt;
 use std::{
@@ -55,11 +55,7 @@ struct Opts {
     bench: bool,
 }
 
-pub fn run<H, N, O>(
-    mut benchmark: Benchmark<H, N, O>,
-    settings: MeasurementSettings,
-    payloads: &mut [&mut dyn Generator<Haystack = H, Needle = N>],
-) {
+pub fn run<H, N, O>(mut benchmark: Benchmark<H, N, O>, settings: MeasurementSettings) {
     let opts = Opts::parse();
 
     match opts.subcommand {
@@ -90,18 +86,10 @@ pub fn run<H, N, O>(
             }
 
             let name_filter = name.as_deref().unwrap_or("");
-            for generator in payloads {
-                benchmark.run_by_name(
-                    *generator,
-                    reporter.as_mut(),
-                    name_filter,
-                    &opts,
-                    path_to_dump.as_ref(),
-                );
-            }
+            benchmark.run_by_name(reporter.as_mut(), name_filter, &opts, path_to_dump.as_ref());
         }
         BenchMode::Calibrate { bench: _ } => {
-            benchmark.run_calibration(payloads[0]);
+            benchmark.run_calibration();
         }
         BenchMode::List { bench: _ } => {
             for fn_name in benchmark.list_functions() {
