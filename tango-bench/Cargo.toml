@@ -2,6 +2,14 @@
 name = "tango-bench"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
+description = "Tango benchmarking harness"
+homepage = "https://github.com/bazhenov/tango"
+documentation = "https://docs.rs/tango-bench"
+repository = "https://github.com/bazhenov/tango"
+readme = "../README.md"
+categories = ["development-tools", "development-tools::profiling"]
+keywords = ["benchmarks", "performance"]
 
 [dependencies]
 clap = { version = "4.4.6", features = ["derive"] }
