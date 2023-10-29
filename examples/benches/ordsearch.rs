@@ -13,7 +13,6 @@ use std::{
     ops::Bound,
     rc::Rc,
     sync::atomic::{AtomicUsize, Ordering},
-    time::Duration,
 };
 use tango_bench::{benchmark_fn, cli, Benchmark, Generator, MeasurementSettings};
 
@@ -161,13 +160,9 @@ where
 
 fn main() {
     let settings = MeasurementSettings {
-        max_samples: 1_000_000,
-        max_duration: Duration::from_millis(100),
-        outlier_detection_enabled: true,
         samples_per_haystack: 1_000_000,
-        samples_per_needle: 1,
         max_iterations_per_sample: 1,
-        min_iterations_per_sample: 1,
+        ..Default::default()
     };
 
     cli::run(create_benchmark::<u8>(u8::max_value() as usize), settings);

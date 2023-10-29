@@ -129,7 +129,6 @@ pub trait Reporter {
 
 type FnPair<H, N, O> = (Box<dyn BenchmarkFn<H, N, O>>, Box<dyn BenchmarkFn<H, N, O>>);
 
-// TODO(bazhenov) nice occasion to use builder
 #[derive(Clone, Copy, Debug)]
 pub struct MeasurementSettings {
     pub max_samples: usize,

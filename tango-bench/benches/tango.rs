@@ -1,4 +1,5 @@
 #![cfg_attr(feature = "align", feature(fn_align))]
+
 use rand::{rngs::SmallRng, Rng, SeedableRng};
 use tango_bench::{
     benchmark_fn, benchmark_fn_with_setup, cli::run, Benchmark, Generator, MeasurementSettings,
@@ -28,16 +29,22 @@ impl Generator for RandomVec {
     fn next_needle(&mut self) -> Self::Needle {}
 }
 
+#[cfg_attr(feature = "align", repr(align(32)))]
+#[cfg_attr(feature = "align", inline(never))]
 fn sort_unstable<T: Ord + Copy, N>(mut input: Vec<T>, _: &N) -> T {
     input.sort_unstable();
     input[input.len() / 2]
 }
 
+#[cfg_attr(feature = "align", repr(align(32)))]
+#[cfg_attr(feature = "align", inline(never))]
 fn sort_stable<T: Ord + Copy, N>(mut input: Vec<T>, _: &N) -> T {
     input.sort();
     input[input.len() / 2]
 }
 
+#[cfg_attr(feature = "align", repr(align(32)))]
+#[cfg_attr(feature = "align", inline(never))]
 fn copy_and_sort_stable<T: Ord + Copy, N>(input: &Vec<T>, _: &N) -> T {
     let mut input = input.clone();
     input.sort();

@@ -146,5 +146,5 @@ pub fn str_count_rev<T>(s: &String, _: &T) -> usize {
 #[cfg_attr(feature = "align", inline(never))]
 #[allow(unused)]
 pub fn str_take<T>(n: usize, s: &String, _: &T) -> usize {
-    s.chars().take(black_box(n)).count()
+    black_box(s.chars().take(n)).count()
 }
