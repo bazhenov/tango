@@ -3,7 +3,6 @@ use std::{
     any::type_name,
     cmp::Ordering,
     collections::BTreeMap,
-    fmt::Display,
     fs::File,
     hint::black_box,
     io::{BufWriter, Write},

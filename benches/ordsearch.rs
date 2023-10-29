@@ -10,6 +10,7 @@ use std::{
     convert::TryFrom,
     fmt,
     iter::FromIterator,
+    marker::PhantomData,
     ops::Bound,
     rc::Rc,
     sync::atomic::{AtomicUsize, Ordering},
@@ -19,10 +20,7 @@ use std::{
 struct RandomVec<T> {
     size: usize,
     max_value: usize,
-    vec: Rc<Vec<T>>,
-    ord: Rc<OrderedCollection<T>>,
-    btree: Rc<BTreeSet<T>>,
-    request_no: usize,
+    _type: PhantomData<T>,
 }
 
 impl<T> RandomVec<T>
@@ -34,10 +32,7 @@ where
         Self {
             size,
             max_value,
-            vec: Rc::default(),
-            ord: Rc::new(OrderedCollection::from(vec![])),
-            btree: Rc::default(),
-            request_no: 0,
+            _type: PhantomData,
         }
     }
 }
@@ -158,9 +153,9 @@ fn main() {
         max_samples: 1_000_000,
         max_duration: Duration::from_millis(100),
         outlier_detection_enabled: true,
-        samples_per_haystack: 500,
+        samples_per_haystack: 1_000_000,
         samples_per_needle: 1,
-        max_iterations_per_sample: 50,
+        max_iterations_per_sample: 1,
     };
 
     cli::run(b, settings, &mut refs[..]);
