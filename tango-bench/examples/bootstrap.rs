@@ -6,7 +6,7 @@ use std::{
 };
 
 use rand::{rngs::SmallRng, seq::SliceRandom, Rng, SeedableRng};
-use tango::Summary;
+use tango_bench::Summary;
 
 fn main() {
     let file_name = env::args().nth(1).unwrap();

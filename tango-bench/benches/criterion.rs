@@ -3,7 +3,7 @@
 mod test_funcs;
 
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
-use tango::Generator;
+use tango_bench::Generator;
 use test_funcs::{factorial, str_count, str_count_rev, str_take, sum, RandomString};
 
 fn sum_benchmark(c: &mut Criterion) {

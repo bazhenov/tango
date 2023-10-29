@@ -1,35 +1,56 @@
-# Rust Paired Testing Prototype
+# Tango.rs
 
-Proof-of-concept of paired tests idea described in the article [Paired benchmarking. How to measure performance](https://www.bazhenov.me/posts/paired-benchmarking/)
+It used to be that benchmarking requires a lot of time and a lot of iterations to converge on meaningful results. It is espectially painfull when you need to detect small changes – in the order of magnitude of several percents.
 
-Running paired tests:
+Tango.rs is the new benchmarking framework which uses pairwise benchmarking as a way of measuring code performance. It relies on the fact that it's much easier to measure difference in performance of two simultaneusly running functions than of two functions running one after the another.
 
-```console
-$ cargo run --release
-name                            B min  C min  min ∆     B mean  C mean  mean ∆ mean ∆ (%)
-std / std                         731    731   0.0%      868.5   868.9     0.1       0.0%
-std_count / std_count            4210   4211   0.0%     6942.5  6926.8     1.7       0.0%
-std_count_rev / std_count_rev    4211   4211   0.0%     7160.3  7155.0     1.6       0.0%
-std_5000 / std_4925              3167   3121  -1.5%     4573.9  4507.7   -65.9      -1.4% CHANGE DETECTED
-std_count / std_count_rev        4210   4210   0.0%     6952.8  7205.3   236.5       3.4% CHANGE DETECTED
-std / std_count                   740   4210 468.9%      890.7  6952.0  6062.8     680.7% CHANGE DETECTED
+## 1 second, 1 percent, 1 error
+
+Comparing to classical (pointwise) benchmarking it's much more sensitive to changes which allows to detect statistically significant changes much earlier.
+
+Tango is created to be able to detect 1% change in performance within 1 second in at least 9 runs out of 10.
+
+## Getting Started
+
+```toml
+[dev-dependencies]
+tango-bench = "0.1.*"
+
+[[bench]]
+name = "bench"
+harness = false
 ```
 
-Running pointwise tests using criterion.rs:
+Add `benches/bench.rs` with the following content:
 
-```console
-$ cargo bench
-utf8/std_count          time:   [9.6316 µs 9.6550 µs 9.6798 µs]
-Found 6 outliers among 100 measurements (6.00%)
-  3 (3.00%) high mild
-  3 (3.00%) high severe
-utf8/std_count_rev      time:   [7.5723 µs 7.7677 µs 7.9667 µs]
-Found 8 outliers among 100 measurements (8.00%)
-  8 (8.00%) high severe
+```rust
+use tango_bench::{benchmark_fn, benchmark_fn_with_setup, cli::run, Benchmark, Generator, StaticValue};
+
+pub fn factorial(mut n: usize) -> usize {
+  let mut result = 1usize;
+  while n > 0 {
+    result = result.wrapping_mul(black_box(n));
+    n -= 1;
+  }
+  result
+}
+
+fn main() {
+  let mut b = Benchmark::default();
+  b.add_generator(StaticValue((), ()));
+
+  benchmark.add_pair(
+    benchmark_fn("factorial_500", |_, _| factorial(500)),
+    benchmark_fn("factorial_495", |_, _| factorial(495)),
+  );
+
+  let settings = MeasurementSettings::default();
+  cli::run(b, settings)
+}
 ```
 
-Generating gnuplot graphs:
+Run benchmarks with following command:
 
 ```console
-$ gnuplot -c plot.gnuplot input.csv
+$ cargo run --bench=bench -- pair
 ```

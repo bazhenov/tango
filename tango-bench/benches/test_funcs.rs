@@ -1,6 +1,6 @@
 use rand::{rngs::SmallRng, Fill, Rng, SeedableRng};
 use std::{hint::black_box, io, marker::PhantomData};
-use tango::Generator;
+use tango_bench::Generator;
 
 /// HTML page with a lot of chinese text to test UTF8 decoding speed
 const INPUT_TEXT: &str = include_str!("./input.txt");

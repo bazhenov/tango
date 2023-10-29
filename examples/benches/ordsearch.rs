@@ -1,6 +1,6 @@
 #![cfg_attr(feature = "align", feature(fn_align))]
 
-extern crate tango;
+extern crate tango_bench;
 
 use ordsearch::OrderedCollection;
 use std::{
@@ -15,7 +15,7 @@ use std::{
     sync::atomic::{AtomicUsize, Ordering},
     time::Duration,
 };
-use tango::{benchmark_fn, cli, Benchmark, Generator, MeasurementSettings};
+use tango_bench::{benchmark_fn, cli, Benchmark, Generator, MeasurementSettings};
 
 struct RandomVec<T> {
     size: usize,

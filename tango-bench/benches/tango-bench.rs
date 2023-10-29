@@ -1,7 +1,7 @@
 #![cfg_attr(feature = "align", feature(fn_align))]
 
 use num_traits::ToPrimitive;
-use tango::{benchmark_fn, cli, Benchmark, Summary};
+use tango_bench::{benchmark_fn, cli, Benchmark, Summary};
 use test_funcs::RandomVec;
 
 mod test_funcs;
