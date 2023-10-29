@@ -1,7 +1,7 @@
 #![cfg_attr(feature = "align", feature(fn_align))]
 
 use num_traits::ToPrimitive;
-use rust_pairwise_testing::{benchmark_fn, cli, Benchmark, Summary};
+use tango::{benchmark_fn, cli, Benchmark, Summary};
 use test_funcs::RandomVec;
 
 mod test_funcs;
@@ -25,13 +25,12 @@ where
 }
 
 fn main() {
-    let mut payloads = RandomVec::<i64>::new(1_000);
-
     let mut b = Benchmark::default();
+    b.add_generator(RandomVec::<i64>::new(1_000));
     b.add_pair(
         benchmark_fn("old", old_summary),
         benchmark_fn("new", new_summary),
     );
 
-    cli::run(b, Default::default(), &mut [&mut payloads])
+    cli::run(b, Default::default())
 }

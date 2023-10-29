@@ -1,0 +1,16 @@
+[package]
+name = "tango-examples"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tango = { path="../tango" }
+
+[dev-dependencies]
+criterion = "0.5.1"
+ordsearch = { version = "0.2.*" }
+#, features = ["nightly"]
+
+[[bench]]
+name = "ordsearch"
+harness = false

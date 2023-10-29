@@ -1,10 +1,8 @@
 #![cfg_attr(feature = "align", feature(fn_align))]
 
-extern crate rust_pairwise_testing;
+extern crate tango;
 
-use clap::Error;
 use ordsearch::OrderedCollection;
-use rust_pairwise_testing::{benchmark_fn, cli, Benchmark, Generator, MeasurementSettings};
 use std::{
     any::type_name,
     collections::BTreeSet,
@@ -17,6 +15,7 @@ use std::{
     sync::atomic::{AtomicUsize, Ordering},
     time::Duration,
 };
+use tango::{benchmark_fn, cli, Benchmark, Generator, MeasurementSettings};
 
 struct RandomVec<T> {
     size: usize,

@@ -1,6 +1,6 @@
 use rand::{rngs::SmallRng, Fill, Rng, SeedableRng};
-use rust_pairwise_testing::Generator;
 use std::{hint::black_box, io, marker::PhantomData};
+use tango::Generator;
 
 /// HTML page with a lot of chinese text to test UTF8 decoding speed
 const INPUT_TEXT: &str = include_str!("./input.txt");

@@ -1,8 +1,6 @@
 #![cfg_attr(feature = "align", feature(fn_align))]
 use rand::{rngs::SmallRng, Rng, SeedableRng};
-use rust_pairwise_testing::{
-    benchmark_fn, benchmark_fn_with_setup, cli::run, Benchmark, Generator, StaticValue,
-};
+use tango::{benchmark_fn, benchmark_fn_with_setup, cli::run, Benchmark, Generator, StaticValue};
 use test_funcs::{factorial, str_count, str_count_rev, str_std, str_take, sum, RandomString};
 
 mod test_funcs;

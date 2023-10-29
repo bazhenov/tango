@@ -1,36 +1,7 @@
-[package]
-name = "rust-pairwise-testing"
-version = "0.1.0"
-edition = "2021"
+[workspace]
+resolver = "2"
 
-[dependencies]
-clap = { version = "4.4.6", features = ["derive"] }
-libc = "0.2.148"
-mmap = "0.1.1"
-num-traits = "0.2.17"
-rand = { version = "0.8.5", features = ["small_rng"] }
-
-[dev-dependencies]
-criterion = "0.5.1"
-ordsearch = { version = "0.2.*", features = ["nightly"] }
-
-[features]
-align = []
-hw_timer = []
-aa_test = []
-
-[[bench]]
-name = "criterion"
-harness = false
-
-[[bench]]
-name = "tango"
-harness = false
-
-[[bench]]
-name = "ordsearch"
-harness = false
-
-[[bench]]
-name = "tango-bench"
-harness = false
+members = [
+    "tango",
+    "examples"
+]
