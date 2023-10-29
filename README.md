@@ -1,14 +1,14 @@
 # Tango.rs
 
-It used to be that benchmarking requires a lot of time and a lot of iterations to converge on meaningful results. It is espectially painfull when you need to detect small changes – in the order of magnitude of several percents.
+It used to be that benchmarking required a significant amount of time and numerous iterations to arrive at meaningful results, which was particularly arduous when trying to detect subtle changes, such as those within the range of a few percentage points.
 
-Tango.rs is the new benchmarking framework which uses pairwise benchmarking as a way of measuring code performance. It relies on the fact that it's much easier to measure difference in performance of two simultaneusly running functions than of two functions running one after the another.
+Introducing Tango.rs, a novel benchmarking framework that employs pairwise benchmarking to assess code performance. This approach capitalizes on the fact that it's far more efficient to measure the performance difference between two simultaneously executing functions compared to two functions executed consecutively.
 
 ## 1 second, 1 percent, 1 error
 
-Comparing to classical (pointwise) benchmarking it's much more sensitive to changes which allows to detect statistically significant changes much earlier.
+Compared to traditional pointwise benchmarking, pairwise benchmarking is significantly more sensitive to changes. This heightened sensitivity enables the early detection of statistically significant performance variations.
 
-Tango is created to be able to detect 1% change in performance within 1 second in at least 9 runs out of 10.
+Tango is designed to have the capability to detect a 1% change in performance within just one second in at least 9 out of 10 test runs.
 
 ## Getting Started
 
