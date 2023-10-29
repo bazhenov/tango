@@ -69,9 +69,9 @@ pub fn run<H, N, O>(mut benchmark: Benchmark<H, N, O>, settings: MeasurementSett
             bench: _,
         } => {
             let mut reporter: Box<dyn Reporter> = if verbose {
-                Box::new(VerboseReporter)
+                Box::<VerboseReporter>::default()
             } else {
-                Box::new(ConsoleReporter::default())
+                Box::<ConsoleReporter>::default()
             };
 
             let mut opts = settings;

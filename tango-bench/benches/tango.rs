@@ -47,8 +47,8 @@ fn copy_and_sort_stable<T: Ord + Copy, N>(input: &Vec<T>, _: &N) -> T {
 fn main() {
     let settings = MeasurementSettings::default();
 
-    let mut benchmark = Benchmark::default();
-    benchmark.add_generator(StaticValue((), ()));
+    let mut num_benchmark = Benchmark::default();
+    num_benchmark.add_generator(StaticValue((), ()));
 
     #[cfg(feature = "aa_test")]
     {
@@ -63,51 +63,49 @@ fn main() {
         );
     }
 
-    benchmark.add_pair(
+    num_benchmark.add_pair(
         benchmark_fn("sum_5000", |_, _| sum(5000)),
         benchmark_fn("sum_4950", |_, _| sum(4950)),
     );
 
-    benchmark.add_pair(
+    num_benchmark.add_pair(
         benchmark_fn("factorial_500", |_, _| factorial(500)),
         benchmark_fn("factorial_495", |_, _| factorial(495)),
     );
 
-    run(benchmark, settings);
+    let mut str_benchmark = Benchmark::default();
+    str_benchmark.add_generator(RandomString::new().unwrap());
 
-    let mut str = Benchmark::default();
-    str.add_generator(RandomString::new().unwrap());
-
-    str.add_pair(
+    str_benchmark.add_pair(
         benchmark_fn("str_std", str_std),
         benchmark_fn("str_count", str_count),
     );
-    str.add_pair(
+    str_benchmark.add_pair(
         benchmark_fn("str_count", str_count),
         benchmark_fn("str_count_rev", str_count_rev),
     );
-    str.add_pair(
+    str_benchmark.add_pair(
         benchmark_fn("str_5000", |h, n| str_take(5000, h, n)),
         benchmark_fn("str_4950", |h, n| str_take(4950, h, n)),
     );
 
-    run(str, settings);
-
-    let mut benchmark = Benchmark::default();
+    let mut sort_benchmark = Benchmark::default();
 
     for size in [100, 1_000, 10_000, 100_000] {
-        benchmark.add_generator(RandomVec(SmallRng::seed_from_u64(42), size));
+        sort_benchmark.add_generator(RandomVec(SmallRng::seed_from_u64(42), size));
     }
 
-    benchmark.add_pair(
+    sort_benchmark.add_pair(
         benchmark_fn_with_setup("stable", sort_stable, Clone::clone),
         benchmark_fn_with_setup("unstable", sort_unstable, Clone::clone),
     );
 
-    benchmark.add_pair(
+    sort_benchmark.add_pair(
         benchmark_fn_with_setup("stable", sort_stable, Clone::clone),
         benchmark_fn("stable_clone_sort", copy_and_sort_stable),
     );
 
-    run(benchmark, settings)
+    run(str_benchmark, settings);
+    run(sort_benchmark, settings);
+    run(num_benchmark, settings);
 }

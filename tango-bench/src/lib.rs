@@ -118,7 +118,7 @@ impl<H: Copy, N: Copy> Generator for StaticValue<H, N> {
     }
 
     fn name(&self) -> String {
-        format!("StaticValue")
+        "StaticValue".to_string()
     }
 }
 
