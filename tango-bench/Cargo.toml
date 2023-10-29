@@ -12,14 +12,12 @@ categories = ["development-tools", "development-tools::profiling"]
 keywords = ["benchmarks", "performance"]
 
 [dependencies]
-clap = { version = "4.4.6", features = ["derive"] }
-libc = "0.2.148"
-mmap = "0.1.1"
-num-traits = "0.2.17"
-rand = { version = "0.8.5", features = ["small_rng"] }
+clap = { version = "^4.4", features = ["derive"] }
+num-traits = "^0.2"
+rand = { version = "^0.8", features = ["small_rng"] }
 
 [dev-dependencies]
-criterion = "0.5.1"
+criterion = "^0.5"
 
 [features]
 align = []

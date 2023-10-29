@@ -1,7 +1,8 @@
 #![cfg_attr(feature = "align", feature(fn_align))]
 use rand::{rngs::SmallRng, Rng, SeedableRng};
 use tango_bench::{
-    benchmark_fn, benchmark_fn_with_setup, cli::run, Benchmark, Generator, StaticValue,
+    benchmark_fn, benchmark_fn_with_setup, cli::run, Benchmark, Generator, MeasurementSettings,
+    StaticValue,
 };
 use test_funcs::{factorial, str_count, str_count_rev, str_std, str_take, sum, RandomString};
 
@@ -44,6 +45,8 @@ fn copy_and_sort_stable<T: Ord + Copy, N>(input: &Vec<T>, _: &N) -> T {
 }
 
 fn main() {
+    let settings = MeasurementSettings::default();
+
     let mut benchmark = Benchmark::default();
     benchmark.add_generator(StaticValue((), ()));
 
@@ -70,7 +73,7 @@ fn main() {
         benchmark_fn("factorial_495", |_, _| factorial(495)),
     );
 
-    run(benchmark, Default::default());
+    run(benchmark, settings);
 
     let mut str = Benchmark::default();
     str.add_generator(RandomString::new().unwrap());
@@ -88,7 +91,7 @@ fn main() {
         benchmark_fn("str_4950", |h, n| str_take(4950, h, n)),
     );
 
-    run(str, Default::default());
+    run(str, settings);
 
     let mut benchmark = Benchmark::default();
 
@@ -106,5 +109,5 @@ fn main() {
         benchmark_fn("stable_clone_sort", copy_and_sort_stable),
     );
 
-    run(benchmark, Default::default())
+    run(benchmark, settings)
 }
