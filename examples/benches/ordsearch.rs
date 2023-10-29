@@ -167,6 +167,7 @@ fn main() {
         samples_per_haystack: 1_000_000,
         samples_per_needle: 1,
         max_iterations_per_sample: 1,
+        min_iterations_per_sample: 1,
     };
 
     cli::run(create_benchmark::<u8>(u8::max_value() as usize), settings);

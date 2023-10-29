@@ -145,6 +145,9 @@ pub struct MeasurementSettings {
     /// multiple times.
     pub samples_per_needle: usize,
 
+    /// Minimum number of iterations in a sample for each of 2 tested functions
+    pub min_iterations_per_sample: usize,
+
     /// The number of iterations in a sample for each of 2 tested functions
     pub max_iterations_per_sample: usize,
 }
@@ -157,6 +160,7 @@ impl Default for MeasurementSettings {
             outlier_detection_enabled: true,
             samples_per_haystack: 1,
             samples_per_needle: 1,
+            min_iterations_per_sample: 1,
             max_iterations_per_sample: 50,
         }
     }
@@ -324,7 +328,11 @@ fn measure_function_pair<H, N, O>(
     let mut needle = generator.next_needle();
 
     // Generating number sequence (1, 5, 10, 15, ...) up to the estimated number of iterations/ms
-    let mut iterations_choices = (0..=iterations_per_ms.min(opts.max_iterations_per_sample))
+    let iterations_min = opts.min_iterations_per_sample;
+    let iterations_max = iterations_per_ms
+        .min(opts.max_iterations_per_sample)
+        .max(iterations_min);
+    let mut iterations_choices = (iterations_min..=iterations_max)
         .step_by(5)
         .map(|i| 1.max(i))
         .cycle();
