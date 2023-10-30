@@ -585,36 +585,34 @@ fn iqr_variance_thresholds(mut input: Vec<i64>) -> Option<(i64, i64)> {
     const FACTOR: i64 = 5;
 
     input.sort();
-    let (q1_idx, q3_idx) = (input.len() / 4, input.len() * 3 / 4);
-    if q1_idx < q3_idx && input[q1_idx] < input[q3_idx] && q3_idx < input.len() {
-        let iqr = input[q3_idx] - input[q1_idx];
-
-        let low_threshold = input[q1_idx] - iqr * FACTOR;
-        let high_threshold = input[q3_idx] + iqr * FACTOR;
-
-        // Calculating the indicies of the thresholds in an dataset
-        let low_threshold_idx = match input[0..q1_idx].binary_search(&low_threshold) {
-            Ok(idx) => idx,
-            Err(idx) => idx,
-        };
-
-        let high_threshold_idx = match input[q3_idx..].binary_search(&high_threshold) {
-            Ok(idx) => idx,
-            Err(idx) => idx,
-        };
-
-        if low_threshold_idx == 0 || high_threshold_idx >= input.len() {
-            return None;
-        }
-
-        // Calculating the equal number of observations which should be removed from each "side" of observations
-        let outliers_cnt = low_threshold_idx.min(input.len() - high_threshold_idx);
-
-        Some((input[outliers_cnt], input[input.len() - outliers_cnt]))
-        // Some((low_threshold, high_threshold))
-    } else {
-        None
+    let (q1, q3) = (input.len() / 4, input.len() * 3 / 4);
+    if q1 >= q3 || q3 >= input.len() || input[q1] >= input[q3] {
+        return None;
     }
+    let iqr = input[q3] - input[q1];
+
+    let low_threshold = input[q1] - iqr * FACTOR;
+    let high_threshold = input[q3] + iqr * FACTOR;
+
+    // Calculating the indicies of the thresholds in an dataset
+    let low_threshold_idx = match input[0..q1].binary_search(&low_threshold) {
+        Ok(idx) => idx,
+        Err(idx) => idx,
+    };
+
+    let high_threshold_idx = match input[q3..].binary_search(&high_threshold) {
+        Ok(idx) => idx,
+        Err(idx) => idx,
+    };
+
+    if low_threshold_idx == 0 || high_threshold_idx >= input.len() {
+        return None;
+    }
+
+    // Calculating the equal number of observations which should be removed from each "side" of observations
+    let outliers_cnt = low_threshold_idx.min(input.len() - high_threshold_idx);
+
+    Some((input[outliers_cnt], input[input.len() - outliers_cnt]))
 }
 
 mod timer {
