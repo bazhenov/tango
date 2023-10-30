@@ -70,3 +70,10 @@ StaticValue     factorial_500 / factorial_495    [   392 ns ...   390 ns ]      
 ```
 
 This results is showing that indeed there is indeed ~1% difference between `factorial(500)` and `factorial(495)`.
+
+## Contributing
+
+The project in it's early stage so any help will be preciated. Here are some ideas you might find intresting
+
+- find a way to provide more user friendly API for registering tested function pairs in the system
+- if you're a library author trying out tango and providing feedback will be very useful
