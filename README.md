@@ -8,13 +8,15 @@ Introducing Tango.rs, a novel benchmarking framework that employs pairwise bench
 
 Compared to traditional pointwise benchmarking, pairwise benchmarking is significantly more sensitive to changes. This heightened sensitivity enables the early detection of statistically significant performance variations.
 
-Tango is designed to have the capability to detect a 1% change in performance within just one second in at least 9 out of 10 test runs.
+Tango is designed to have the capability to detect a 1% change in performance within just 1 second in at least 9 out of 10 test runs.
 
 ## Getting Started
 
+Add cargo dependency:
+
 ```toml
 [dev-dependencies]
-tango-bench = "0.1.*"
+tango-bench = "^0.1"
 
 [[bench]]
 name = "bench"
@@ -24,7 +26,8 @@ harness = false
 Add `benches/bench.rs` with the following content:
 
 ```rust
-use tango_bench::{benchmark_fn, benchmark_fn_with_setup, cli::run, Benchmark, Generator, StaticValue};
+use std::hint::black_box;
+use tango_bench::{benchmark_fn, cli, Benchmark, MeasurementSettings, StaticValue};
 
 pub fn factorial(mut n: usize) -> usize {
   let mut result = 1usize;
@@ -36,8 +39,8 @@ pub fn factorial(mut n: usize) -> usize {
 }
 
 fn main() {
-  let mut b = Benchmark::default();
-  b.add_generator(StaticValue((), ()));
+  let mut benchmark = Benchmark::default();
+  benchmark.add_generator(StaticValue((), ()));
 
   benchmark.add_pair(
     benchmark_fn("factorial_500", |_, _| factorial(500)),
@@ -45,12 +48,20 @@ fn main() {
   );
 
   let settings = MeasurementSettings::default();
-  cli::run(b, settings)
+  cli::run(benchmark, settings)
 }
 ```
 
 Run benchmarks with following command:
 
 ```console
-$ cargo run --bench=bench -- pair
+$ cargo run -- pair
 ```
+
+You will get following result:
+
+```console
+StaticValue     factorial_500 / factorial_495    [   392 ns ...   390 ns ]      -0.87%
+```
+
+This results is showing that indeed there is indeed ~1% difference between `factorial(500)` and `factorial(495)`.
