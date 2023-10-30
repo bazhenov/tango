@@ -91,11 +91,31 @@ where
     }
 }
 
+/// Generates the payload for the benchmarking functions
+///
+/// Generator provides two type of values to the tested functions: *haystack* and *needle*.
+///
+/// ## Haystack
+/// Haystack is typically some sort of a collection that is used in benchmarking.
+///
+/// ## Needle
+/// Needle is some type of query that is presented to the algorithm. In case of searching algorithm, usually it is the
+/// value we search in the collection.
+///
+/// It might be the case that algorithm being tested is not using both type of values. In this case corresponding value
+/// type should unit type  –`()`.
 pub trait Generator {
     type Haystack;
     type Needle;
 
+    /// Generates next random haystack for the benchmark
+    ///
+    /// The number of generated haystacks is controlled by [`MeasurementSettings::samples_per_haystack`]
     fn next_haystack(&mut self) -> Self::Haystack;
+
+    /// Generates next random needle for the benchmark
+    ///
+    /// The number of generated needles is controlled by [`MeasurementSettings::samples_per_needle`]
     fn next_needle(&mut self) -> Self::Needle;
 
     fn name(&self) -> String {
@@ -103,7 +123,13 @@ pub trait Generator {
     }
 }
 
-pub struct StaticValue<H, N>(pub H, pub N);
+/// Generator that provides static value to the benchmark. The value should implement [`Copy`] trait.
+pub struct StaticValue<H, N>(
+    /// Haystack value
+    pub H,
+    /// Needle value
+    pub N,
+);
 
 impl<H: Copy, N: Copy> Generator for StaticValue<H, N> {
     type Haystack = H;
@@ -129,6 +155,19 @@ pub trait Reporter {
 
 type FnPair<H, N, O> = (Box<dyn BenchmarkFn<H, N, O>>, Box<dyn BenchmarkFn<H, N, O>>);
 
+/// Describes basic settings for the benchmarking process
+///
+/// This structure is passed to [`cli::run()`].
+///
+/// Should be created only with overriding needed properties, like so:
+/// ```rust
+/// use tango_bench::MeasurementSettings;
+///
+/// let settings = MeasurementSettings {
+///     max_samples: 10_000,
+///     ..Default::default()
+/// };
+/// ```
 #[derive(Clone, Copy, Debug)]
 pub struct MeasurementSettings {
     pub max_samples: usize,
