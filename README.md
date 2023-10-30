@@ -57,23 +57,47 @@ fn main() {
 }
 ```
 
-Run benchmarks with following command:
+Run benchmarks with the following command:
 
 ```console
 $ cargo run -- pair
 ```
 
-You will get following result:
+You will get the following result:
 
 ```console
 StaticValue     factorial_500 / factorial_495    [   392 ns ...   390 ns ]      -0.87%
 ```
 
-This results is showing that indeed there is indeed ~1% difference between `factorial(500)` and `factorial(495)`.
+The result shows that indeed there is indeed ~1% difference between `factorial(500)` and `factorial(495)`.
+
+### Generators
+
+One of the most important parts of the benchmarking process is generating the payload to test the algorithm. This is what `Generator` trait is doing. Each test function registered in the system accepts two arguments:
+
+- haystack - usually the data structure we're testing the algorithm on
+- needle - the supplementary used to test the algorithm.
+
+Depending on the type of algorithm you might not need to generate both of them. Here are some examples:
+
+| Algorithm | Haystack | Needle |
+|----------|----------|--------|
+| Searching | Collection | Value to search for |
+| Soring | Collection | – |
+| Numerical computation: factorial, DP problems, etc. | – | Input parameters |
+
+Tango orchestrates the generating of haystack and needle and guarantees that both benchmarking functions are called with the same input parameters. Therefore performance difference is predictable.
+
+### How should I choose the baseline function?
+
+When trying to make code faster even with pointwise benchmarking it's widespread practice to use one of the following strategies:
+
+- use old code as a baseline. Therefore, both new and old algorithms should be present in the codebase while you are experimenting with performance improvements.
+- use some widespread well-known algorithm (usually from a standard library) to test your new algorithm against.
 
 ## Contributing
 
-The project in it's early stage so any help will be preciated. Here are some ideas you might find intresting
+The project is in its early stages so any help will be appreciated. Here are some ideas you might find interesting
 
-- find a way to provide more user friendly API for registering tested function pairs in the system
+- find a way to provide a more user friendly API for registering tested function pairs in the system
 - if you're a library author trying out tango and providing feedback will be very useful
