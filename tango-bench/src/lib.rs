@@ -5,7 +5,7 @@ use std::{
     collections::BTreeMap,
     fs::File,
     hint::black_box,
-    io::{BufWriter, Write},
+    io::{BufWriter, Write as _},
     path::{Path, PathBuf},
     time::{Duration, Instant},
 };
@@ -33,7 +33,7 @@ pub fn benchmark_fn_with_setup<H, N, O, I: Clone, F: Fn(I, &N) -> O, S: Fn(&H) -
 }
 
 pub trait BenchmarkFn<H, N, O> {
-    fn measure(&self, haystack: &H, needle: &N, iterations: usize) -> u64;
+    fn measure(&self, haystack: &H, needles: &[N]) -> u64;
     fn name(&self) -> &str;
 }
 
@@ -46,10 +46,11 @@ impl<F, H, N, O> BenchmarkFn<H, N, O> for Func<F>
 where
     F: Fn(&H, &N) -> O,
 {
-    fn measure(&self, haystack: &H, needle: &N, iterations: usize) -> u64 {
+    fn measure(&self, haystack: &H, needles: &[N]) -> u64 {
+        let iterations = needles.len();
         let mut result = Vec::with_capacity(iterations);
         let start = ActiveTimer::start();
-        for _ in 0..iterations {
+        for needle in needles {
             result.push(black_box((self.func)(haystack, needle)));
         }
         let time = ActiveTimer::stop(start);
@@ -74,11 +75,12 @@ where
     F: Fn(I, &N) -> O,
     I: Clone,
 {
-    fn measure(&self, haystack: &H, needle: &N, iterations: usize) -> u64 {
+    fn measure(&self, haystack: &H, needles: &[N]) -> u64 {
+        let iterations = needles.len();
         let mut results = Vec::with_capacity(iterations);
         let haystack = (self.setup)(haystack);
         let start = ActiveTimer::start();
-        for _ in 0..iterations {
+        for needle in needles {
             results.push(black_box((self.func)(haystack.clone(), needle)));
         }
         let time = ActiveTimer::stop(start);
@@ -121,6 +123,8 @@ pub trait Generator {
     fn name(&self) -> String {
         type_name::<Self>().to_string()
     }
+
+    fn reset(&mut self) {}
 }
 
 /// Generator that provides static value to the benchmark. The value should implement [`Copy`] trait.
@@ -264,6 +268,8 @@ impl<H, N, O> Benchmark<H, N, O> {
                         reporter.on_start(generator_name.as_str());
                         start_reported = true;
                     }
+
+                    let samples_dump = &samples_dump;
                     let (baseline_summary, candidate_summary, diff) = measure_function_pair(
                         generator.as_mut(),
                         baseline.as_ref(),
@@ -362,8 +368,8 @@ fn measure_function_pair<H, N, O>(
     let iterations_per_ms = estimate_iterations_per_ms(generator, base, candidate);
     let deadline = Instant::now() + opts.max_duration;
 
+    generator.reset();
     let mut haystack = generator.next_haystack();
-    let mut needle = generator.next_needle();
 
     // Generating number sequence (1, 5, 10, 15, ...) up to the estimated number of iterations/ms
     let iterations_min = opts.min_iterations_per_sample;
@@ -375,6 +381,8 @@ fn measure_function_pair<H, N, O>(
         .map(|i| 1.max(i))
         .cycle();
 
+    let mut needles = Vec::with_capacity(iterations_max);
+
     for i in 0..opts.max_samples {
         // Trying not to stress benchmarking loop with to much of clock calls
         if i % iterations_per_ms == 0 && Instant::now() >= deadline {
@@ -383,23 +391,28 @@ fn measure_function_pair<H, N, O>(
         if (i + 1) % opts.samples_per_haystack == 0 {
             haystack = generator.next_haystack();
         }
-        if (i + 1) % opts.samples_per_needle == 0 {
-            needle = generator.next_needle();
-        }
+        // if (i + 1) % opts.samples_per_needle == 0 {
+        //     needle = generator.next_needle();
+        // }
 
         let iterations = iterations_choices.next().unwrap();
+
+        needles.clear();
+        for _ in 0..iterations {
+            needles.push(generator.next_needle());
+        }
 
         // !!! IMPORTANT !!!
         // baseline and candidate should be called in different order in those two branches.
         // This equalize the probability of facing unfortunate circumstances like cache misses for both functions
         let (base_sample, candidate_sample) = if i % 2 == 0 {
-            let base_sample = base.measure(&haystack, &needle, iterations);
-            let candidate_sample = candidate.measure(&haystack, &needle, iterations);
+            let base_sample = base.measure(&haystack, &needles);
+            let candidate_sample = candidate.measure(&haystack, &needles);
 
             (base_sample, candidate_sample)
         } else {
-            let candidate_sample = candidate.measure(&haystack, &needle, iterations);
-            let base_sample = base.measure(&haystack, &needle, iterations);
+            let candidate_sample = candidate.measure(&haystack, &needles);
+            let base_sample = base.measure(&haystack, &needles);
 
             (base_sample, candidate_sample)
         };
@@ -413,6 +426,9 @@ fn measure_function_pair<H, N, O>(
         let file_path = path.as_ref().join(file_name);
         write_raw_measurements(file_path, &base_samples, &candidate_samples);
     }
+
+    // let base_samples = base_samples[base_samples.len() / 2..].to_vec();
+    // let candidate_samples = candidate_samples[candidate_samples.len() / 2..].to_vec();
 
     let base = Summary::from(&base_samples).unwrap();
     let candidate = Summary::from(&candidate_samples).unwrap();
@@ -433,7 +449,7 @@ fn estimate_iterations_per_ms<H, N, O>(
     b: &dyn BenchmarkFn<H, N, O>,
 ) -> usize {
     let haystack = generator.next_haystack();
-    let needle = generator.next_needle();
+    let needles = &[generator.next_needle()];
 
     // Measure the amount of iterations achievable in (factor * 1ms) and later divide by this factor
     // to calculate average number of iterations per 1ms
@@ -442,8 +458,8 @@ fn estimate_iterations_per_ms<H, N, O>(
     let deadline = Instant::now() + duration * factor;
     let mut iterations = 0;
     while Instant::now() < deadline {
-        b.measure(&haystack, &needle, 1);
-        a.measure(&haystack, &needle, 1);
+        b.measure(&haystack, needles);
+        a.measure(&haystack, needles);
         iterations += 1;
     }
 

@@ -7,45 +7,75 @@ use std::{
     any::type_name,
     collections::BTreeSet,
     convert::TryFrom,
-    fmt,
-    iter::FromIterator,
+    fmt::{self, Debug},
+    iter::{self, FromIterator},
     marker::PhantomData,
     ops::Bound,
     rc::Rc,
-    sync::atomic::{AtomicUsize, Ordering},
 };
 use tango_bench::{benchmark_fn, cli, Benchmark, Generator, MeasurementSettings};
 
 struct RandomVec<T> {
+    seed: usize,
     size: usize,
     max_value: usize,
     _type: PhantomData<T>,
 }
 
-impl<T> RandomVec<T>
+impl<T: Debug> RandomVec<T>
 where
     T: Ord + Copy + TryFrom<usize>,
-    <T as TryFrom<usize>>::Error: fmt::Debug,
 {
     fn new(size: usize, max_value: usize) -> Self {
         Self {
+            seed: 0,
             size,
             max_value,
             _type: PhantomData,
         }
     }
+
+    fn generate_new(
+        &mut self,
+        size: usize,
+        max_value: usize,
+    ) -> (Vec<T>, OrderedCollection<T>, BTreeSet<T>)
+    where
+        T: Ord + Copy + TryFrom<usize>,
+    {
+        let mut vec = self.random(max_value, 2).take(size).collect::<Vec<_>>();
+        vec.sort();
+        // println!("{:?}", vec);
+        let ord = OrderedCollection::from_sorted_iter(vec.iter().copied());
+        let btree = BTreeSet::from_iter(vec.iter().copied());
+        (vec, ord, btree)
+    }
+
+    fn random(&mut self, max: usize, factor: usize) -> impl Iterator<Item = T>
+    where
+        T: TryFrom<usize>,
+    {
+        let mut value = self.seed;
+        self.seed += 1;
+
+        iter::from_fn(move || {
+            // LCG constants from https://en.wikipedia.org/wiki/Numerical_Recipes.
+            value = value.wrapping_mul(1664525).wrapping_add(1013904223);
+            Some(T::try_from(((value >> 32) * factor) % max).ok().unwrap())
+        })
+    }
 }
 
 impl<T> Generator for RandomVec<T>
 where
-    T: Ord + Copy + TryFrom<usize>,
+    T: Ord + Copy + TryFrom<usize> + Debug,
     <T as TryFrom<usize>>::Error: fmt::Debug,
 {
     type Haystack = (Rc<Vec<T>>, Rc<OrderedCollection<T>>, Rc<BTreeSet<T>>);
     type Needle = T;
 
     fn next_haystack(&mut self) -> Self::Haystack {
-        let (vec, ord, btree) = generate_new_pair(self.size, self.max_value);
+        let (vec, ord, btree) = self.generate_new(self.size, self.max_value);
         (Rc::new(vec), Rc::new(ord), Rc::new(btree))
     }
 
@@ -54,27 +84,12 @@ where
     }
 
     fn next_needle(&mut self) -> Self::Needle {
-        pseudorandom_iter(self.max_value).next().unwrap()
+        self.random(self.max_value, 1).next().unwrap()
     }
-}
 
-fn generate_new_pair<T>(
-    size: usize,
-    max_value: usize,
-) -> (Vec<T>, OrderedCollection<T>, BTreeSet<T>)
-where
-    T: Ord + Copy + TryFrom<usize>,
-    <T as TryFrom<usize>>::Error: fmt::Debug,
-{
-    let mut vec = Vec::with_capacity(size);
-    let mut rand = pseudorandom_iter(max_value);
-    for _ in 0..size {
-        vec.push(rand.next().unwrap());
+    fn reset(&mut self) {
+        self.seed = 0;
     }
-    vec.sort();
-    let ord = OrderedCollection::from_sorted_iter(vec.iter().copied());
-    let btree = BTreeSet::from_iter(vec.iter().copied());
-    (vec, ord, btree)
 }
 
 #[cfg_attr(feature = "align", repr(align(32)))]
@@ -128,7 +143,7 @@ fn search_vec<T: Copy + Ord>(
         .copied()
 }
 
-fn create_benchmark<T>(
+fn create_benchmark<T: Debug>(
     max_value: usize,
 ) -> Benchmark<(Rc<Vec<T>>, Rc<OrderedCollection<T>>, Rc<BTreeSet<T>>), T, Option<T>>
 where
@@ -160,8 +175,9 @@ where
 
 fn main() {
     let settings = MeasurementSettings {
-        samples_per_haystack: 1_000_000,
-        max_iterations_per_sample: 1,
+        samples_per_haystack: 1_000,
+        // max_iterations_per_sample: 100_000,
+        // min_iterations_per_sample: 1000,
         ..Default::default()
     };
 
@@ -173,22 +189,4 @@ fn main() {
         create_benchmark::<u128>(u128::max_value() as usize),
         settings,
     );
-}
-
-fn pseudorandom_iter<T>(max: usize) -> impl Iterator<Item = T>
-where
-    T: TryFrom<usize>,
-    <T as TryFrom<usize>>::Error: fmt::Debug,
-{
-    static SEED: AtomicUsize = AtomicUsize::new(0);
-    let mut seed = SEED.fetch_add(1, Ordering::SeqCst);
-
-    std::iter::from_fn(move || {
-        // LCG constants from https://en.wikipedia.org/wiki/Numerical_Recipes.
-        seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
-        SEED.store(seed, Ordering::SeqCst);
-
-        let r = seed % max;
-        Some(T::try_from(r).unwrap())
-    })
 }
