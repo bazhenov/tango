@@ -9,6 +9,7 @@ tango-bench = { path="../tango-bench" }
 [dev-dependencies]
 criterion = "0.5.1"
 ordsearch = { version = "0.2.*", features = ["nightly"] }
+num-traits = "^0.2"
 
 [[bench]]
 name = "ordsearch"

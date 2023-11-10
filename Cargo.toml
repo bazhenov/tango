@@ -5,3 +5,6 @@ members = [
     "tango-bench",
     "examples"
 ]
+
+[profile.bench]
+debug = true
