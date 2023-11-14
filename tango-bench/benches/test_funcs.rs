@@ -5,22 +5,6 @@ use tango_bench::Generator;
 /// HTML page with a lot of chinese text to test UTF8 decoding speed
 const INPUT_TEXT: &str = include_str!("./input.txt");
 
-#[derive(Clone)]
-pub struct FixedStringGenerator {
-    string: String,
-}
-
-impl Generator for FixedStringGenerator {
-    type Haystack = String;
-    type Needle = ();
-
-    fn next_haystack(&mut self) -> Self::Haystack {
-        self.string.clone()
-    }
-
-    fn next_needle(&mut self) -> Self::Needle {}
-}
-
 pub struct RandomVec<T>(SmallRng, usize, PhantomData<T>);
 
 impl<T> RandomVec<T> {
@@ -44,7 +28,7 @@ where
         v
     }
 
-    fn next_needle(&mut self) -> Self::Needle {}
+    fn next_needle(&mut self, _haystack: &Self::Haystack) -> Self::Needle {}
 }
 
 #[derive(Clone)]
@@ -87,7 +71,11 @@ impl Generator for RandomString {
         format!("RandomString<{}>", self.length)
     }
 
-    fn next_needle(&mut self) -> Self::Needle {}
+    fn next_needle(&mut self, _haystack: &Self::Haystack) -> Self::Needle {}
+
+    fn reset(&mut self) {
+        self.rng = SmallRng::seed_from_u64(42);
+    }
 }
 
 #[cfg_attr(feature = "align", repr(align(32)))]
@@ -116,6 +104,7 @@ pub fn factorial(mut n: usize) -> usize {
 #[cfg_attr(feature = "align", repr(align(32)))]
 #[cfg_attr(feature = "align", inline(never))]
 #[allow(unused)]
+#[allow(clippy::ptr_arg)]
 pub fn str_std<T>(s: &String, _: &T) -> usize {
     s.chars().count()
 }
@@ -123,6 +112,7 @@ pub fn str_std<T>(s: &String, _: &T) -> usize {
 #[cfg_attr(feature = "align", repr(align(32)))]
 #[cfg_attr(feature = "align", inline(never))]
 #[allow(unused)]
+#[allow(clippy::ptr_arg)]
 pub fn str_count<T>(s: &String, _: &T) -> usize {
     let mut l = 0;
     for _ in s.chars() {
@@ -134,6 +124,7 @@ pub fn str_count<T>(s: &String, _: &T) -> usize {
 #[cfg_attr(feature = "align", repr(align(32)))]
 #[cfg_attr(feature = "align", inline(never))]
 #[allow(unused)]
+#[allow(clippy::ptr_arg)]
 pub fn str_count_rev<T>(s: &String, _: &T) -> usize {
     let mut l = 0;
     for _ in s.chars().rev() {
@@ -145,6 +136,7 @@ pub fn str_count_rev<T>(s: &String, _: &T) -> usize {
 #[cfg_attr(feature = "align", repr(align(32)))]
 #[cfg_attr(feature = "align", inline(never))]
 #[allow(unused)]
+#[allow(clippy::ptr_arg)]
 pub fn str_take<T>(n: usize, s: &String, _: &T) -> usize {
     black_box(s.chars().take(n)).count()
 }

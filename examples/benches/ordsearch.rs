@@ -6,16 +6,16 @@ use num_traits::{bounds::UpperBounded, ToPrimitive};
 use ordsearch::OrderedCollection;
 use std::{
     any::type_name, collections::BTreeSet, convert::TryFrom, iter::FromIterator,
-    marker::PhantomData, ops::Bound, rc::Rc, usize,
+    marker::PhantomData, ops::Bound, usize,
 };
 use tango_bench::{benchmark_fn, cli, Benchmark, Generator, MeasurementSettings};
 
-struct LCG<T> {
+struct Lcg<T> {
     value: usize,
     _type: PhantomData<T>,
 }
 
-impl<T> LCG<T>
+impl<T> Lcg<T>
 where
     T: TryFrom<usize>,
 {
@@ -33,9 +33,8 @@ where
 }
 
 struct RandomVec<T> {
-    rng: LCG<T>,
+    rng: Lcg<T>,
     size: usize,
-    last_max: usize,
 }
 
 impl<T> RandomVec<T>
@@ -44,27 +43,33 @@ where
 {
     fn new(size: usize) -> Self {
         Self {
-            rng: LCG::new(0),
+            rng: Lcg::new(0),
             size,
-            last_max: 0,
         }
     }
+}
 
-    fn generate_new(&mut self, size: usize) -> (Vec<T>, OrderedCollection<T>, BTreeSet<T>)
-    where
-        T: Ord + Copy + TryFrom<usize>,
-    {
-        let mut vec = (0..size)
-            .map(|v| 2 * v)
-            .map(|v| T::try_from(v))
-            .take_while(|r| r.is_ok())
-            .collect::<Result<Vec<_>, _>>()
-            .ok()
-            .unwrap();
-        vec.sort();
-        let ord = OrderedCollection::from_sorted_iter(vec.iter().copied());
-        let btree = BTreeSet::from_iter(vec.iter().copied());
-        (vec, ord, btree)
+struct Sample<T> {
+    vec: Vec<T>,
+    ord: OrderedCollection<T>,
+    btree: BTreeSet<T>,
+}
+
+impl<T> AsRef<BTreeSet<T>> for Sample<T> {
+    fn as_ref(&self) -> &BTreeSet<T> {
+        &self.btree
+    }
+}
+
+impl<T> AsRef<OrderedCollection<T>> for Sample<T> {
+    fn as_ref(&self) -> &OrderedCollection<T> {
+        &self.ord
+    }
+}
+
+impl<T> AsRef<Vec<T>> for Sample<T> {
+    fn as_ref(&self) -> &Vec<T> {
+        &self.vec
     }
 }
 
@@ -73,91 +78,74 @@ where
     T: Ord + Copy + TryFrom<usize>,
     usize: TryFrom<T>,
 {
-    type Haystack = (Rc<Vec<T>>, Rc<OrderedCollection<T>>, Rc<BTreeSet<T>>);
+    type Haystack = Sample<T>;
     type Needle = T;
 
     fn next_haystack(&mut self) -> Self::Haystack {
-        let (vec, ord, btree) = self.generate_new(self.size);
-        self.last_max = usize::try_from(vec.iter().copied().max().unwrap())
-            .ok()
-            .unwrap();
+        let vec = generate_sorted_vec(self.size);
+        let ord = OrderedCollection::from_sorted_iter(vec.iter().copied());
+        let btree = BTreeSet::from_iter(vec.iter().copied());
 
-        (Rc::new(vec), Rc::new(ord), Rc::new(btree))
+        Sample { vec, ord, btree }
     }
 
     fn name(&self) -> String {
         format!("Size<{}, {}>", type_name::<T>(), self.size)
     }
 
-    fn next_needle(&mut self) -> Self::Needle {
-        if self.last_max > 0 {
-            let next = self.rng.next(self.last_max + 1);
-            next
-        } else {
-            self.rng.next(self.size * 2 + 1)
-        }
+    fn next_needle(&mut self, haystack: &Self::Haystack) -> Self::Needle {
+        let max = (haystack.vec.len() - 1) * 2;
+        self.rng.next(max + 1)
     }
 
     fn reset(&mut self) {
-        self.rng = LCG::new(0);
+        self.rng = Lcg::new(0);
     }
 }
 
-#[cfg_attr(feature = "align", repr(align(32)))]
-#[cfg_attr(feature = "align", inline(never))]
-fn search_ord<T: Copy + Ord>(
-    haystack: &(
-        impl AsRef<Vec<T>>,
-        impl AsRef<OrderedCollection<T>>,
-        impl AsRef<BTreeSet<T>>,
-    ),
-    needle: &T,
-) -> Option<T> {
-    let (_, collection, _) = haystack;
-    collection.as_ref().find_gte(*needle).copied()
+fn generate_sorted_vec<T>(size: usize) -> Vec<T>
+where
+    T: Ord + Copy + TryFrom<usize>,
+{
+    (0..size)
+        .map(|v| 2 * v)
+        .map(|v| T::try_from(v))
+        .take_while(|r| r.is_ok())
+        .collect::<Result<Vec<_>, _>>()
+        .ok()
+        .unwrap()
 }
 
 #[cfg_attr(feature = "align", repr(align(32)))]
 #[cfg_attr(feature = "align", inline(never))]
-fn search_btree<T: Copy + Ord>(
-    haystack: &(
-        impl AsRef<Vec<T>>,
-        impl AsRef<OrderedCollection<T>>,
-        impl AsRef<BTreeSet<T>>,
-    ),
-    needle: &T,
-) -> Option<T> {
-    let (_, _, collection) = haystack;
-    collection
+fn search_ord<T: Copy + Ord>(haystack: &impl AsRef<OrderedCollection<T>>, needle: &T) -> Option<T> {
+    haystack.as_ref().find_gte(*needle).copied()
+}
+
+#[cfg_attr(feature = "align", repr(align(32)))]
+#[cfg_attr(feature = "align", inline(never))]
+fn search_btree<T: Copy + Ord>(haystack: &impl AsRef<BTreeSet<T>>, needle: &T) -> Option<T> {
+    haystack
         .as_ref()
         .range((Bound::Included(needle), Bound::Unbounded))
         .next()
-        .map(|v| *v)
+        .copied()
 }
 
 #[cfg_attr(feature = "align", repr(align(32)))]
 #[cfg_attr(feature = "align", inline(never))]
-fn search_vec<T: Copy + Ord>(
-    haystack: &(
-        impl AsRef<Vec<T>>,
-        impl AsRef<OrderedCollection<T>>,
-        impl AsRef<BTreeSet<T>>,
-    ),
-    needle: &T,
-) -> Option<T> {
-    let (collection, _, _) = haystack;
-    collection
-        .as_ref()
+fn search_vec<T: Copy + Ord>(haystack: &impl AsRef<Vec<T>>, needle: &T) -> Option<T> {
+    let haystack = haystack.as_ref();
+    haystack
         .binary_search(needle)
         .ok()
-        .and_then(|idx| collection.as_ref().get(idx))
+        .and_then(|idx| haystack.get(idx))
         .copied()
 }
 
-fn create_benchmark<T>(
-) -> Benchmark<(Rc<Vec<T>>, Rc<OrderedCollection<T>>, Rc<BTreeSet<T>>), T, Option<T>>
+fn create_benchmark<T>() -> Benchmark<Sample<T>, T, Option<T>>
 where
-    T: Copy + Ord + TryFrom<usize> + 'static + UpperBounded + ToPrimitive,
+    T: Copy + Ord + TryFrom<usize> + UpperBounded + ToPrimitive + 'static,
     usize: TryFrom<T>,
 {
     let mut b = Benchmark::default();
@@ -187,7 +175,7 @@ where
 
 fn main() {
     let settings = MeasurementSettings {
-        samples_per_haystack: 1_000_000,
+        samples_per_haystack: 1_000,
         ..Default::default()
     };
 

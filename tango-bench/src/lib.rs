@@ -115,10 +115,19 @@ pub trait Generator {
     /// The number of generated haystacks is controlled by [`MeasurementSettings::samples_per_haystack`]
     fn next_haystack(&mut self) -> Self::Haystack;
 
+    fn next_needles(
+        &mut self,
+        haystack: &Self::Haystack,
+        size: usize,
+        needles: &mut Vec<Self::Needle>,
+    ) {
+        for _ in 0..size {
+            needles.push(self.next_needle(haystack));
+        }
+    }
+
     /// Generates next random needle for the benchmark
-    ///
-    /// The number of generated needles is controlled by [`MeasurementSettings::samples_per_needle`]
-    fn next_needle(&mut self) -> Self::Needle;
+    fn next_needle(&mut self, haystack: &Self::Haystack) -> Self::Needle;
 
     fn name(&self) -> String {
         type_name::<Self>().to_string()
@@ -143,7 +152,7 @@ impl<H: Copy, N: Copy> Generator for StaticValue<H, N> {
         self.0
     }
 
-    fn next_needle(&mut self) -> Self::Needle {
+    fn next_needle(&mut self, _: &Self::Haystack) -> Self::Needle {
         self.1
     }
 
@@ -181,12 +190,6 @@ pub struct MeasurementSettings {
     /// The number of samples per one generated haystack
     pub samples_per_haystack: usize,
 
-    /// The number of samples per one generated needle.
-    ///
-    /// Usually should be 1 unless you want to stress the same code path in a benchmark
-    /// multiple times.
-    pub samples_per_needle: usize,
-
     /// Minimum number of iterations in a sample for each of 2 tested functions
     pub min_iterations_per_sample: usize,
 
@@ -201,7 +204,6 @@ impl Default for MeasurementSettings {
             max_duration: Duration::from_millis(100),
             outlier_detection_enabled: true,
             samples_per_haystack: 1,
-            samples_per_needle: 1,
             min_iterations_per_sample: 1,
             max_iterations_per_sample: 50,
         }
@@ -372,7 +374,7 @@ fn measure_function_pair<H, N, O>(
     let mut haystack = generator.next_haystack();
 
     // Generating number sequence (1, 5, 10, 15, ...) up to the estimated number of iterations/ms
-    let iterations_min = opts.min_iterations_per_sample;
+    let iterations_min = opts.min_iterations_per_sample.max(1);
     let iterations_max = iterations_per_ms
         .min(opts.max_iterations_per_sample)
         .max(iterations_min);
@@ -381,7 +383,7 @@ fn measure_function_pair<H, N, O>(
         .map(|i| 1.max(i))
         .cycle();
 
-    let mut needles = Vec::with_capacity(iterations_max);
+    let mut needles = vec![];
 
     for i in 0..opts.max_samples {
         // Trying not to stress benchmarking loop with to much of clock calls
@@ -391,16 +393,11 @@ fn measure_function_pair<H, N, O>(
         if (i + 1) % opts.samples_per_haystack == 0 {
             haystack = generator.next_haystack();
         }
-        // if (i + 1) % opts.samples_per_needle == 0 {
-        //     needle = generator.next_needle();
-        // }
 
         let iterations = iterations_choices.next().unwrap();
 
         needles.clear();
-        for _ in 0..iterations {
-            needles.push(generator.next_needle());
-        }
+        generator.next_needles(&haystack, iterations, &mut needles);
 
         // !!! IMPORTANT !!!
         // baseline and candidate should be called in different order in those two branches.
@@ -427,9 +424,6 @@ fn measure_function_pair<H, N, O>(
         write_raw_measurements(file_path, &base_samples, &candidate_samples);
     }
 
-    // let base_samples = base_samples[base_samples.len() / 2..].to_vec();
-    // let candidate_samples = candidate_samples[candidate_samples.len() / 2..].to_vec();
-
     let base = Summary::from(&base_samples).unwrap();
     let candidate = Summary::from(&candidate_samples).unwrap();
     let diff = base_samples
@@ -448,8 +442,10 @@ fn estimate_iterations_per_ms<H, N, O>(
     a: &dyn BenchmarkFn<H, N, O>,
     b: &dyn BenchmarkFn<H, N, O>,
 ) -> usize {
+    let mut needles = Vec::with_capacity(1);
+
     let haystack = generator.next_haystack();
-    let needles = &[generator.next_needle()];
+    generator.next_needles(&haystack, 1, &mut needles);
 
     // Measure the amount of iterations achievable in (factor * 1ms) and later divide by this factor
     // to calculate average number of iterations per 1ms
@@ -458,8 +454,8 @@ fn estimate_iterations_per_ms<H, N, O>(
     let deadline = Instant::now() + duration * factor;
     let mut iterations = 0;
     while Instant::now() < deadline {
-        b.measure(&haystack, needles);
-        a.measure(&haystack, needles);
+        b.measure(&haystack, &needles);
+        a.measure(&haystack, &needles);
         iterations += 1;
     }
 
