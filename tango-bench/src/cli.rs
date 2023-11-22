@@ -62,7 +62,7 @@ struct Opts {
     bench: bool,
 }
 
-pub fn run<H, N, O>(mut benchmark: Benchmark<H, N, O>, settings: MeasurementSettings) {
+pub fn run<H, N>(mut benchmark: Benchmark<H, N>, settings: MeasurementSettings) {
     let opts = Opts::parse();
 
     match opts.subcommand {
@@ -289,7 +289,7 @@ impl fmt::Display for HumanTime {
 }
 
 pub mod dylib {
-    use rand::{rngs::SmallRng, seq::SliceRandom, RngCore, SeedableRng};
+    use rand::{rngs::SmallRng, seq::SliceRandom, SeedableRng};
 
     extern "Rust" {
         /// Holds global benchmark registry registered by the application

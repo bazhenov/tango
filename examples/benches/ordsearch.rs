@@ -143,7 +143,7 @@ fn search_vec<T: Copy + Ord>(haystack: &impl AsRef<Vec<T>>, needle: &T) -> Optio
         .copied()
 }
 
-fn create_benchmark<T>() -> Benchmark<Sample<T>, T, Option<T>>
+fn create_benchmark<T>() -> Benchmark<Sample<T>, T>
 where
     T: Copy + Ord + TryFrom<usize> + UpperBounded + ToPrimitive + 'static,
     usize: TryFrom<T>,

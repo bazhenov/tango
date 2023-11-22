@@ -16,7 +16,7 @@ pub mod cli;
 pub fn benchmark_fn<H, N, O, F: Fn(&H, &N) -> O>(
     name: impl Into<String>,
     func: F,
-) -> impl BenchmarkFn<H, N, O> {
+) -> impl BenchmarkFn<H, N> {
     let name = name.into();
     assert!(!name.is_empty());
     Func { name, func }
@@ -26,13 +26,13 @@ pub fn benchmark_fn_with_setup<H, N, O, I: Clone, F: Fn(I, &N) -> O, S: Fn(&H) -
     name: impl Into<String>,
     func: F,
     setup: S,
-) -> impl BenchmarkFn<H, N, O> {
+) -> impl BenchmarkFn<H, N> {
     let name = name.into();
     assert!(!name.is_empty());
     SetupFunc { name, func, setup }
 }
 
-pub trait BenchmarkFn<H, N, O> {
+pub trait BenchmarkFn<H, N> {
     fn measure(&self, haystack: &H, needles: &[N]) -> u64;
     fn name(&self) -> &str;
 }
@@ -42,7 +42,7 @@ struct Func<F> {
     func: F,
 }
 
-impl<F, H, N, O> BenchmarkFn<H, N, O> for Func<F>
+impl<F, H, N, O> BenchmarkFn<H, N> for Func<F>
 where
     F: Fn(&H, &N) -> O,
 {
@@ -69,7 +69,7 @@ struct SetupFunc<S, F> {
     func: F,
 }
 
-impl<S, F, H, N, I, O> BenchmarkFn<H, N, O> for SetupFunc<S, F>
+impl<S, F, H, N, I, O> BenchmarkFn<H, N> for SetupFunc<S, F>
 where
     S: Fn(&H) -> I,
     F: Fn(I, &N) -> O,
@@ -166,7 +166,7 @@ pub trait Reporter {
     fn on_complete(&mut self, _results: &RunResult) {}
 }
 
-type FnPair<H, N, O> = (Box<dyn BenchmarkFn<H, N, O>>, Box<dyn BenchmarkFn<H, N, O>>);
+type FnPair<H, N> = (Box<dyn BenchmarkFn<H, N>>, Box<dyn BenchmarkFn<H, N>>);
 
 /// Describes basic settings for the benchmarking process
 ///
@@ -210,13 +210,13 @@ impl Default for MeasurementSettings {
     }
 }
 
-pub struct Benchmark<H, N, O> {
-    funcs: BTreeMap<String, FnPair<H, N, O>>,
+pub struct Benchmark<H, N> {
+    funcs: BTreeMap<String, FnPair<H, N>>,
     generators: Vec<Box<dyn Generator<Haystack = H, Needle = N>>>,
     reporters: Vec<Box<dyn Reporter>>,
 }
 
-impl<H, N, O> Default for Benchmark<H, N, O> {
+impl<H, N> Default for Benchmark<H, N> {
     fn default() -> Self {
         Self {
             funcs: BTreeMap::new(),
@@ -226,7 +226,7 @@ impl<H, N, O> Default for Benchmark<H, N, O> {
     }
 }
 
-impl<H, N, O> Benchmark<H, N, O> {
+impl<H, N> Benchmark<H, N> {
     pub fn add_reporter(&mut self, reporter: impl Reporter + 'static) {
         self.reporters.push(Box::new(reporter))
     }
@@ -246,8 +246,8 @@ impl<H, N, O> Benchmark<H, N, O> {
 
     pub fn add_pair(
         &mut self,
-        baseline: impl BenchmarkFn<H, N, O> + 'static,
-        candidate: impl BenchmarkFn<H, N, O> + 'static,
+        baseline: impl BenchmarkFn<H, N> + 'static,
+        candidate: impl BenchmarkFn<H, N> + 'static,
     ) {
         let key = format!("{}-{}", baseline.name(), candidate.name());
         self.funcs
@@ -318,8 +318,8 @@ impl<H, N, O> Benchmark<H, N, O> {
     /// Runs a given test multiple times and return the the number of times difference is statistically significant
     fn calibrate(
         payloads: &mut (dyn Generator<Haystack = H, Needle = N>),
-        a: &dyn BenchmarkFn<H, N, O>,
-        b: &dyn BenchmarkFn<H, N, O>,
+        a: &dyn BenchmarkFn<H, N>,
+        b: &dyn BenchmarkFn<H, N>,
         tries: usize,
     ) -> usize {
         let mut succeed = 0;
@@ -357,10 +357,10 @@ impl<H, N, O> Benchmark<H, N, O> {
 /// ```
 /// where `b_1..b_n` are baseline absolute time (in nanoseconds) measurements
 /// and `c_1..c_n` are candidate time measurements
-fn measure_function_pair<H, N, O>(
+fn measure_function_pair<H, N>(
     generator: &mut dyn Generator<Haystack = H, Needle = N>,
-    base: &dyn BenchmarkFn<H, N, O>,
-    candidate: &dyn BenchmarkFn<H, N, O>,
+    base: &dyn BenchmarkFn<H, N>,
+    candidate: &dyn BenchmarkFn<H, N>,
     opts: &MeasurementSettings,
     samples_dump_location: Option<impl AsRef<Path>>,
 ) -> (Summary<i64>, Summary<i64>, Vec<i64>) {
@@ -437,10 +437,10 @@ fn measure_function_pair<H, N, O>(
 /// Estimates the number of iterations achievable in 1 ms by given pair of functions.
 ///
 /// If functions are to slow to be executed in 1ms, the number of iterations will be 1.
-fn estimate_iterations_per_ms<H, N, O>(
+fn estimate_iterations_per_ms<H, N>(
     generator: &mut dyn Generator<Haystack = H, Needle = N>,
-    a: &dyn BenchmarkFn<H, N, O>,
-    b: &dyn BenchmarkFn<H, N, O>,
+    a: &dyn BenchmarkFn<H, N>,
+    b: &dyn BenchmarkFn<H, N>,
 ) -> usize {
     let mut needles = Vec::with_capacity(1);
 

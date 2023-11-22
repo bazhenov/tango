@@ -2,8 +2,8 @@
 
 use rand::{rngs::SmallRng, Rng, SeedableRng};
 use tango_bench::{
-    benchmark, benchmark_fn, benchmark_fn_with_setup, cli::run, prevent_shared_function_deletion,
-    Benchmark, BenchmarkFn, Generator, MeasurementSettings, StaticValue,
+    benchmark_fn, benchmark_fn_with_setup, cli::run, Benchmark, Generator, MeasurementSettings,
+    StaticValue,
 };
 use test_funcs::{factorial, str_count, str_count_rev, str_std, str_take, sum, RandomString};
 
