@@ -26,7 +26,7 @@ impl<'l> SharedObject<'l> {
         unsafe { (self.vt.select)(idx) }
     }
 
-    pub fn get_name(&self) -> &str {
+    pub fn get_name(&self) -> &'l str {
         let mut length = 0usize;
         let name_ptr: *const c_char = null_mut();
         unsafe {
