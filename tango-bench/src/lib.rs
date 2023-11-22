@@ -12,21 +12,26 @@ use std::{
 use timer::{ActiveTimer, Timer};
 
 pub mod cli;
+pub mod dylib;
 
-pub fn benchmark_fn<H, N, O, F: Fn(&H, &N) -> O>(
-    name: impl Into<String>,
-    func: F,
-) -> impl BenchmarkFn<H, N> {
-    let name = name.into();
+pub const fn benchmark_fn<H, N, O, F>(name: &'static str, func: F) -> impl BenchmarkFn<H, N>
+where
+    F: Fn(&H, &N) -> O,
+{
     assert!(!name.is_empty());
     Func { name, func }
 }
 
-pub fn benchmark_fn_with_setup<H, N, O, I: Clone, F: Fn(I, &N) -> O, S: Fn(&H) -> I>(
+pub fn benchmark_fn_with_setup<H, N, O, I: Clone, F, S>(
     name: impl Into<String>,
     func: F,
     setup: S,
-) -> impl BenchmarkFn<H, N> {
+) -> impl BenchmarkFn<H, N>
+where
+    I: Clone,
+    F: Fn(I, &N) -> O,
+    S: Fn(&H) -> I,
+{
     let name = name.into();
     assert!(!name.is_empty());
     SetupFunc { name, func, setup }
@@ -38,7 +43,7 @@ pub trait BenchmarkFn<H, N> {
 }
 
 struct Func<F> {
-    name: String,
+    name: &'static str,
     func: F,
 }
 
@@ -59,7 +64,30 @@ where
     }
 
     fn name(&self) -> &str {
-        self.name.as_str()
+        self.name
+    }
+}
+
+pub trait MeasureTarget {
+    fn measure(&mut self, iterations: usize) -> u64;
+    fn name(&self) -> &str;
+}
+
+pub struct Pair<H, N> {
+    pub f: Box<dyn BenchmarkFn<H, N>>,
+    pub g: Box<dyn Generator<Haystack = H, Needle = N>>,
+}
+
+impl<H, N> MeasureTarget for Pair<H, N> {
+    fn measure(&mut self, iterations: usize) -> u64 {
+        let haystack = self.g.next_haystack();
+        let mut needles = Vec::with_capacity(iterations);
+        self.g.next_needles(&haystack, iterations, &mut needles);
+        self.f.measure(&haystack, &needles)
+    }
+
+    fn name(&self) -> &str {
+        self.f.name()
     }
 }
 

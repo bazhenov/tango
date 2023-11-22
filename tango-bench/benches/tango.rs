@@ -2,8 +2,8 @@
 
 use rand::{rngs::SmallRng, Rng, SeedableRng};
 use tango_bench::{
-    benchmark_fn, benchmark_fn_with_setup, cli::run, Benchmark, Generator, MeasurementSettings,
-    StaticValue,
+    benchmark_fn, benchmark_fn_with_setup, cli::run, Benchmark, Generator, MeasureTarget,
+    MeasurementSettings, Pair, StaticValue,
 };
 use test_funcs::{factorial, str_count, str_count_rev, str_std, str_take, sum, RandomString};
 
@@ -52,18 +52,19 @@ fn copy_and_sort_stable<T: Ord + Copy, N>(input: &Vec<T>, _: &N) -> T {
     input[input.len() / 2]
 }
 
-// trait MeasureTarget {
-//     fn measure(&mut self, iterations: usize);
-// }
-
-// struct Pair<H: 'static, N: 'static, O: 'static> {
-//     f: &'static dyn BenchmarkFn<H, N, O>,
-//     g: &'static dyn Generator<Haystack = H, Needle = N>,
-// }
-
-#[used]
 #[no_mangle]
-static BENCHMARK: &[u64] = &[0, 2, 4, 8];
+pub fn create_benchmarks() -> Vec<Box<dyn MeasureTarget>> {
+    vec![
+        Box::new(Pair {
+            f: Box::new(benchmark_fn("sum_5000", |_, _| sum(5000))),
+            g: Box::new(StaticValue((), ())),
+        }),
+        Box::new(Pair {
+            f: Box::new(benchmark_fn("sum_4950", |_, _| sum(4950))),
+            g: Box::new(StaticValue((), ())),
+        }),
+    ]
+}
 
 fn main() {
     // prevent_shared_function_deletion!();
@@ -129,6 +130,6 @@ fn main() {
     );
 
     run(str_benchmark, settings);
-    run(sort_benchmark, settings);
-    run(num_benchmark, settings);
+    // run(sort_benchmark, settings);
+    // run(num_benchmark, settings);
 }
