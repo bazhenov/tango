@@ -13,6 +13,7 @@ keywords = ["benchmarks", "performance"]
 
 [dependencies]
 clap = { version = "^4.4", features = ["derive"] }
+libloading = "0.8.1"
 num-traits = "^0.2"
 rand = { version = "^0.8", features = ["small_rng"] }
 

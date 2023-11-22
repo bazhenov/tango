@@ -1,6 +1,7 @@
 use crate::{Benchmark, MeasurementSettings, Reporter};
 use clap::Parser;
 use core::fmt;
+use libloading::{Library, Symbol};
 use std::{
     fmt::Display,
     num::{NonZeroU64, NonZeroUsize},
@@ -42,6 +43,12 @@ enum BenchMode {
     List {
         #[arg(long = "bench", default_value_t = true)]
         bench: bool,
+    },
+    PairExec {
+        #[arg(long = "bench", default_value_t = true)]
+        bench: bool,
+
+        path: Option<PathBuf>,
     },
 }
 
@@ -94,6 +101,21 @@ pub fn run<H, N, O>(mut benchmark: Benchmark<H, N, O>, settings: MeasurementSett
         BenchMode::List { bench: _ } => {
             for fn_name in benchmark.list_functions() {
                 println!("{}", fn_name);
+            }
+        }
+        BenchMode::PairExec { path, .. } => {
+            let self_path = PathBuf::from(std::env::args().next().unwrap());
+            let path = path.unwrap_or(self_path);
+
+            unsafe {
+                let candidate = Library::new(&path).expect("Unable to load library");
+                println!("Opening library: {}", path.display());
+
+                let tango_open: Symbol<extern "C" fn() -> u64> = candidate
+                    .get(b"tango_init\0")
+                    .expect("Unabel to get tango_open() symbol");
+
+                println!("tango_open() = {}", tango_open())
             }
         }
     }
@@ -263,6 +285,40 @@ impl fmt::Display for HumanTime {
         } else {
             f.pad(&format!("{:.0} ns", self.0))
         }
+    }
+}
+
+pub mod dylib {
+    use rand::{rngs::SmallRng, seq::SliceRandom, RngCore, SeedableRng};
+
+    extern "Rust" {
+        /// Holds global benchmark registry registered by the application
+        static BENCHMARK: &'static [u64];
+    }
+
+    /// This macro is used to prevent linker from removing tango_* symbols from target binary.
+    #[macro_export]
+    macro_rules! benchmark {
+        ($b:block) => {
+            pub fn __tango_create_benchmark<H, N, O>() -> Benchmark<H, N, O> {
+                $b
+            }
+        };
+    }
+    #[macro_export]
+    macro_rules! prevent_shared_function_deletion {
+        () => {
+            use tango_bench::cli::dylib;
+            let funcs: &[*const fn()] = &[dylib::tango_init as _];
+            #[allow(forgetting_references)]
+            std::mem::forget(funcs);
+        };
+    }
+
+    #[no_mangle]
+    pub fn tango_init() -> u64 {
+        let mut rng = SmallRng::from_entropy();
+        unsafe { *BENCHMARK.choose(&mut rng).unwrap() }
     }
 }
 

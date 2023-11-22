@@ -2,8 +2,8 @@
 
 use rand::{rngs::SmallRng, Rng, SeedableRng};
 use tango_bench::{
-    benchmark_fn, benchmark_fn_with_setup, cli::run, Benchmark, Generator, MeasurementSettings,
-    StaticValue,
+    benchmark, benchmark_fn, benchmark_fn_with_setup, cli::run, prevent_shared_function_deletion,
+    Benchmark, BenchmarkFn, Generator, MeasurementSettings, StaticValue,
 };
 use test_funcs::{factorial, str_count, str_count_rev, str_std, str_take, sum, RandomString};
 
@@ -52,7 +52,22 @@ fn copy_and_sort_stable<T: Ord + Copy, N>(input: &Vec<T>, _: &N) -> T {
     input[input.len() / 2]
 }
 
+// trait MeasureTarget {
+//     fn measure(&mut self, iterations: usize);
+// }
+
+// struct Pair<H: 'static, N: 'static, O: 'static> {
+//     f: &'static dyn BenchmarkFn<H, N, O>,
+//     g: &'static dyn Generator<Haystack = H, Needle = N>,
+// }
+
+#[used]
+#[no_mangle]
+static BENCHMARK: &[u64] = &[0, 2, 4, 8];
+
 fn main() {
+    // prevent_shared_function_deletion!();
+
     let settings = MeasurementSettings::default();
 
     let mut num_benchmark = Benchmark::default();
