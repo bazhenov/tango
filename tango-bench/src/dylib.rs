@@ -1,3 +1,4 @@
+use self::ffi::Ffi;
 use crate::MeasureTarget;
 use libloading::{Library, Symbol};
 use std::{
@@ -5,46 +6,51 @@ use std::{
     ptr::{addr_of, null_mut},
 };
 
-pub struct SharedObject<'l> {
-    vt: ffi::VTable<'l>,
+pub struct Spi<'l> {
+    vtable: Box<dyn Ffi + 'l>,
 }
 
-impl<'l> SharedObject<'l> {
-    pub fn init(library: &'l Library) -> Self {
-        let vt = ffi::VTable::new(library);
-        unsafe {
-            (vt.init)();
+impl<'l> Spi<'l> {
+    pub fn for_library(library: &'l Library) -> Self {
+        let vt = ffi::LibraryVTable::new(library);
+        vt.init();
+        Spi {
+            vtable: Box::new(vt),
         }
-        Self { vt }
+    }
+
+    pub fn for_self() -> Self {
+        Spi {
+            vtable: Box::new(ffi::SelfVTable),
+        }
     }
 
     pub fn count(&self) -> usize {
-        unsafe { (self.vt.count)() }
+        self.vtable.count()
     }
 
     pub fn select(&self, idx: usize) {
-        unsafe { (self.vt.select)(idx) }
+        self.vtable.select(idx)
     }
 
-    pub fn get_name(&self) -> &'l str {
+    pub fn get_name<'a>(&'a self) -> &'a str {
         let mut length = 0usize;
         let name_ptr: *const c_char = null_mut();
-        unsafe {
-            (self.vt.get_name)(addr_of!(name_ptr) as _, &mut length);
-            if length == 0 {
-                return "";
-            }
-            let name = CStr::from_ptr(name_ptr).to_str().unwrap();
-            &name[..length]
+        self.vtable.get_name(addr_of!(name_ptr) as _, &mut length);
+        if length == 0 {
+            return "";
         }
+        let name = unsafe { CStr::from_ptr(name_ptr) }.to_str().unwrap();
+        &name[..length]
     }
 
     pub fn run(&self) -> u64 {
-        unsafe { (self.vt.run)() }
+        self.vtable.run()
     }
 }
 
-/// State machine which implements the execution of FFI API (`tango_*` functions).
+/// State which holds the information about list of benchmarks and which one is selected.
+/// Used in FFI API (`tango_*` functions).
 struct State {
     benchmarks: Vec<Box<dyn MeasureTarget>>,
     selected_function: usize,
@@ -68,13 +74,13 @@ impl State {
 /// way two executables can coexist in the single process at the same time.
 mod ffi {
     use super::*;
-    use std::ptr::null;
+    use std::{os::raw::c_char, ptr::null, usize};
 
-    type InitFunc = unsafe extern "C" fn();
-    type CountFunc = unsafe extern "C" fn() -> usize;
-    type GetNameFunc = unsafe extern "C" fn(*mut *const c_char, *mut usize);
-    type SelectFunc = unsafe extern "C" fn(usize);
-    type RunFunc = unsafe extern "C" fn() -> u64;
+    type InitFn = unsafe extern "C" fn();
+    type CountFn = unsafe extern "C" fn() -> usize;
+    type GetNameFn = unsafe extern "C" fn(*mut *const c_char, *mut usize);
+    type SelectFn = unsafe extern "C" fn(usize);
+    type RunFn = unsafe extern "C" fn() -> u64;
 
     /// This block of constants is checking that all exported tango functions
     /// are of valid type according to the API. Those constants
@@ -83,11 +89,11 @@ mod ffi {
     mod type_check {
         use super::*;
 
-        const TANGO_INIT: InitFunc = tango_init;
-        const TANGO_COUNT: CountFunc = tango_count;
-        const TANGO_SELECT: SelectFunc = tango_select;
-        const TANGO_GET_NAME: GetNameFunc = tango_get_name;
-        const TANGO_RUN: RunFunc = tango_run;
+        const TANGO_INIT: InitFn = tango_init;
+        const TANGO_COUNT: CountFn = tango_count;
+        const TANGO_SELECT: SelectFn = tango_select;
+        const TANGO_GET_NAME: GetNameFn = tango_get_name;
+        const TANGO_RUN: RunFn = tango_run;
     }
 
     extern "Rust" {
@@ -145,43 +151,97 @@ mod ffi {
         }
     }
 
-    pub(super) struct VTable<'l> {
-        pub(super) init: Symbol<'l, InitFunc>,
-        pub(super) count: Symbol<'l, CountFunc>,
-        pub(super) select: Symbol<'l, SelectFunc>,
-        pub(super) get_name: Symbol<'l, GetNameFunc>,
-        pub(super) run: Symbol<'l, RunFunc>,
+    pub trait Ffi {
+        fn init(&self);
+        fn count(&self) -> usize;
+        fn select(&self, func_idx: usize);
+        fn get_name(&self, ptr: *mut *const c_char, len: *mut usize);
+        fn run(&self) -> u64;
     }
 
-    impl<'l> VTable<'l> {
+    pub struct SelfVTable;
+
+    impl Ffi for SelfVTable {
+        fn init(&self) {
+            unsafe { tango_init() }
+        }
+
+        fn count(&self) -> usize {
+            unsafe { tango_count() }
+        }
+
+        fn select(&self, func_idx: usize) {
+            unsafe { tango_select(func_idx) }
+        }
+
+        fn get_name(&self, ptr: *mut *const c_char, len: *mut usize) {
+            unsafe { tango_get_name(ptr, len) }
+        }
+
+        fn run(&self) -> u64 {
+            unsafe { tango_run() }
+        }
+    }
+
+    pub struct LibraryVTable<'l> {
+        pub(super) init_fn: Symbol<'l, InitFn>,
+        pub(super) count_fn: Symbol<'l, CountFn>,
+        pub(super) select_fn: Symbol<'l, SelectFn>,
+        pub(super) get_name_fn: Symbol<'l, GetNameFn>,
+        pub(super) run_fn: Symbol<'l, RunFn>,
+    }
+
+    impl<'l> Ffi for LibraryVTable<'l> {
+        fn init(&self) {
+            unsafe { (self.init_fn)() }
+        }
+
+        fn count(&self) -> usize {
+            unsafe { (self.count_fn)() }
+        }
+
+        fn select(&self, func_idx: usize) {
+            unsafe { (self.select_fn)(func_idx) }
+        }
+
+        fn get_name(&self, ptr: *mut *const c_char, len: *mut usize) {
+            unsafe { (self.get_name_fn)(ptr, len) }
+        }
+
+        fn run(&self) -> u64 {
+            unsafe { (self.run_fn)() }
+        }
+    }
+
+    impl<'l> LibraryVTable<'l> {
         pub(super) fn new(library: &'l Library) -> Self {
             unsafe {
-                let init = library
+                let init_fn = library
                     .get(b"tango_init\0")
                     .expect("Unable to get tango_init() symbol");
 
-                let count = library
+                let count_fn = library
                     .get(b"tango_count\0")
                     .expect("Unable to get tango_count_functions() symbol");
 
-                let select = library
+                let select_fn = library
                     .get(b"tango_select\0")
                     .expect("Unable to get tango_select() symbol");
 
-                let get_name = library
+                let get_name_fn = library
                     .get(b"tango_get_name\0")
                     .expect("Unable to get tango_get_name() symbol");
 
-                let run = library
+                let run_fn = library
                     .get(b"tango_run\0")
                     .expect("Unable to get tango_run() symbol");
 
                 Self {
-                    init,
-                    count,
-                    select,
-                    get_name,
-                    run,
+                    init_fn,
+                    count_fn,
+                    select_fn,
+                    get_name_fn,
+                    run_fn,
                 }
             }
         }

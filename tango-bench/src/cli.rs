@@ -1,4 +1,4 @@
-use crate::{dylib::SharedObject, Benchmark, MeasurementSettings, Reporter};
+use crate::{dylib::Spi, Benchmark, MeasurementSettings, Reporter};
 use clap::Parser;
 use core::fmt;
 use libloading::Library;
@@ -12,7 +12,7 @@ use std::{
 use self::reporting::{ConsoleReporter, VerboseReporter};
 
 #[derive(Parser, Debug)]
-enum BenchMode {
+enum BenchmarkMode {
     Pair {
         name: Option<String>,
 
@@ -44,7 +44,7 @@ enum BenchMode {
         #[arg(long = "bench", default_value_t = true)]
         bench: bool,
     },
-    PairExec {
+    Compare {
         #[arg(long = "bench", default_value_t = true)]
         bench: bool,
 
@@ -56,7 +56,7 @@ enum BenchMode {
 #[command(author, version, about, long_about = None)]
 struct Opts {
     #[command(subcommand)]
-    subcommand: BenchMode,
+    subcommand: BenchmarkMode,
 
     #[arg(long = "bench", default_value_t = true)]
     bench: bool,
@@ -66,7 +66,7 @@ pub fn run<H, N>(mut benchmark: Benchmark<H, N>, settings: MeasurementSettings) 
     let opts = Opts::parse();
 
     match opts.subcommand {
-        BenchMode::Pair {
+        BenchmarkMode::Pair {
             name,
             time,
             samples,
@@ -95,33 +95,36 @@ pub fn run<H, N>(mut benchmark: Benchmark<H, N>, settings: MeasurementSettings) 
             let name_filter = name.as_deref().unwrap_or("");
             benchmark.run_by_name(reporter.as_mut(), name_filter, &opts, path_to_dump.as_ref());
         }
-        BenchMode::Calibrate { bench: _ } => {
+        BenchmarkMode::Calibrate { bench: _ } => {
             benchmark.run_calibration();
         }
-        BenchMode::List { bench: _ } => {
+        BenchmarkMode::List { bench: _ } => {
             for fn_name in benchmark.list_functions() {
                 println!("{}", fn_name);
             }
         }
-        BenchMode::PairExec { path, .. } => {
+        BenchmarkMode::Compare { path, .. } => {
             let self_path = PathBuf::from(std::env::args().next().unwrap());
             let path = path.unwrap_or(self_path);
 
-            unsafe {
-                let lib = Library::new(&path).expect("Unable to load library");
-                println!("Opening library: {}", path.display());
+            let lib = unsafe { Library::new(path) }.expect("Unable to load library");
+            let spi_lib = Spi::for_library(&lib);
 
-                let so = SharedObject::init(&lib);
+            println!("Checking lib:");
+            check_spi(&spi_lib);
 
-                println!(" count {}", so.count());
-                for idx in 0..so.count() {
-                    so.select(idx);
-
-                    println!("Benchmark: {}", so.get_name());
-                    println!("tango_run = {}", so.run());
-                }
-            }
+            println!("Checking self:");
+            let spi_self = Spi::for_self();
+            check_spi(&spi_self);
         }
+    }
+}
+
+fn check_spi(spi: &Spi) {
+    println!("  count {}", spi.count());
+    for idx in 0..spi.count() {
+        spi.select(idx);
+        println!("  {} = {}", spi.get_name(), spi.run());
     }
 }
 
