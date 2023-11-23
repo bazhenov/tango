@@ -70,15 +70,41 @@ where
 
 pub trait MeasureTarget {
     fn measure(&mut self, iterations: usize) -> u64;
+
+    /// The name of the test function
     fn name(&self) -> &str;
 }
 
-pub struct Pair<H, N> {
-    pub f: Box<dyn BenchmarkFn<H, N>>,
-    pub g: Box<dyn Generator<Haystack = H, Needle = N>>,
+pub struct GenAndFunc<H, N> {
+    f: Box<dyn BenchmarkFn<H, N>>,
+    g: Box<dyn Generator<Haystack = H, Needle = N>>,
+    name: String,
 }
 
-impl<H, N> MeasureTarget for Pair<H, N> {
+impl<H, N> GenAndFunc<H, N> {
+    pub fn new(
+        f: impl BenchmarkFn<H, N> + 'static,
+        g: impl Generator<Haystack = H, Needle = N> + 'static,
+    ) -> Self {
+        let name = format!("{}/{}", f.name(), g.name());
+        Self {
+            f: Box::new(f),
+            g: Box::new(g),
+            name,
+        }
+    }
+}
+
+impl<H: 'static, N: 'static> GenAndFunc<H, N> {
+    pub fn new_boxed(
+        f: impl BenchmarkFn<H, N> + 'static,
+        g: impl Generator<Haystack = H, Needle = N> + 'static,
+    ) -> Box<dyn MeasureTarget> {
+        Box::new(Self::new(f, g))
+    }
+}
+
+impl<H, N> MeasureTarget for GenAndFunc<H, N> {
     fn measure(&mut self, iterations: usize) -> u64 {
         let haystack = self.g.next_haystack();
         let mut needles = Vec::with_capacity(iterations);
@@ -87,7 +113,7 @@ impl<H, N> MeasureTarget for Pair<H, N> {
     }
 
     fn name(&self) -> &str {
-        self.f.name()
+        self.name.as_str()
     }
 }
 

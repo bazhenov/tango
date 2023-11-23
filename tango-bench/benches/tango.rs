@@ -2,8 +2,8 @@
 
 use rand::{rngs::SmallRng, Rng, SeedableRng};
 use tango_bench::{
-    benchmark_fn, benchmark_fn_with_setup, cli::run, Benchmark, Generator, MeasureTarget,
-    MeasurementSettings, Pair, StaticValue,
+    benchmark_fn, benchmark_fn_with_setup, cli::run, Benchmark, GenAndFunc, Generator,
+    MeasureTarget, MeasurementSettings, StaticValue,
 };
 use test_funcs::{factorial, str_count, str_count_rev, str_std, str_take, sum, RandomString};
 
@@ -55,14 +55,14 @@ fn copy_and_sort_stable<T: Ord + Copy, N>(input: &Vec<T>, _: &N) -> T {
 #[no_mangle]
 pub fn create_benchmarks() -> Vec<Box<dyn MeasureTarget>> {
     vec![
-        Box::new(Pair {
-            f: Box::new(benchmark_fn("sum_5000", |_, _| sum(5000))),
-            g: Box::new(StaticValue((), ())),
-        }),
-        Box::new(Pair {
-            f: Box::new(benchmark_fn("sum_4950", |_, _| sum(4950))),
-            g: Box::new(StaticValue((), ())),
-        }),
+        GenAndFunc::new_boxed(
+            benchmark_fn("sum_5000", |_, _| sum(5000)),
+            StaticValue((), ()),
+        ),
+        GenAndFunc::new_boxed(
+            benchmark_fn("sum_4950", |_, _| sum(4950)),
+            StaticValue((), ()),
+        ),
     ]
 }
 

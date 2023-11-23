@@ -1,51 +1,57 @@
-use self::ffi::Ffi;
+use self::ffi::VTable;
 use crate::MeasureTarget;
+use core::slice;
 use libloading::{Library, Symbol};
 use std::{
-    ffi::{c_char, CStr},
-    ptr::{addr_of, null_mut},
+    collections::BTreeMap,
+    ffi::c_char,
+    ptr::{addr_of, null},
+    str,
 };
 
 pub struct Spi<'l> {
-    vtable: Box<dyn Ffi + 'l>,
+    tests: BTreeMap<String, usize>,
+    vt: Box<dyn VTable + 'l>,
 }
 
 impl<'l> Spi<'l> {
     pub fn for_library(library: &'l Library) -> Self {
-        let vt = ffi::LibraryVTable::new(library);
-        vt.init();
-        Spi {
-            vtable: Box::new(vt),
-        }
+        Self::for_vtable(ffi::LibraryVTable::new(library))
     }
 
     pub fn for_self() -> Self {
-        Spi {
-            vtable: Box::new(ffi::SelfVTable),
+        Self::for_vtable(ffi::SelfVTable)
+    }
+
+    fn for_vtable<T: VTable + 'l>(vt: T) -> Self {
+        let vt = Box::new(vt);
+        vt.init();
+
+        let mut tests = BTreeMap::new();
+        for i in 0..vt.count() {
+            vt.select(i);
+
+            let mut length = 0usize;
+            let name_ptr: *const c_char = null();
+            vt.get_test_name(addr_of!(name_ptr) as _, &mut length);
+            if length == 0 {
+                continue;
+            }
+            let slice = unsafe { slice::from_raw_parts(name_ptr as *const u8, length) };
+            let str = str::from_utf8(slice).unwrap();
+            tests.insert(str.to_string(), i);
         }
+
+        Spi { vt, tests }
     }
 
-    pub fn count(&self) -> usize {
-        self.vtable.count()
+    pub fn tests(&self) -> &BTreeMap<String, usize> {
+        &self.tests
     }
 
-    pub fn select(&self, idx: usize) {
-        self.vtable.select(idx)
-    }
-
-    pub fn get_name<'a>(&'a self) -> &'a str {
-        let mut length = 0usize;
-        let name_ptr: *const c_char = null_mut();
-        self.vtable.get_name(addr_of!(name_ptr) as _, &mut length);
-        if length == 0 {
-            return "";
-        }
-        let name = unsafe { CStr::from_ptr(name_ptr) }.to_str().unwrap();
-        &name[..length]
-    }
-
-    pub fn run(&self) -> u64 {
-        self.vtable.run()
+    pub fn run(&self, idx: usize) -> u64 {
+        self.vt.select(idx);
+        self.vt.run()
     }
 }
 
@@ -78,7 +84,7 @@ mod ffi {
 
     type InitFn = unsafe extern "C" fn();
     type CountFn = unsafe extern "C" fn() -> usize;
-    type GetNameFn = unsafe extern "C" fn(*mut *const c_char, *mut usize);
+    type GetTestNameFn = unsafe extern "C" fn(*mut *const c_char, *mut usize);
     type SelectFn = unsafe extern "C" fn(usize);
     type RunFn = unsafe extern "C" fn() -> u64;
 
@@ -92,7 +98,7 @@ mod ffi {
         const TANGO_INIT: InitFn = tango_init;
         const TANGO_COUNT: CountFn = tango_count;
         const TANGO_SELECT: SelectFn = tango_select;
-        const TANGO_GET_NAME: GetNameFn = tango_get_name;
+        const TANGO_GET_TEST_NAME: GetTestNameFn = tango_get_test_name;
         const TANGO_RUN: RunFn = tango_run;
     }
 
@@ -131,7 +137,7 @@ mod ffi {
     }
 
     #[no_mangle]
-    unsafe extern "C" fn tango_get_name(name: *mut *const c_char, length: *mut usize) {
+    unsafe extern "C" fn tango_get_test_name(name: *mut *const c_char, length: *mut usize) {
         if let Some(s) = STATE.as_ref() {
             let n = s.selected().name();
             *name = n.as_ptr() as _;
@@ -151,17 +157,17 @@ mod ffi {
         }
     }
 
-    pub trait Ffi {
+    pub(super) trait VTable {
         fn init(&self);
         fn count(&self) -> usize;
         fn select(&self, func_idx: usize);
-        fn get_name(&self, ptr: *mut *const c_char, len: *mut usize);
+        fn get_test_name(&self, ptr: *mut *const c_char, len: *mut usize);
         fn run(&self) -> u64;
     }
 
-    pub struct SelfVTable;
+    pub(super) struct SelfVTable;
 
-    impl Ffi for SelfVTable {
+    impl VTable for SelfVTable {
         fn init(&self) {
             unsafe { tango_init() }
         }
@@ -174,8 +180,8 @@ mod ffi {
             unsafe { tango_select(func_idx) }
         }
 
-        fn get_name(&self, ptr: *mut *const c_char, len: *mut usize) {
-            unsafe { tango_get_name(ptr, len) }
+        fn get_test_name(&self, ptr: *mut *const c_char, len: *mut usize) {
+            unsafe { tango_get_test_name(ptr, len) }
         }
 
         fn run(&self) -> u64 {
@@ -183,15 +189,15 @@ mod ffi {
         }
     }
 
-    pub struct LibraryVTable<'l> {
-        pub(super) init_fn: Symbol<'l, InitFn>,
-        pub(super) count_fn: Symbol<'l, CountFn>,
-        pub(super) select_fn: Symbol<'l, SelectFn>,
-        pub(super) get_name_fn: Symbol<'l, GetNameFn>,
-        pub(super) run_fn: Symbol<'l, RunFn>,
+    pub(super) struct LibraryVTable<'l> {
+        init_fn: Symbol<'l, InitFn>,
+        count_fn: Symbol<'l, CountFn>,
+        select_fn: Symbol<'l, SelectFn>,
+        get_test_name_fn: Symbol<'l, GetTestNameFn>,
+        run_fn: Symbol<'l, RunFn>,
     }
 
-    impl<'l> Ffi for LibraryVTable<'l> {
+    impl<'l> VTable for LibraryVTable<'l> {
         fn init(&self) {
             unsafe { (self.init_fn)() }
         }
@@ -204,8 +210,8 @@ mod ffi {
             unsafe { (self.select_fn)(func_idx) }
         }
 
-        fn get_name(&self, ptr: *mut *const c_char, len: *mut usize) {
-            unsafe { (self.get_name_fn)(ptr, len) }
+        fn get_test_name(&self, ptr: *mut *const c_char, len: *mut usize) {
+            unsafe { (self.get_test_name_fn)(ptr, len) }
         }
 
         fn run(&self) -> u64 {
@@ -228,9 +234,9 @@ mod ffi {
                     .get(b"tango_select\0")
                     .expect("Unable to get tango_select() symbol");
 
-                let get_name_fn = library
-                    .get(b"tango_get_name\0")
-                    .expect("Unable to get tango_get_name() symbol");
+                let get_test_name_fn = library
+                    .get(b"tango_get_test_name\0")
+                    .expect("Unable to get tango_get_test_name() symbol");
 
                 let run_fn = library
                     .get(b"tango_run\0")
@@ -240,7 +246,7 @@ mod ffi {
                     init_fn,
                     count_fn,
                     select_fn,
-                    get_name_fn,
+                    get_test_name_fn,
                     run_fn,
                 }
             }

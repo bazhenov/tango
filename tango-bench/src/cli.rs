@@ -121,10 +121,9 @@ pub fn run<H, N>(mut benchmark: Benchmark<H, N>, settings: MeasurementSettings) 
 }
 
 fn check_spi(spi: &Spi) {
-    println!("  count {}", spi.count());
-    for idx in 0..spi.count() {
-        spi.select(idx);
-        println!("  {} = {}", spi.get_name(), spi.run());
+    println!("  count {}", spi.tests().len());
+    for (name, idx) in spi.tests() {
+        println!("  {} = {}", name, spi.run(*idx));
     }
 }
 
