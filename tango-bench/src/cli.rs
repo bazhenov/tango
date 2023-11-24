@@ -171,6 +171,9 @@ mod commands {
         let base_idx = *base.tests().get(test_name).unwrap();
         let candidate_idx = *candidate.tests().get(test_name).unwrap();
 
+        // Number of iterations estimated based on the performance of base algorithm only. We assuming
+        // both algorithms performs approximatley the same. We need to divide estimation by 2 to compensate
+        // for the fact that 2 algorithms will be executed concurrently.
         let estimate = base.estimate_iterations(base_idx, 1) / 2;
         let iterations = estimate.max(1).min(50);
 
