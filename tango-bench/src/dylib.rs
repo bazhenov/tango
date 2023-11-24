@@ -1,4 +1,4 @@
-use self::ffi::VTable;
+use self::ffi::{SelfVTable, VTable};
 use crate::MeasureTarget;
 use core::slice;
 use libloading::{Library, Symbol};
@@ -8,6 +8,8 @@ use std::{
     ptr::{addr_of, null},
     str,
 };
+
+static mut SELF_SPI: Option<SelfVTable> = Some(SelfVTable);
 
 pub struct Spi<'l> {
     tests: BTreeMap<String, usize>,
@@ -19,8 +21,9 @@ impl<'l> Spi<'l> {
         Self::for_vtable(ffi::LibraryVTable::new(library))
     }
 
-    pub fn for_self() -> Self {
-        Self::for_vtable(ffi::SelfVTable)
+    /// TODO: should be singleton
+    pub fn for_self() -> Option<Self> {
+        unsafe { SELF_SPI.take().map(Self::for_vtable) }
     }
 
     fn for_vtable<T: VTable + 'l>(vt: T) -> Self {

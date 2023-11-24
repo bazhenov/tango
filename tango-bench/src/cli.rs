@@ -149,7 +149,7 @@ pub fn run<H, N>(mut benchmark: Benchmark<H, N>, settings: MeasurementSettings) 
 
             let lib = unsafe { Library::new(path) }.expect("Unable to load library");
             let spi_lib = Spi::for_library(&lib);
-            let spi_self = Spi::for_self();
+            let spi_self = Spi::for_self().expect("SelfSpi already called once");
 
             let mut test_names = intersect_values(spi_lib.tests().keys(), spi_self.tests().keys());
             test_names.sort();
