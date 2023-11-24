@@ -516,7 +516,7 @@ fn estimate_iterations_per_ms<H, N>(
     1.max(iterations / factor as usize)
 }
 
-fn calculate_run_result<N: Into<String>>(
+pub fn calculate_run_result<N: Into<String>>(
     baseline: (N, Summary<i64>),
     candidate: (N, Summary<i64>),
     diff: Vec<i64>,

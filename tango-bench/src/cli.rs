@@ -3,7 +3,9 @@ use clap::Parser;
 use core::fmt;
 use libloading::Library;
 use std::{
+    collections::{HashMap, HashSet},
     fmt::Display,
+    hash::Hash,
     num::{NonZeroU64, NonZeroUsize},
     path::PathBuf,
     time::Duration,
@@ -109,21 +111,83 @@ pub fn run<H, N>(mut benchmark: Benchmark<H, N>, settings: MeasurementSettings) 
 
             let lib = unsafe { Library::new(path) }.expect("Unable to load library");
             let spi_lib = Spi::for_library(&lib);
-
-            println!("Checking lib:");
-            check_spi(&spi_lib);
-
-            println!("Checking self:");
             let spi_self = Spi::for_self();
-            check_spi(&spi_self);
+
+            // println!("Checking lib:");
+            // check_spi(&spi_lib);
+
+            // println!("Checking self:");
+            // check_spi(&spi_self);
+
+            let test_names = intersect_values(spi_lib.tests().keys(), spi_self.tests().keys());
+
+            for name in test_names {
+                commands::pairwise_test(&spi_self, &spi_lib, name.as_str());
+            }
         }
     }
+}
+
+mod commands {
+    use crate::{calculate_run_result, Summary};
+
+    use super::*;
+
+    pub(super) fn pairwise_test(base: &Spi, candidate: &Spi, test_name: &str) {
+        let iterations = 100;
+        let base_idx = base.tests().get(test_name).unwrap();
+        let candidate_idx = candidate.tests().get(test_name).unwrap();
+
+        let mut base_samples = vec![];
+        let mut candidate_samples = vec![];
+
+        let mut toggle = false;
+        for _ in 0..1000 {
+            base_samples.push(base.run(*base_idx, iterations) as i64);
+            candidate_samples.push(candidate.run(*candidate_idx, iterations) as i64);
+        }
+
+        let diff: Vec<_> = base_samples
+            .iter()
+            .zip(candidate_samples.iter())
+            .map(|(b, c)| c - b)
+            .collect();
+
+        let base_summary = Summary::from(&base_samples).unwrap();
+        let candidate_summary = Summary::from(&candidate_samples).unwrap();
+        let summary = Summary::from(&diff).unwrap();
+
+        let result = calculate_run_result(
+            ("base", base_summary),
+            ("candidate", candidate_summary),
+            diff,
+            false,
+        );
+
+        let mut reporter = ConsoleReporter::default();
+
+        reporter.on_complete(&result);
+
+        // println!("- {} = {}", test_name, summary.mean);
+    }
+}
+
+fn intersect_values<'a, K: Hash + Eq>(
+    a: impl Iterator<Item = &'a K>,
+    b: impl Iterator<Item = &'a K>,
+) -> Vec<&'a K> {
+    let a_values = a.collect::<HashSet<_>>();
+    let b_values = b.collect::<HashSet<_>>();
+    a_values
+        .intersection(&b_values)
+        .map(|s| *s)
+        .collect::<Vec<_>>()
 }
 
 fn check_spi(spi: &Spi) {
     println!("  count {}", spi.tests().len());
     for (name, idx) in spi.tests() {
-        println!("  {} = {}", name, spi.run(*idx));
+        println!("  {} = {}", name, spi.run(*idx, 100));
     }
 }
 

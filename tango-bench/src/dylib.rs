@@ -49,9 +49,9 @@ impl<'l> Spi<'l> {
         &self.tests
     }
 
-    pub fn run(&self, idx: usize) -> u64 {
+    pub fn run(&self, idx: usize, iterations: usize) -> u64 {
         self.vt.select(idx);
-        self.vt.run()
+        self.vt.run(iterations)
     }
 }
 
@@ -86,7 +86,7 @@ mod ffi {
     type CountFn = unsafe extern "C" fn() -> usize;
     type GetTestNameFn = unsafe extern "C" fn(*mut *const c_char, *mut usize);
     type SelectFn = unsafe extern "C" fn(usize);
-    type RunFn = unsafe extern "C" fn() -> u64;
+    type RunFn = unsafe extern "C" fn(usize) -> u64;
 
     /// This block of constants is checking that all exported tango functions
     /// are of valid type according to the API. Those constants
@@ -149,9 +149,9 @@ mod ffi {
     }
 
     #[no_mangle]
-    unsafe extern "C" fn tango_run() -> u64 {
+    unsafe extern "C" fn tango_run(iterations: usize) -> u64 {
         if let Some(s) = STATE.as_mut() {
-            s.selected_mut().measure(10)
+            s.selected_mut().measure(iterations)
         } else {
             0
         }
@@ -162,7 +162,7 @@ mod ffi {
         fn count(&self) -> usize;
         fn select(&self, func_idx: usize);
         fn get_test_name(&self, ptr: *mut *const c_char, len: *mut usize);
-        fn run(&self) -> u64;
+        fn run(&self, iterations: usize) -> u64;
     }
 
     pub(super) struct SelfVTable;
@@ -184,8 +184,8 @@ mod ffi {
             unsafe { tango_get_test_name(ptr, len) }
         }
 
-        fn run(&self) -> u64 {
-            unsafe { tango_run() }
+        fn run(&self, iterations: usize) -> u64 {
+            unsafe { tango_run(iterations) }
         }
     }
 
@@ -214,8 +214,8 @@ mod ffi {
             unsafe { (self.get_test_name_fn)(ptr, len) }
         }
 
-        fn run(&self) -> u64 {
-            unsafe { (self.run_fn)() }
+        fn run(&self, iterations: usize) -> u64 {
+            unsafe { (self.run_fn)(iterations) }
         }
     }
 
