@@ -9,6 +9,7 @@ use test_funcs::{factorial, str_count, str_count_rev, str_std, str_take, sum, Ra
 
 mod test_funcs;
 
+#[derive(Clone)]
 struct RandomVec(SmallRng, usize);
 
 impl Generator for RandomVec {
@@ -52,7 +53,7 @@ fn copy_and_sort_stable<T: Ord + Copy, N>(input: &Vec<T>, _: &N) -> T {
     input[input.len() / 2]
 }
 
-pub fn benchmarks_a() -> Vec<Box<dyn MeasureTarget>> {
+pub fn num_benchmarks() -> impl IntoBenchmarks {
     vec![
         benchmark_fn("sum_5000", || sum(5000)),
         benchmark_fn("sum_4950", || sum(4950)),
@@ -61,7 +62,7 @@ pub fn benchmarks_a() -> Vec<Box<dyn MeasureTarget>> {
     ]
 }
 
-pub fn generated_benchmarks() -> impl IntoBenchmarks {
+pub fn str_benchmarks() -> impl IntoBenchmarks {
     let generator = RandomString::new().unwrap();
     let mut benchmarks = GeneratorBenchmarks::with_generator(generator);
 
@@ -75,11 +76,23 @@ pub fn generated_benchmarks() -> impl IntoBenchmarks {
     benchmarks
 }
 
+pub fn vec_benchmarks() -> impl IntoBenchmarks {
+    let mut benchmarks =
+        GeneratorBenchmarks::with_generators([100, 1_000, 10_000, 100_000], |size| {
+            RandomVec(SmallRng::seed_from_u64(42), size)
+        });
+
+    benchmarks.add("stable_clone_sort", copy_and_sort_stable);
+
+    benchmarks
+}
+
 #[no_mangle]
 pub fn create_benchmarks() -> Vec<Box<dyn MeasureTarget>> {
     let mut benchmarks = vec![];
-    benchmarks.extend(benchmarks_a().into_benchmarks());
-    benchmarks.extend(generated_benchmarks().into_benchmarks());
+    benchmarks.extend(num_benchmarks().into_benchmarks());
+    benchmarks.extend(str_benchmarks().into_benchmarks());
+    benchmarks.extend(vec_benchmarks().into_benchmarks());
     benchmarks
 }
 
@@ -93,12 +106,12 @@ fn main() {
 
     #[cfg(feature = "aa_test")]
     {
-        benchmark.add_pair(
+        num_benchmark.add_pair(
             _benchmark_fn("sum_5000", |_, _| sum(5000)),
             _benchmark_fn("sum_5000", |_, _| sum(5000)),
         );
 
-        benchmark.add_pair(
+        num_benchmark.add_pair(
             _benchmark_fn("factorial_500", |_, _| factorial(500)),
             _benchmark_fn("factorial_500", |_, _| factorial(500)),
         );
@@ -116,6 +129,19 @@ fn main() {
 
     let mut str_benchmark = Benchmark::default();
     str_benchmark.add_generator(RandomString::new().unwrap());
+
+    #[cfg(feature = "aa_test")]
+    {
+        str_benchmark.add_pair(
+            _benchmark_fn("str_count_rev", str_count_rev),
+            _benchmark_fn("str_count_rev", str_count_rev),
+        );
+
+        str_benchmark.add_pair(
+            _benchmark_fn("str_count", str_count),
+            _benchmark_fn("str_count", str_count),
+        );
+    }
 
     str_benchmark.add_pair(
         _benchmark_fn("str_std", str_std),

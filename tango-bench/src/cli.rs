@@ -52,6 +52,12 @@ enum BenchmarkMode {
 
         /// Path to the executable to test agains. Tango will test agains itself if no executable given
         path: Option<PathBuf>,
+
+        #[arg(short = 'f', long = "filter")]
+        filter: Option<String>,
+
+        #[arg(short = 'v', long = "verbose", default_value_t = false)]
+        verbose: bool,
     },
 }
 
@@ -113,7 +119,18 @@ pub fn run<H, N>(mut benchmark: Benchmark<H, N>, settings: MeasurementSettings) 
                 println!("{}", fn_name);
             }
         }
-        BenchmarkMode::Compare { path, .. } => {
+        BenchmarkMode::Compare {
+            path,
+            verbose,
+            filter,
+            bench_flags: _,
+        } => {
+            let mut reporter: Box<dyn Reporter> = if verbose {
+                Box::<VerboseReporter>::default()
+            } else {
+                Box::<ConsoleReporter>::default()
+            };
+
             let self_path = PathBuf::from(std::env::args().next().unwrap());
             let path = path.unwrap_or(self_path);
 
@@ -124,8 +141,16 @@ pub fn run<H, N>(mut benchmark: Benchmark<H, N>, settings: MeasurementSettings) 
             let mut test_names = intersect_values(spi_lib.tests().keys(), spi_self.tests().keys());
             test_names.sort();
 
+            let filter = filter.as_deref().unwrap_or("");
             for name in test_names {
-                commands::pairwise_compare(&spi_self, &spi_lib, name.as_str());
+                if name.contains(filter) {
+                    commands::pairwise_compare(
+                        &spi_self,
+                        &spi_lib,
+                        name.as_str(),
+                        reporter.as_mut(),
+                    );
+                }
             }
         }
     }
@@ -137,7 +162,12 @@ mod commands {
 
     use super::*;
 
-    pub(super) fn pairwise_compare(base: &Spi, candidate: &Spi, test_name: &str) {
+    pub(super) fn pairwise_compare(
+        base: &Spi,
+        candidate: &Spi,
+        test_name: &str,
+        reporter: &mut dyn Reporter,
+    ) {
         let iterations = 100;
         let base_idx = base.tests().get(test_name).unwrap();
         let candidate_idx = candidate.tests().get(test_name).unwrap();
@@ -147,9 +177,17 @@ mod commands {
 
         let deadline = Instant::now() + Duration::from_millis(100);
 
+        let mut baseline_first = false;
         while Instant::now() < deadline {
-            base_samples.push(base.run(*base_idx, iterations) as i64);
-            candidate_samples.push(candidate.run(*candidate_idx, iterations) as i64);
+            if baseline_first {
+                base_samples.push(base.run(*base_idx, iterations) as i64);
+                candidate_samples.push(candidate.run(*candidate_idx, iterations) as i64);
+            } else {
+                candidate_samples.push(candidate.run(*candidate_idx, iterations) as i64);
+                base_samples.push(base.run(*base_idx, iterations) as i64);
+            }
+
+            baseline_first = !baseline_first;
         }
 
         let diff: Vec<_> = base_samples
@@ -168,7 +206,6 @@ mod commands {
             false,
         );
 
-        let mut reporter = ConsoleReporter::default();
         reporter.on_complete(&result);
     }
 }

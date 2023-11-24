@@ -152,7 +152,7 @@ impl<H, N> MeasureTarget for GenAndFunc<H, N> {
 }
 
 pub struct GeneratorBenchmarks<G> {
-    generator: G,
+    generators: Vec<G>,
     functions: Vec<Box<dyn MeasureTarget>>,
 }
 
@@ -161,7 +161,18 @@ impl<H: 'static, N: 'static, G: Generator<Haystack = H, Needle = N> + 'static>
 {
     pub fn with_generator(generator: G) -> Self {
         Self {
-            generator,
+            generators: vec![generator],
+            functions: vec![],
+        }
+    }
+
+    pub fn with_generators<P>(
+        params: impl IntoIterator<Item = P>,
+        generator: impl Fn(P) -> G,
+    ) -> Self {
+        let generators: Vec<_> = params.into_iter().map(|p| generator(p)).collect();
+        Self {
+            generators,
             functions: vec![],
         }
     }
@@ -170,11 +181,12 @@ impl<H: 'static, N: 'static, G: Generator<Haystack = H, Needle = N> + 'static>
     where
         G: Clone,
         O: 'static,
-        F: Fn(&H, &N) -> O + 'static,
+        F: Fn(&H, &N) -> O + Copy + 'static,
     {
-        let g = self.generator.clone();
-        let f = _benchmark_fn(name, f);
-        self.functions.push(Box::new(GenAndFunc::new(f, g)));
+        for g in &self.generators {
+            let f = _benchmark_fn(name, f);
+            self.functions.push(Box::new(GenAndFunc::new(f, g.clone())));
+        }
         self
     }
 }
