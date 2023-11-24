@@ -1,4 +1,4 @@
-use self::ffi::{SelfVTable, VTable};
+use self::ffi::VTable;
 use crate::MeasureTarget;
 use core::slice;
 use libloading::{Library, Symbol};
@@ -8,8 +8,6 @@ use std::{
     ptr::{addr_of, null},
     str,
 };
-
-static mut SELF_SPI: Option<SelfVTable> = Some(SelfVTable);
 
 pub struct Spi<'l> {
     tests: BTreeMap<String, usize>,
@@ -23,7 +21,7 @@ impl<'l> Spi<'l> {
 
     /// TODO: should be singleton
     pub fn for_self() -> Option<Self> {
-        unsafe { SELF_SPI.take().map(Self::for_vtable) }
+        unsafe { ffi::SELF_SPI.take().map(Self::for_vtable) }
     }
 
     fn for_vtable<T: VTable + 'l>(vt: T) -> Self {
@@ -90,6 +88,7 @@ mod ffi {
     use super::*;
     use std::{os::raw::c_char, ptr::null, usize};
 
+    /// Signature types of all FFI API functions
     type InitFn = unsafe extern "C" fn();
     type CountFn = unsafe extern "C" fn() -> usize;
     type GetTestNameFn = unsafe extern "C" fn(*mut *const c_char, *mut usize);
@@ -98,9 +97,8 @@ mod ffi {
     type EstimateIterationsFn = unsafe extern "C" fn(u32) -> usize;
     type FreeFn = unsafe extern "C" fn();
 
-    /// This block of constants is checking that all exported tango functions
-    /// are of valid type according to the API. Those constants
-    /// are not ment to be used at runtime in any way
+    /// This block of constants is checking that all exported tango functions are of valid type according to the API.
+    /// Those constants are not ment to be used at runtime in any way
     #[allow(unused)]
     mod type_check {
         use super::*;
@@ -115,6 +113,7 @@ mod ffi {
     }
 
     extern "Rust" {
+        /// Each benchmark executable should define this function for the harness to load all benchmarks
         fn create_benchmarks() -> Vec<Box<dyn MeasureTarget>>;
     }
 
@@ -187,6 +186,13 @@ mod ffi {
         fn estimate_iterations(&self, time_ms: u32) -> usize;
     }
 
+    pub(super) static mut SELF_SPI: Option<SelfVTable> = Some(SelfVTable);
+
+    /// FFI implementation for the current executable.
+    ///
+    /// Used to communicate with FFI API of the executable bypassing dynamic linking.
+    /// # Safety
+    /// Instances of this type should not be created directory. The single instance [`SELF_SPI`] shoud be used instead
     pub(super) struct SelfVTable;
 
     impl VTable for SelfVTable {
