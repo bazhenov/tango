@@ -172,7 +172,7 @@ fn main() {
         _benchmark_fn("stable_clone_sort", copy_and_sort_stable),
     );
 
-    run(str_benchmark, settings);
-    // run(sort_benchmark, settings);
+    // run(str_benchmark, settings);
+    run(sort_benchmark, settings);
     // run(num_benchmark, settings);
 }

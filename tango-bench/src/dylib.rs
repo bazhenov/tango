@@ -53,6 +53,11 @@ impl<'l> Spi<'l> {
         self.vt.select(idx);
         self.vt.run(iterations)
     }
+
+    pub fn estimate_iterations(&self, idx: usize, time_ms: u32) -> usize {
+        self.vt.select(idx);
+        self.vt.estimate_iterations(time_ms)
+    }
 }
 
 /// State which holds the information about list of benchmarks and which one is selected.
@@ -87,6 +92,8 @@ mod ffi {
     type GetTestNameFn = unsafe extern "C" fn(*mut *const c_char, *mut usize);
     type SelectFn = unsafe extern "C" fn(usize);
     type RunFn = unsafe extern "C" fn(usize) -> u64;
+    type EstimateIterationsFn = unsafe extern "C" fn(u32) -> usize;
+    type FreeFn = unsafe extern "C" fn();
 
     /// This block of constants is checking that all exported tango functions
     /// are of valid type according to the API. Those constants
@@ -100,6 +107,8 @@ mod ffi {
         const TANGO_SELECT: SelectFn = tango_select;
         const TANGO_GET_TEST_NAME: GetTestNameFn = tango_get_test_name;
         const TANGO_RUN: RunFn = tango_run;
+        const TANGO_ESTIMATE_ITERATIONS: EstimateIterationsFn = tango_estimate_iterations;
+        const TANGO_FREE: FreeFn = tango_free;
     }
 
     extern "Rust" {
@@ -132,11 +141,6 @@ mod ffi {
     }
 
     #[no_mangle]
-    unsafe extern "C" fn tango_free() {
-        STATE.take();
-    }
-
-    #[no_mangle]
     unsafe extern "C" fn tango_get_test_name(name: *mut *const c_char, length: *mut usize) {
         if let Some(s) = STATE.as_ref() {
             let n = s.selected().name();
@@ -157,12 +161,27 @@ mod ffi {
         }
     }
 
+    #[no_mangle]
+    unsafe extern "C" fn tango_estimate_iterations(time_ms: u32) -> usize {
+        if let Some(s) = STATE.as_mut() {
+            s.selected_mut().estimate_iterations(time_ms)
+        } else {
+            0
+        }
+    }
+
+    #[no_mangle]
+    unsafe extern "C" fn tango_free() {
+        STATE.take();
+    }
+
     pub(super) trait VTable {
         fn init(&self);
         fn count(&self) -> usize;
         fn select(&self, func_idx: usize);
         fn get_test_name(&self, ptr: *mut *const c_char, len: *mut usize);
         fn run(&self, iterations: usize) -> u64;
+        fn estimate_iterations(&self, time_ms: u32) -> usize;
     }
 
     pub(super) struct SelfVTable;
@@ -187,6 +206,18 @@ mod ffi {
         fn run(&self, iterations: usize) -> u64 {
             unsafe { tango_run(iterations) }
         }
+
+        fn estimate_iterations(&self, time_ms: u32) -> usize {
+            unsafe { tango_estimate_iterations(time_ms) }
+        }
+    }
+
+    impl Drop for SelfVTable {
+        fn drop(&mut self) {
+            unsafe {
+                tango_free();
+            }
+        }
     }
 
     pub(super) struct LibraryVTable<'l> {
@@ -195,6 +226,8 @@ mod ffi {
         select_fn: Symbol<'l, SelectFn>,
         get_test_name_fn: Symbol<'l, GetTestNameFn>,
         run_fn: Symbol<'l, RunFn>,
+        estimate_iterations_fn: Symbol<'l, EstimateIterationsFn>,
+        free_fn: Symbol<'l, FreeFn>,
     }
 
     impl<'l> VTable for LibraryVTable<'l> {
@@ -216,6 +249,16 @@ mod ffi {
 
         fn run(&self, iterations: usize) -> u64 {
             unsafe { (self.run_fn)(iterations) }
+        }
+
+        fn estimate_iterations(&self, time_ms: u32) -> usize {
+            unsafe { (self.estimate_iterations_fn)(time_ms) }
+        }
+    }
+
+    impl<'l> Drop for LibraryVTable<'l> {
+        fn drop(&mut self) {
+            unsafe { (self.free_fn)() }
         }
     }
 
@@ -242,12 +285,22 @@ mod ffi {
                     .get(b"tango_run\0")
                     .expect("Unable to get tango_run() symbol");
 
+                let estimate_iterations_fn = library
+                    .get(b"tango_estimate_iterations\0")
+                    .expect("Unable to get tango_estimate_iterations() symbol");
+
+                let free_fn = library
+                    .get(b"tango_free\0")
+                    .expect("Unable to get tango_free() symbol");
+
                 Self {
                     init_fn,
                     count_fn,
                     select_fn,
                     get_test_name_fn,
                     run_fn,
+                    estimate_iterations_fn,
+                    free_fn,
                 }
             }
         }

@@ -1,4 +1,4 @@
-use num_traits::ToPrimitive;
+use num_traits::{AsPrimitive, ToPrimitive};
 use std::{
     any::type_name,
     cmp::Ordering,
@@ -6,6 +6,7 @@ use std::{
     fs::File,
     hint::black_box,
     io::{BufWriter, Write as _},
+    ops::{Add, Div},
     path::{Path, PathBuf},
     time::{Duration, Instant},
 };
@@ -13,6 +14,8 @@ use timer::{ActiveTimer, Timer};
 
 pub mod cli;
 pub mod dylib;
+
+pub const NS_TO_MS: u64 = 1_000_000;
 
 pub fn benchmark_fn<O, F: Fn() -> O + 'static>(
     name: &'static str,
@@ -83,6 +86,13 @@ pub trait MeasureTarget {
     /// but not necessarily accuracy.
     fn measure(&mut self, iterations: usize) -> u64;
 
+    /// Estimates the number of iterations achievable within given number of miliseconds
+    ///
+    /// Estimate can be an approximation. If possible the same input arguments should be used when building the
+    /// estimate. If the single call to measured function is longer than provided timespan the implementation
+    /// can return 0.
+    fn estimate_iterations(&mut self, time_ms: u32) -> usize;
+
     /// The name of the test function
     fn name(&self) -> &str;
 }
@@ -102,6 +112,11 @@ impl<O, F: Fn() -> O> MeasureTarget for SimpleFunc<F> {
         let time = ActiveTimer::stop(start);
         drop(result);
         time
+    }
+
+    fn estimate_iterations(&mut self, time_ms: u32) -> usize {
+        let median = median_execution_time(self, 10) as usize;
+        time_ms as usize * 1_000_000 / median
     }
 
     fn name(&self) -> &str {
@@ -144,6 +159,22 @@ impl<H, N> MeasureTarget for GenAndFunc<H, N> {
         let mut needles = Vec::with_capacity(iterations);
         self.g.next_needles(&haystack, iterations, &mut needles);
         self.f.measure(&haystack, &needles)
+    }
+
+    fn estimate_iterations(&mut self, time_ms: u32) -> usize {
+        let iterations = 10;
+
+        let haystack = self.g.next_haystack();
+        let mut needles = Vec::with_capacity(iterations);
+        self.g.next_needles(&haystack, iterations, &mut needles);
+
+        let mut measurements = Vec::with_capacity(iterations);
+
+        for needle in needles {
+            measurements.push(self.f.measure(&haystack, &[needle]));
+        }
+
+        (time_ms as usize * 1_000_000) / median(measurements) as usize
     }
 
     fn name(&self) -> &str {
@@ -866,6 +897,29 @@ mod timer {
     }
 }
 
+fn median_execution_time(target: &mut dyn MeasureTarget, iterations: u32) -> u64 {
+    assert!(iterations >= 1);
+    let measures: Vec<_> = (0..iterations)
+        .into_iter()
+        .map(|_| target.measure(1))
+        .collect();
+    median(measures)
+}
+
+fn median<T: Copy + Ord + Add<Output = T> + Div<Output = T> + 'static>(mut measures: Vec<T>) -> T
+where
+    u32: AsPrimitive<T>,
+{
+    measures.sort();
+
+    let n = measures.len();
+    if n % 2 == 0 {
+        (measures[n / 2 - 1] + measures[n / 2]) / 2.as_()
+    } else {
+        measures[n / 2]
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -952,27 +1006,8 @@ mod tests {
         let delay = 1;
         let mut target = benchmark_fn("foo", move || thread::sleep(Duration::from_millis(delay)));
 
-        let median = median_execution_time_ms(target.as_mut(), 10);
+        let median = median_execution_time(target.as_mut(), 10) / NS_TO_MS;
         assert_eq!(delay, median);
-    }
-
-    fn median_execution_time_ms(target: &mut dyn MeasureTarget, iterations: usize) -> u64 {
-        const NS_TO_MS: u64 = 1_000_000;
-
-        assert!(iterations >= 1);
-        let mut measures: Vec<_> = (0..iterations)
-            .into_iter()
-            .map(|_| target.measure(1))
-            .collect();
-        measures.sort();
-
-        let n = measures.len();
-        let median = if n % 2 == 0 {
-            (measures[n / 2 - 1] + measures[n / 2]) / 2
-        } else {
-            measures[n / 2]
-        };
-        median / NS_TO_MS
     }
 
     struct RngIterator<T>(T);

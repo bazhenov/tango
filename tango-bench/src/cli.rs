@@ -168,9 +168,11 @@ mod commands {
         test_name: &str,
         reporter: &mut dyn Reporter,
     ) {
-        let iterations = 100;
-        let base_idx = base.tests().get(test_name).unwrap();
-        let candidate_idx = candidate.tests().get(test_name).unwrap();
+        let base_idx = *base.tests().get(test_name).unwrap();
+        let candidate_idx = *candidate.tests().get(test_name).unwrap();
+
+        let estimate = base.estimate_iterations(base_idx, 1) / 2;
+        let iterations = estimate.max(1).min(50);
 
         let mut base_samples = vec![];
         let mut candidate_samples = vec![];
@@ -180,11 +182,13 @@ mod commands {
         let mut baseline_first = false;
         while Instant::now() < deadline {
             if baseline_first {
-                base_samples.push(base.run(*base_idx, iterations) as i64);
-                candidate_samples.push(candidate.run(*candidate_idx, iterations) as i64);
+                base_samples.push(base.run(base_idx, iterations) as i64 / iterations as i64);
+                candidate_samples
+                    .push(candidate.run(candidate_idx, iterations) as i64 / iterations as i64);
             } else {
-                candidate_samples.push(candidate.run(*candidate_idx, iterations) as i64);
-                base_samples.push(base.run(*base_idx, iterations) as i64);
+                candidate_samples
+                    .push(candidate.run(candidate_idx, iterations) as i64 / iterations as i64);
+                base_samples.push(base.run(base_idx, iterations) as i64 / iterations as i64);
             }
 
             baseline_first = !baseline_first;
