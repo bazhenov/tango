@@ -8,7 +8,7 @@ use std::{
     any::type_name, collections::BTreeSet, convert::TryFrom, iter::FromIterator,
     marker::PhantomData, ops::Bound, usize,
 };
-use tango_bench::{benchmark_fn, cli, Benchmark, Generator, MeasurementSettings};
+use tango_bench::{_benchmark_fn, cli, Benchmark, Generator, MeasurementSettings};
 
 struct Lcg<T> {
     value: usize,
@@ -151,12 +151,12 @@ where
     let mut b = Benchmark::default();
 
     b.add_pair(
-        benchmark_fn("vec", search_vec),
-        benchmark_fn("ord", search_ord),
+        _benchmark_fn("vec", search_vec),
+        _benchmark_fn("ord", search_ord),
     );
     b.add_pair(
-        benchmark_fn("btree", search_btree),
-        benchmark_fn("ord", search_ord),
+        _benchmark_fn("btree", search_btree),
+        _benchmark_fn("ord", search_ord),
     );
 
     let sizes = [

@@ -14,7 +14,15 @@ use timer::{ActiveTimer, Timer};
 pub mod cli;
 pub mod dylib;
 
-pub const fn benchmark_fn<H, N, O, F>(name: &'static str, func: F) -> impl BenchmarkFn<H, N>
+pub fn benchmark_fn<O, F: Fn() -> O + 'static>(
+    name: &'static str,
+    func: F,
+) -> Box<dyn MeasureTarget> {
+    assert!(!name.is_empty());
+    Box::new(SimpleFunc { name, func })
+}
+
+pub const fn _benchmark_fn<H, N, O, F>(name: &'static str, func: F) -> impl BenchmarkFn<H, N>
 where
     F: Fn(&H, &N) -> O,
 {
@@ -69,10 +77,36 @@ where
 }
 
 pub trait MeasureTarget {
+    /// Measures the performance if the function
+    ///
+    /// Returns the cumulative (all iterations) execution time with nanoseconds precision,
+    /// but not necessarily accuracy.
     fn measure(&mut self, iterations: usize) -> u64;
 
     /// The name of the test function
     fn name(&self) -> &str;
+}
+
+struct SimpleFunc<F> {
+    name: &'static str,
+    func: F,
+}
+
+impl<O, F: Fn() -> O> MeasureTarget for SimpleFunc<F> {
+    fn measure(&mut self, iterations: usize) -> u64 {
+        let mut result = Vec::with_capacity(iterations);
+        let start = ActiveTimer::start();
+        for _ in 0..iterations {
+            result.push(black_box((self.func)()));
+        }
+        let time = ActiveTimer::stop(start);
+        drop(result);
+        time
+    }
+
+    fn name(&self) -> &str {
+        self.name
+    }
 }
 
 pub struct GenAndFunc<H, N> {
@@ -114,6 +148,50 @@ impl<H, N> MeasureTarget for GenAndFunc<H, N> {
 
     fn name(&self) -> &str {
         self.name.as_str()
+    }
+}
+
+pub struct GeneratorBenchmarks<G> {
+    generator: G,
+    functions: Vec<Box<dyn MeasureTarget>>,
+}
+
+impl<H: 'static, N: 'static, G: Generator<Haystack = H, Needle = N> + 'static>
+    GeneratorBenchmarks<G>
+{
+    pub fn with_generator(generator: G) -> Self {
+        Self {
+            generator,
+            functions: vec![],
+        }
+    }
+
+    pub fn add<O, F>(&mut self, name: &'static str, f: F) -> &mut Self
+    where
+        G: Clone,
+        O: 'static,
+        F: Fn(&H, &N) -> O + 'static,
+    {
+        let g = self.generator.clone();
+        let f = _benchmark_fn(name, f);
+        self.functions.push(Box::new(GenAndFunc::new(f, g)));
+        self
+    }
+}
+
+impl<G> IntoBenchmarks for GeneratorBenchmarks<G> {
+    fn into_benchmarks(self) -> Vec<Box<dyn MeasureTarget>> {
+        self.functions
+    }
+}
+
+pub trait IntoBenchmarks {
+    fn into_benchmarks(self) -> Vec<Box<dyn MeasureTarget>>;
+}
+
+impl IntoBenchmarks for Vec<Box<dyn MeasureTarget>> {
+    fn into_benchmarks(self) -> Vec<Box<dyn MeasureTarget>> {
+        self
     }
 }
 
@@ -780,7 +858,7 @@ mod timer {
 mod tests {
     use super::*;
     use rand::{rngs::SmallRng, RngCore, SeedableRng};
-    use std::iter::Sum;
+    use std::{iter::Sum, thread};
 
     #[test]
     fn check_summary_statistics() {
@@ -849,7 +927,40 @@ mod tests {
         let rng = RngIterator(SmallRng::seed_from_u64(0)).map(|i| i as i64);
         let mut variances = Summary::running(rng).map(|s| s.variance);
 
-        assert!(variances.nth(10000000).unwrap() > 0.)
+        assert!(variances.nth(1_000_000).unwrap() > 0.)
+    }
+
+    /// Basic check of measurement code
+    ///
+    /// This test is possibly brittle. Theoretically it can fail because there is no guarantee
+    /// that OS scheduler will wake up thread soon enough to meet measurement target. We try to mitigate
+    /// this possibility repeating test several times and taking median as target measurement.
+    #[test]
+    fn check_measure_time() {
+        let delay = 1;
+        let mut target = benchmark_fn("foo", move || thread::sleep(Duration::from_millis(delay)));
+
+        let median = median_execution_time_ms(target.as_mut(), 10);
+        assert_eq!(delay, median);
+    }
+
+    fn median_execution_time_ms(target: &mut dyn MeasureTarget, iterations: usize) -> u64 {
+        const NS_TO_MS: u64 = 1_000_000;
+
+        assert!(iterations >= 1);
+        let mut measures: Vec<_> = (0..iterations)
+            .into_iter()
+            .map(|_| target.measure(1))
+            .collect();
+        measures.sort();
+
+        let n = measures.len();
+        let median = if n % 2 == 0 {
+            (measures[n / 2 - 1] + measures[n / 2]) / 2
+        } else {
+            measures[n / 2]
+        };
+        median / NS_TO_MS
     }
 
     struct RngIterator<T>(T);

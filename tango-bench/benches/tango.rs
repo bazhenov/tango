@@ -2,8 +2,8 @@
 
 use rand::{rngs::SmallRng, Rng, SeedableRng};
 use tango_bench::{
-    benchmark_fn, benchmark_fn_with_setup, cli::run, Benchmark, GenAndFunc, Generator,
-    MeasureTarget, MeasurementSettings, StaticValue,
+    _benchmark_fn, benchmark_fn, benchmark_fn_with_setup, cli::run, Benchmark, Generator,
+    GeneratorBenchmarks, IntoBenchmarks, MeasureTarget, MeasurementSettings, StaticValue,
 };
 use test_funcs::{factorial, str_count, str_count_rev, str_std, str_take, sum, RandomString};
 
@@ -52,18 +52,35 @@ fn copy_and_sort_stable<T: Ord + Copy, N>(input: &Vec<T>, _: &N) -> T {
     input[input.len() / 2]
 }
 
+pub fn benchmarks_a() -> Vec<Box<dyn MeasureTarget>> {
+    vec![
+        benchmark_fn("sum_5000", || sum(5000)),
+        benchmark_fn("sum_4950", || sum(4950)),
+        benchmark_fn("factorial_500", || factorial(500)),
+        benchmark_fn("factorial_495", || factorial(495)),
+    ]
+}
+
+pub fn generated_benchmarks() -> impl IntoBenchmarks {
+    let generator = RandomString::new().unwrap();
+    let mut benchmarks = GeneratorBenchmarks::with_generator(generator);
+
+    benchmarks
+        .add("str_std", str_std)
+        .add("str_count", str_count)
+        .add("str_count_rev", str_count_rev)
+        .add("str_5000", |h, n| str_take(5000, h, n))
+        .add("str_4950", |h, n| str_take(4950, h, n));
+
+    benchmarks
+}
+
 #[no_mangle]
 pub fn create_benchmarks() -> Vec<Box<dyn MeasureTarget>> {
-    vec![
-        GenAndFunc::new_boxed(
-            benchmark_fn("sum_5000", |_, _| sum(5000)),
-            StaticValue((), ()),
-        ),
-        GenAndFunc::new_boxed(
-            benchmark_fn("sum_4950", |_, _| sum(4950)),
-            StaticValue((), ()),
-        ),
-    ]
+    let mut benchmarks = vec![];
+    benchmarks.extend(benchmarks_a().into_benchmarks());
+    benchmarks.extend(generated_benchmarks().into_benchmarks());
+    benchmarks
 }
 
 fn main() {
@@ -77,40 +94,40 @@ fn main() {
     #[cfg(feature = "aa_test")]
     {
         benchmark.add_pair(
-            benchmark_fn("sum_5000", |_, _| sum(5000)),
-            benchmark_fn("sum_5000", |_, _| sum(5000)),
+            _benchmark_fn("sum_5000", |_, _| sum(5000)),
+            _benchmark_fn("sum_5000", |_, _| sum(5000)),
         );
 
         benchmark.add_pair(
-            benchmark_fn("factorial_500", |_, _| factorial(500)),
-            benchmark_fn("factorial_500", |_, _| factorial(500)),
+            _benchmark_fn("factorial_500", |_, _| factorial(500)),
+            _benchmark_fn("factorial_500", |_, _| factorial(500)),
         );
     }
 
     num_benchmark.add_pair(
-        benchmark_fn("sum_5000", |_, _| sum(5000)),
-        benchmark_fn("sum_4950", |_, _| sum(4950)),
+        _benchmark_fn("sum_5000", |_, _| sum(5000)),
+        _benchmark_fn("sum_4950", |_, _| sum(4950)),
     );
 
     num_benchmark.add_pair(
-        benchmark_fn("factorial_500", |_, _| factorial(500)),
-        benchmark_fn("factorial_495", |_, _| factorial(495)),
+        _benchmark_fn("factorial_500", |_, _| factorial(500)),
+        _benchmark_fn("factorial_495", |_, _| factorial(495)),
     );
 
     let mut str_benchmark = Benchmark::default();
     str_benchmark.add_generator(RandomString::new().unwrap());
 
     str_benchmark.add_pair(
-        benchmark_fn("str_std", str_std),
-        benchmark_fn("str_count", str_count),
+        _benchmark_fn("str_std", str_std),
+        _benchmark_fn("str_count", str_count),
     );
     str_benchmark.add_pair(
-        benchmark_fn("str_count", str_count),
-        benchmark_fn("str_count_rev", str_count_rev),
+        _benchmark_fn("str_count", str_count),
+        _benchmark_fn("str_count_rev", str_count_rev),
     );
     str_benchmark.add_pair(
-        benchmark_fn("str_5000", |h, n| str_take(5000, h, n)),
-        benchmark_fn("str_4950", |h, n| str_take(4950, h, n)),
+        _benchmark_fn("str_5000", |h, n| str_take(5000, h, n)),
+        _benchmark_fn("str_4950", |h, n| str_take(4950, h, n)),
     );
 
     let mut sort_benchmark = Benchmark::default();
@@ -126,7 +143,7 @@ fn main() {
 
     sort_benchmark.add_pair(
         benchmark_fn_with_setup("stable", sort_stable, Clone::clone),
-        benchmark_fn("stable_clone_sort", copy_and_sort_stable),
+        _benchmark_fn("stable_clone_sort", copy_and_sort_stable),
     );
 
     run(str_benchmark, settings);

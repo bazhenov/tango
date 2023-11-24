@@ -121,10 +121,11 @@ pub fn run<H, N>(mut benchmark: Benchmark<H, N>, settings: MeasurementSettings) 
             let spi_lib = Spi::for_library(&lib);
             let spi_self = Spi::for_self();
 
-            let test_names = intersect_values(spi_lib.tests().keys(), spi_self.tests().keys());
+            let mut test_names = intersect_values(spi_lib.tests().keys(), spi_self.tests().keys());
+            test_names.sort();
 
             for name in test_names {
-                commands::pairwise_test(&spi_self, &spi_lib, name.as_str());
+                commands::pairwise_compare(&spi_self, &spi_lib, name.as_str());
             }
         }
     }
@@ -132,10 +133,11 @@ pub fn run<H, N>(mut benchmark: Benchmark<H, N>, settings: MeasurementSettings) 
 
 mod commands {
     use crate::{calculate_run_result, Summary};
+    use std::time::Instant;
 
     use super::*;
 
-    pub(super) fn pairwise_test(base: &Spi, candidate: &Spi, test_name: &str) {
+    pub(super) fn pairwise_compare(base: &Spi, candidate: &Spi, test_name: &str) {
         let iterations = 100;
         let base_idx = base.tests().get(test_name).unwrap();
         let candidate_idx = candidate.tests().get(test_name).unwrap();
@@ -143,7 +145,9 @@ mod commands {
         let mut base_samples = vec![];
         let mut candidate_samples = vec![];
 
-        for _ in 0..1000 {
+        let deadline = Instant::now() + Duration::from_millis(100);
+
+        while Instant::now() < deadline {
             base_samples.push(base.run(*base_idx, iterations) as i64);
             candidate_samples.push(candidate.run(*candidate_idx, iterations) as i64);
         }
@@ -158,17 +162,14 @@ mod commands {
         let candidate_summary = Summary::from(&candidate_samples).unwrap();
 
         let result = calculate_run_result(
-            ("base", base_summary),
-            ("candidate", candidate_summary),
+            (format!("{} B", test_name), base_summary),
+            (format!("{} C", test_name), candidate_summary),
             diff,
             false,
         );
 
         let mut reporter = ConsoleReporter::default();
-
         reporter.on_complete(&result);
-
-        // println!("- {} = {}", test_name, summary.mean);
     }
 }
 
