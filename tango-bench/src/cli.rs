@@ -3,7 +3,7 @@ use clap::Parser;
 use core::fmt;
 use libloading::Library;
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashSet,
     fmt::Display,
     hash::Hash,
     num::{NonZeroU64, NonZeroUsize},
@@ -16,10 +16,10 @@ use self::reporting::{ConsoleReporter, VerboseReporter};
 #[derive(Parser, Debug)]
 enum BenchmarkMode {
     Pair {
-        name: Option<String>,
+        #[command(flatten)]
+        bench_flags: CargoBenchFlags,
 
-        #[arg(long = "bench", default_value_t = true)]
-        bench: bool,
+        name: Option<String>,
 
         #[arg(short = 's', long = "samples")]
         samples: Option<NonZeroUsize>,
@@ -39,17 +39,18 @@ enum BenchmarkMode {
         verbose: bool,
     },
     Calibrate {
-        #[arg(long = "bench", default_value_t = true)]
-        bench: bool,
+        #[command(flatten)]
+        bench_flags: CargoBenchFlags,
     },
     List {
-        #[arg(long = "bench", default_value_t = true)]
-        bench: bool,
+        #[command(flatten)]
+        bench_flags: CargoBenchFlags,
     },
     Compare {
-        #[arg(long = "bench", default_value_t = true)]
-        bench: bool,
+        #[command(flatten)]
+        bench_flags: CargoBenchFlags,
 
+        /// Path to the executable to test agains. Tango will test agains itself if no executable given
         path: Option<PathBuf>,
     },
 }
@@ -60,6 +61,13 @@ struct Opts {
     #[command(subcommand)]
     subcommand: BenchmarkMode,
 
+    #[command(flatten)]
+    bench_flags: CargoBenchFlags,
+}
+
+/// Definition of the flags required to comply with `cargo bench` calling conventions.
+#[derive(Parser, Debug, Clone)]
+struct CargoBenchFlags {
     #[arg(long = "bench", default_value_t = true)]
     bench: bool,
 }
@@ -75,7 +83,7 @@ pub fn run<H, N>(mut benchmark: Benchmark<H, N>, settings: MeasurementSettings) 
             verbose,
             path_to_dump,
             skip_outlier_detection,
-            bench: _,
+            bench_flags: _,
         } => {
             let mut reporter: Box<dyn Reporter> = if verbose {
                 Box::<VerboseReporter>::default()
@@ -97,10 +105,10 @@ pub fn run<H, N>(mut benchmark: Benchmark<H, N>, settings: MeasurementSettings) 
             let name_filter = name.as_deref().unwrap_or("");
             benchmark.run_by_name(reporter.as_mut(), name_filter, &opts, path_to_dump.as_ref());
         }
-        BenchmarkMode::Calibrate { bench: _ } => {
+        BenchmarkMode::Calibrate { bench_flags: _ } => {
             benchmark.run_calibration();
         }
-        BenchmarkMode::List { bench: _ } => {
+        BenchmarkMode::List { bench_flags: _ } => {
             for fn_name in benchmark.list_functions() {
                 println!("{}", fn_name);
             }
@@ -112,12 +120,6 @@ pub fn run<H, N>(mut benchmark: Benchmark<H, N>, settings: MeasurementSettings) 
             let lib = unsafe { Library::new(path) }.expect("Unable to load library");
             let spi_lib = Spi::for_library(&lib);
             let spi_self = Spi::for_self();
-
-            // println!("Checking lib:");
-            // check_spi(&spi_lib);
-
-            // println!("Checking self:");
-            // check_spi(&spi_self);
 
             let test_names = intersect_values(spi_lib.tests().keys(), spi_self.tests().keys());
 
@@ -141,7 +143,6 @@ mod commands {
         let mut base_samples = vec![];
         let mut candidate_samples = vec![];
 
-        let mut toggle = false;
         for _ in 0..1000 {
             base_samples.push(base.run(*base_idx, iterations) as i64);
             candidate_samples.push(candidate.run(*candidate_idx, iterations) as i64);
@@ -155,7 +156,6 @@ mod commands {
 
         let base_summary = Summary::from(&base_samples).unwrap();
         let candidate_summary = Summary::from(&candidate_samples).unwrap();
-        let summary = Summary::from(&diff).unwrap();
 
         let result = calculate_run_result(
             ("base", base_summary),
@@ -172,6 +172,7 @@ mod commands {
     }
 }
 
+/// Returning the intersection of the values of two iterators buffering them in an intermediate [`HashSet`].
 fn intersect_values<'a, K: Hash + Eq>(
     a: impl Iterator<Item = &'a K>,
     b: impl Iterator<Item = &'a K>,
@@ -182,13 +183,6 @@ fn intersect_values<'a, K: Hash + Eq>(
         .intersection(&b_values)
         .map(|s| *s)
         .collect::<Vec<_>>()
-}
-
-fn check_spi(spi: &Spi) {
-    println!("  count {}", spi.tests().len());
-    for (name, idx) in spi.tests() {
-        println!("  {} = {}", name, spi.run(*idx, 100));
-    }
 }
 
 pub mod reporting {
