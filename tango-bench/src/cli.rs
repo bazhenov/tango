@@ -191,7 +191,7 @@ fn intersect_values<'a, K: Hash + Eq>(
     let b_values = b.collect::<HashSet<_>>();
     a_values
         .intersection(&b_values)
-        .map(|s| *s)
+        .copied()
         .collect::<Vec<_>>()
 }
 

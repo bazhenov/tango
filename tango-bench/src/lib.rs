@@ -201,7 +201,7 @@ impl<H: 'static, N: 'static, G: Generator<Haystack = H, Needle = N> + 'static>
         params: impl IntoIterator<Item = P>,
         generator: impl Fn(P) -> G,
     ) -> Self {
-        let generators: Vec<_> = params.into_iter().map(|p| generator(p)).collect();
+        let generators: Vec<_> = params.into_iter().map(generator).collect();
         Self {
             generators,
             functions: vec![],
@@ -899,10 +899,7 @@ mod timer {
 
 fn median_execution_time(target: &mut dyn MeasureTarget, iterations: u32) -> u64 {
     assert!(iterations >= 1);
-    let measures: Vec<_> = (0..iterations)
-        .into_iter()
-        .map(|_| target.measure(1))
-        .collect();
+    let measures: Vec<_> = (0..iterations).map(|_| target.measure(1)).collect();
     median(measures)
 }
 

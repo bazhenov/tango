@@ -265,45 +265,23 @@ mod ffi {
     impl<'l> LibraryVTable<'l> {
         pub(super) fn new(library: &'l Library) -> Self {
             unsafe {
-                let init_fn = library
-                    .get(b"tango_init\0")
-                    .expect("Unable to get tango_init() symbol");
-
-                let count_fn = library
-                    .get(b"tango_count\0")
-                    .expect("Unable to get tango_count_functions() symbol");
-
-                let select_fn = library
-                    .get(b"tango_select\0")
-                    .expect("Unable to get tango_select() symbol");
-
-                let get_test_name_fn = library
-                    .get(b"tango_get_test_name\0")
-                    .expect("Unable to get tango_get_test_name() symbol");
-
-                let run_fn = library
-                    .get(b"tango_run\0")
-                    .expect("Unable to get tango_run() symbol");
-
-                let estimate_iterations_fn = library
-                    .get(b"tango_estimate_iterations\0")
-                    .expect("Unable to get tango_estimate_iterations() symbol");
-
-                let free_fn = library
-                    .get(b"tango_free\0")
-                    .expect("Unable to get tango_free() symbol");
-
                 Self {
-                    init_fn,
-                    count_fn,
-                    select_fn,
-                    get_test_name_fn,
-                    run_fn,
-                    estimate_iterations_fn,
-                    free_fn,
+                    init_fn: lookup_symbol(library, "tango_init"),
+                    count_fn: lookup_symbol(library, "tango_count"),
+                    select_fn: lookup_symbol(library, "tango_select"),
+                    get_test_name_fn: lookup_symbol(library, "tango_get_test_name"),
+                    run_fn: lookup_symbol(library, "tango_run"),
+                    estimate_iterations_fn: lookup_symbol(library, "tango_estimate_iterations"),
+                    free_fn: lookup_symbol(library, "tango_free"),
                 }
             }
         }
+    }
+
+    unsafe fn lookup_symbol<'l, T>(library: &'l Library, name: &'static str) -> Symbol<'l, T> {
+        library
+            .get(name.as_bytes())
+            .unwrap_or_else(|_| panic!("Unable to get {}() symbol", name))
     }
 }
 
