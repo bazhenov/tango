@@ -53,8 +53,18 @@ enum BenchmarkMode {
         /// Path to the executable to test agains. Tango will test agains itself if no executable given
         path: Option<PathBuf>,
 
+        #[arg(short = 's', long = "samples")]
+        samples: Option<NonZeroUsize>,
+
+        #[arg(short = 't', long = "time")]
+        time: Option<NonZeroU64>,
+
         #[arg(short = 'f', long = "filter")]
         filter: Option<String>,
+
+        /// disable outlier detection
+        #[arg(short = 'o', long = "no-outliers")]
+        skip_outlier_detection: bool,
 
         #[arg(short = 'v', long = "verbose", default_value_t = false)]
         verbose: bool,
@@ -123,6 +133,9 @@ pub fn run<H, N>(mut benchmark: Benchmark<H, N>, settings: MeasurementSettings) 
             path,
             verbose,
             filter,
+            samples,
+            time,
+            skip_outlier_detection,
             bench_flags: _,
         } => {
             let mut reporter: Box<dyn Reporter> = if verbose {
@@ -141,79 +154,31 @@ pub fn run<H, N>(mut benchmark: Benchmark<H, N>, settings: MeasurementSettings) 
             let mut test_names = intersect_values(spi_lib.tests().keys(), spi_self.tests().keys());
             test_names.sort();
 
+            let mut opts = settings;
+            if let Some(samples) = samples {
+                opts.max_samples = samples.into()
+            }
+            if let Some(millis) = time {
+                opts.max_duration = Duration::from_millis(millis.into());
+            }
+            if skip_outlier_detection {
+                opts.outlier_detection_enabled = false;
+            }
+
             let filter = filter.as_deref().unwrap_or("");
             for name in test_names {
-                if name.contains(filter) {
-                    commands::pairwise_compare(
-                        &spi_self,
-                        &spi_lib,
-                        name.as_str(),
-                        reporter.as_mut(),
-                    );
+                if !name.contains(filter) {
+                    continue;
                 }
+                commands::pairwise_compare(
+                    &spi_self,
+                    &spi_lib,
+                    name.as_str(),
+                    &settings,
+                    reporter.as_mut(),
+                );
             }
         }
-    }
-}
-
-mod commands {
-    use crate::{calculate_run_result, Summary};
-    use std::time::Instant;
-
-    use super::*;
-
-    pub(super) fn pairwise_compare(
-        base: &Spi,
-        candidate: &Spi,
-        test_name: &str,
-        reporter: &mut dyn Reporter,
-    ) {
-        let base_idx = *base.tests().get(test_name).unwrap();
-        let candidate_idx = *candidate.tests().get(test_name).unwrap();
-
-        // Number of iterations estimated based on the performance of base algorithm only. We assuming
-        // both algorithms performs approximatley the same. We need to divide estimation by 2 to compensate
-        // for the fact that 2 algorithms will be executed concurrently.
-        let estimate = base.estimate_iterations(base_idx, 1) / 2;
-        let iterations = estimate.max(1).min(50);
-
-        let mut base_samples = vec![];
-        let mut candidate_samples = vec![];
-
-        let deadline = Instant::now() + Duration::from_millis(100);
-
-        let mut baseline_first = false;
-        while Instant::now() < deadline {
-            if baseline_first {
-                base_samples.push(base.run(base_idx, iterations) as i64 / iterations as i64);
-                candidate_samples
-                    .push(candidate.run(candidate_idx, iterations) as i64 / iterations as i64);
-            } else {
-                candidate_samples
-                    .push(candidate.run(candidate_idx, iterations) as i64 / iterations as i64);
-                base_samples.push(base.run(base_idx, iterations) as i64 / iterations as i64);
-            }
-
-            baseline_first = !baseline_first;
-        }
-
-        let diff: Vec<_> = base_samples
-            .iter()
-            .zip(candidate_samples.iter())
-            .map(|(b, c)| c - b)
-            .collect();
-
-        let base_summary = Summary::from(&base_samples).unwrap();
-        let candidate_summary = Summary::from(&candidate_samples).unwrap();
-
-        let result = calculate_run_result(
-            (format!("{} B", test_name), base_summary),
-            (format!("{} C", test_name), candidate_summary),
-            diff,
-            false,
-        );
-
-        reporter.on_complete(&result);
     }
 }
 
@@ -228,6 +193,80 @@ fn intersect_values<'a, K: Hash + Eq>(
         .intersection(&b_values)
         .map(|s| *s)
         .collect::<Vec<_>>()
+}
+
+mod commands {
+    use crate::{calculate_run_result, Summary};
+    use std::time::Instant;
+
+    use super::*;
+
+    pub(super) fn pairwise_compare(
+        a: &Spi,
+        b: &Spi,
+        test_name: &str,
+        settings: &MeasurementSettings,
+        reporter: &mut dyn Reporter,
+    ) {
+        let base_idx = *a.tests().get(test_name).unwrap();
+        let candidate_idx = *b.tests().get(test_name).unwrap();
+
+        // Number of iterations estimated based on the performance of base algorithm only. We assuming
+        // both algorithms performs approximatley the same. We need to divide estimation by 2 to compensate
+        // for the fact that 2 algorithms will be executed concurrently.
+        let iterations_per_ms = (a.estimate_iterations(base_idx, 1) / 2)
+            .min(settings.max_iterations_per_sample)
+            .max(settings.min_iterations_per_sample)
+            .max(1);
+        let iterations = iterations_per_ms;
+
+        let mut a_samples = vec![];
+        let mut b_samples = vec![];
+
+        let deadline = Instant::now() + settings.max_duration;
+
+        let mut a_first = true;
+        for i in 0..settings.max_samples {
+            // Trying not to stress benchmarking loop with to much of clock calls
+            if i % iterations_per_ms == 0 && Instant::now() >= deadline {
+                break;
+            }
+            let (a_time, b_time) = if a_first {
+                let a_time = a.run(base_idx, iterations);
+                let b_time = b.run(candidate_idx, iterations);
+
+                (a_time, b_time)
+            } else {
+                let b_time = b.run(candidate_idx, iterations);
+                let a_time = a.run(base_idx, iterations);
+
+                (a_time, b_time)
+            };
+
+            a_samples.push(a_time as i64 / iterations as i64);
+            b_samples.push(b_time as i64 / iterations as i64);
+
+            a_first = !a_first;
+        }
+
+        let diff: Vec<_> = a_samples
+            .iter()
+            .zip(b_samples.iter())
+            .map(|(b, c)| c - b)
+            .collect();
+
+        let a_summary = Summary::from(&a_samples).unwrap();
+        let b_summary = Summary::from(&b_samples).unwrap();
+
+        let result = calculate_run_result(
+            (format!("{} B", test_name), a_summary),
+            (format!("{} C", test_name), b_summary),
+            diff,
+            settings.outlier_detection_enabled,
+        );
+
+        reporter.on_complete(&result);
+    }
 }
 
 pub mod reporting {
