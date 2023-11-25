@@ -637,7 +637,7 @@ fn estimate_iterations_per_ms<H, N>(
     1.max(iterations / factor as usize)
 }
 
-pub fn calculate_run_result<N: Into<String>>(
+pub fn calculate_run_result<N: AsRef<str>>(
     baseline: (N, Summary<i64>),
     candidate: (N, Summary<i64>),
     diff: Vec<i64>,
@@ -665,9 +665,13 @@ pub fn calculate_run_result<N: Into<String>>(
     let std_err = std_dev / (diff_summary.n as f64).sqrt();
     let z_score = diff_summary.mean / std_err;
 
+    let name = if baseline.0.as_ref() == candidate.0.as_ref() {
+        baseline.0.as_ref().to_string()
+    } else {
+        format!("{}/{}", baseline.0.as_ref(), candidate.0.as_ref())
+    };
     RunResult {
-        base_name: baseline.0.into(),
-        candidate_name: candidate.0.into(),
+        name,
         baseline: baseline.1,
         candidate: candidate.1,
         diff: diff_summary,
@@ -681,11 +685,8 @@ pub fn calculate_run_result<N: Into<String>>(
 
 /// Describes the results of a single benchmark run
 pub struct RunResult {
-    /// name of a baseline function
-    pub base_name: String,
-
-    /// name of a candidate function
-    pub candidate_name: String,
+    /// name of a test
+    pub name: String,
 
     /// statistical summary of baseline function measurements
     pub baseline: Summary<i64>,

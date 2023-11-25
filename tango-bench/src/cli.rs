@@ -259,8 +259,8 @@ mod commands {
         let b_summary = Summary::from(&b_samples).unwrap();
 
         let result = calculate_run_result(
-            (format!("{} B", test_name), a_summary),
-            (format!("{} C", test_name), b_summary),
+            (test_name, a_summary),
+            (test_name, b_summary),
             diff,
             settings.outlier_detection_enabled,
         );
@@ -285,19 +285,17 @@ pub mod reporting {
             let significant = results.significant;
 
             println!(
-                "{} vs. {}  (n: {}, outliers: {})",
-                Colored(&results.base_name, Color::Bold),
-                Colored(&results.candidate_name, Color::Bold),
+                "{}  (n: {}, outliers: {})",
+                Colored(&results.name, Color::Bold),
                 results.diff.n,
                 results.outliers
             );
-            println!();
 
             println!(
                 "    {:12}   {:>15} {:>15} {:>15}",
                 "",
-                Colored(&results.base_name, Color::Bold),
-                Colored(&results.candidate_name, Color::Bold),
+                Colored("baseline", Color::Bold),
+                Colored("candidate", Color::Bold),
                 Colored("∆", Color::Bold),
             );
             println!(
@@ -365,11 +363,14 @@ pub mod reporting {
 
             let speedup = diff.mean / base.mean * 100.;
             let candidate_faster = diff.mean < 0.;
+            let name = if let Some(gen_name) = &self.current_generator_name {
+                format!("{} {}", gen_name, results.name)
+            } else {
+                format!("{}", results.name)
+            };
             println!(
-                "{:20}  {:>30} / {:30} [ {:>8} ... {:>8} ]    {:>+7.2}{}",
-                self.current_generator_name.take().as_deref().unwrap_or(""),
-                results.base_name,
-                colorize(&results.candidate_name, significant, candidate_faster),
+                "{:50} [ {:>8} ... {:>8} ]    {:>+7.2}{}",
+                colorize(name, significant, candidate_faster),
                 HumanTime(base.mean),
                 colorize(HumanTime(candidate.mean), significant, candidate_faster),
                 colorize(speedup, significant, candidate_faster),
