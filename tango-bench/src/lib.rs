@@ -14,6 +14,7 @@ use timer::{ActiveTimer, Timer};
 
 pub mod cli;
 pub mod dylib;
+pub mod platform;
 
 pub const NS_TO_MS: u64 = 1_000_000;
 

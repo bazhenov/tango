@@ -1,4 +1,4 @@
-use crate::{dylib::Spi, Benchmark, MeasurementSettings, Reporter};
+use crate::{dylib::Spi, platform, Benchmark, MeasurementSettings, Reporter};
 use clap::Parser;
 use core::fmt;
 use libloading::Library;
@@ -147,6 +147,11 @@ pub fn run<H, N>(mut benchmark: Benchmark<H, N>, settings: MeasurementSettings) 
             let self_path = PathBuf::from(std::env::args().next().unwrap());
             let path = path.unwrap_or(self_path);
 
+            let path = if let Some(replacement) = platform::patch_pie_binary_if_needed(&path) {
+                replacement
+            } else {
+                path
+            };
             let lib = unsafe { Library::new(path) }.expect("Unable to load library");
             let spi_lib = Spi::for_library(&lib);
             let spi_self = Spi::for_self().expect("SelfSpi already called once");
