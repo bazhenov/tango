@@ -174,7 +174,7 @@ pub fn run<H, N>(mut benchmark: Benchmark<H, N>, settings: MeasurementSettings) 
                     &spi_self,
                     &spi_lib,
                     name.as_str(),
-                    &settings,
+                    &opts,
                     reporter.as_mut(),
                 );
             }
