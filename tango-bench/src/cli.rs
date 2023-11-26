@@ -88,7 +88,7 @@ struct CargoBenchFlags {
     bench: bool,
 }
 
-pub fn run<H, N>(mut benchmark: Benchmark<H, N>, settings: MeasurementSettings) {
+pub fn run(settings: MeasurementSettings) {
     let opts = Opts::parse();
 
     match opts.subcommand {
@@ -119,14 +119,17 @@ pub fn run<H, N>(mut benchmark: Benchmark<H, N>, settings: MeasurementSettings) 
             }
 
             let name_filter = name.as_deref().unwrap_or("");
-            benchmark.run_by_name(reporter.as_mut(), name_filter, &opts, path_to_dump.as_ref());
+            // benchmark.run_by_name(reporter.as_mut(), name_filter, &opts, path_to_dump.as_ref());
         }
         BenchmarkMode::Calibrate { bench_flags: _ } => {
-            benchmark.run_calibration();
+            todo!();
+            // benchmark.run_calibration();
         }
         BenchmarkMode::List { bench_flags: _ } => {
-            for fn_name in benchmark.list_functions() {
-                println!("{}", fn_name);
+            let spi = Spi::for_self().unwrap();
+            let test_names = spi.tests().keys();
+            for name in test_names {
+                println!("{}", name);
             }
         }
         BenchmarkMode::Compare {

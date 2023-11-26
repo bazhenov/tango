@@ -13,7 +13,7 @@ keywords = ["benchmarks", "performance"]
 
 [dependencies]
 clap = { version = "^4.4", features = ["derive"] }
-libloading = "0.8.1"
+libloading = "^0.8"
 num-traits = "^0.2"
 rand = { version = "^0.8", features = ["small_rng"] }
 
@@ -35,9 +35,13 @@ name = "criterion"
 harness = false
 
 [[bench]]
-name = "tango"
+name = "tango-bench"
 harness = false
 
 [[bench]]
-name = "tango-bench"
+name = "tango-faster"
+harness = false
+
+[[bench]]
+name = "tango-slower"
 harness = false

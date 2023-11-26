@@ -179,9 +179,6 @@ fn main() {
         ..Default::default()
     };
 
-    cli::run(create_benchmark::<u8>(), settings);
-    cli::run(create_benchmark::<u16>(), settings);
-    cli::run(create_benchmark::<u32>(), settings);
-    cli::run(create_benchmark::<u64>(), settings);
-    cli::run(create_benchmark::<u128>(), settings);
+    todo!();
+    cli::run(settings);
 }

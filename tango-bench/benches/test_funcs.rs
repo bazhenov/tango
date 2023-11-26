@@ -1,10 +1,11 @@
 use rand::{rngs::SmallRng, Fill, Rng, SeedableRng};
-use std::{hint::black_box, io, marker::PhantomData};
+use std::{any::type_name, hint::black_box, io, marker::PhantomData};
 use tango_bench::Generator;
 
 /// HTML page with a lot of chinese text to test UTF8 decoding speed
 const INPUT_TEXT: &str = include_str!("./input.txt");
 
+#[derive(Clone)]
 pub struct RandomVec<T>(SmallRng, usize, PhantomData<T>);
 
 impl<T> RandomVec<T> {
@@ -29,6 +30,12 @@ where
     }
 
     fn next_needle(&mut self, _haystack: &Self::Haystack) -> Self::Needle {}
+
+    fn name(&self) -> String {
+        format!("RandomVec<{}, {}>", type_name::<T>(), self.1)
+    }
+
+    fn reset(&mut self) {}
 }
 
 #[derive(Clone)]
@@ -138,5 +145,21 @@ pub fn str_count_rev<T>(s: &String, _: &T) -> usize {
 #[allow(unused)]
 #[allow(clippy::ptr_arg)]
 pub fn str_take<T>(n: usize, s: &String, _: &T) -> usize {
-    black_box(s.chars().take(n)).count()
+    s.chars().take(black_box(n)).count()
+}
+
+#[cfg_attr(feature = "align", repr(align(32)))]
+#[cfg_attr(feature = "align", inline(never))]
+pub fn sort_unstable<T: Ord + Copy, N>(input: &Vec<T>, _: &N) -> T {
+    let mut input = input.clone();
+    input.sort_unstable();
+    input[input.len() / 2]
+}
+
+#[cfg_attr(feature = "align", repr(align(32)))]
+#[cfg_attr(feature = "align", inline(never))]
+pub fn sort_stable<T: Ord + Copy, N>(input: &Vec<T>, _: &N) -> T {
+    let mut input = input.clone();
+    input.sort();
+    input[input.len() / 2]
 }
