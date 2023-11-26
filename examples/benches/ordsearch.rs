@@ -179,6 +179,5 @@ fn main() {
         ..Default::default()
     };
 
-    todo!();
     cli::run(settings);
 }

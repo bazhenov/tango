@@ -3,12 +3,9 @@ use std::{
     any::type_name,
     cmp::Ordering,
     collections::BTreeMap,
-    fs::File,
     hint::black_box,
-    io::{BufWriter, Write as _},
     ops::{Add, Div},
-    path::{Path, PathBuf},
-    time::{Duration, Instant},
+    time::Duration,
 };
 use timer::{ActiveTimer, Timer};
 
@@ -344,7 +341,6 @@ impl<H: Copy, N: Copy> Generator for StaticValue<H, N> {
 }
 
 pub trait Reporter {
-    fn on_start(&mut self, _generator_name: &str) {}
     fn on_complete(&mut self, _results: &RunResult) {}
 }
 
@@ -436,212 +432,9 @@ impl<H, N> Benchmark<H, N> {
             .insert(key, (Box::new(baseline), Box::new(candidate)));
     }
 
-    pub fn run_by_name(
-        &mut self,
-        reporter: &mut dyn Reporter,
-        name_filter: &str,
-        opts: &MeasurementSettings,
-        samples_dump: Option<impl AsRef<Path>>,
-    ) {
-        for generator in self.generators.iter_mut() {
-            let generator_name = generator.name();
-            let mut start_reported = false;
-            for (key, (baseline, candidate)) in &self.funcs {
-                if key.contains(name_filter) || generator_name.contains(name_filter) {
-                    if !start_reported {
-                        reporter.on_start(generator_name.as_str());
-                        start_reported = true;
-                    }
-
-                    let samples_dump = &samples_dump;
-                    let (baseline_summary, candidate_summary, diff) = measure_function_pair(
-                        generator.as_mut(),
-                        baseline.as_ref(),
-                        candidate.as_ref(),
-                        opts,
-                        samples_dump.as_ref(),
-                    );
-
-                    let run_result = calculate_run_result(
-                        (baseline.name(), baseline_summary),
-                        (candidate.name(), candidate_summary),
-                        diff,
-                        opts.outlier_detection_enabled,
-                    );
-
-                    reporter.on_complete(&run_result);
-                }
-            }
-        }
-    }
-
-    pub fn run_calibration(&mut self) {
-        const TRIES: usize = 10;
-
-        let generator = self.generators[0].as_mut();
-        println!("H0 testing...");
-        for (baseline, candidate) in self.funcs.values() {
-            for f in [baseline.as_ref(), candidate.as_ref()] {
-                let significant = Self::calibrate(generator, f, f, TRIES);
-                let successes = TRIES - significant;
-                println!("    {:30} ... {}/{}", f.name(), successes, TRIES);
-            }
-        }
-
-        println!("H1 testing...");
-        for (baseline, candidate) in self.funcs.values() {
-            let significant =
-                Self::calibrate(generator, baseline.as_ref(), candidate.as_ref(), TRIES);
-            let name = format!("{} / {}", baseline.name(), candidate.name());
-            println!("    {:30} ... {}/{}", name, significant, TRIES);
-        }
-    }
-
-    /// Runs a given test multiple times and return the the number of times difference is statistically significant
-    fn calibrate(
-        payloads: &mut (dyn Generator<Haystack = H, Needle = N>),
-        a: &dyn BenchmarkFn<H, N>,
-        b: &dyn BenchmarkFn<H, N>,
-        tries: usize,
-    ) -> usize {
-        let mut succeed = 0;
-        let opts = MeasurementSettings {
-            max_samples: 1_000_000,
-            max_duration: Duration::from_millis(1000),
-            ..Default::default()
-        };
-        for _ in 0..tries {
-            let (a_summary, b_summary, diff) =
-                measure_function_pair(payloads, a, b, &opts, Option::<PathBuf>::None);
-
-            let result =
-                calculate_run_result((a.name(), a_summary), (b.name(), b_summary), diff, true);
-            succeed += usize::from(result.significant);
-        }
-        succeed
-    }
-
     pub fn list_functions(&self) -> impl Iterator<Item = &str> {
         self.funcs.keys().map(String::as_str)
     }
-}
-
-/// Measure the difference in performance of two functions
-///
-/// Provides a way to save a raw dump of measurements into directory
-///
-/// The format is as follows
-/// ```txt
-/// b_1,c_1
-/// b_2,c_2
-/// ...
-/// b_n,c_n
-/// ```
-/// where `b_1..b_n` are baseline absolute time (in nanoseconds) measurements
-/// and `c_1..c_n` are candidate time measurements
-fn measure_function_pair<H, N>(
-    generator: &mut dyn Generator<Haystack = H, Needle = N>,
-    base: &dyn BenchmarkFn<H, N>,
-    candidate: &dyn BenchmarkFn<H, N>,
-    opts: &MeasurementSettings,
-    samples_dump_location: Option<impl AsRef<Path>>,
-) -> (Summary<i64>, Summary<i64>, Vec<i64>) {
-    let mut base_samples = Vec::with_capacity(opts.max_samples);
-    let mut candidate_samples = Vec::with_capacity(opts.max_samples);
-
-    let iterations_per_ms = estimate_iterations_per_ms(generator, base, candidate);
-    let deadline = Instant::now() + opts.max_duration;
-
-    generator.reset();
-    let mut haystack = generator.next_haystack();
-
-    // Generating number sequence (1, 5, 10, 15, ...) up to the estimated number of iterations/ms
-    let iterations_min = opts.min_iterations_per_sample.max(1);
-    let iterations_max = iterations_per_ms
-        .min(opts.max_iterations_per_sample)
-        .max(iterations_min);
-    let mut iterations_choices = (iterations_min..=iterations_max)
-        .step_by(5)
-        .map(|i| 1.max(i))
-        .cycle();
-
-    let mut needles = vec![];
-
-    for i in 0..opts.max_samples {
-        // Trying not to stress benchmarking loop with to much of clock calls
-        if i % iterations_per_ms == 0 && Instant::now() >= deadline {
-            break;
-        }
-        if (i + 1) % opts.samples_per_haystack == 0 {
-            haystack = generator.next_haystack();
-        }
-
-        let iterations = iterations_choices.next().unwrap();
-
-        needles.clear();
-        generator.next_needles(&haystack, iterations, &mut needles);
-
-        // !!! IMPORTANT !!!
-        // baseline and candidate should be called in different order in those two branches.
-        // This equalize the probability of facing unfortunate circumstances like cache misses for both functions
-        let (base_sample, candidate_sample) = if i % 2 == 0 {
-            let base_sample = base.measure(&haystack, &needles);
-            let candidate_sample = candidate.measure(&haystack, &needles);
-
-            (base_sample, candidate_sample)
-        } else {
-            let candidate_sample = candidate.measure(&haystack, &needles);
-            let base_sample = base.measure(&haystack, &needles);
-
-            (base_sample, candidate_sample)
-        };
-
-        base_samples.push(base_sample as i64 / iterations as i64);
-        candidate_samples.push(candidate_sample as i64 / iterations as i64);
-    }
-
-    if let Some(path) = samples_dump_location {
-        let file_name = format!("{}-{}.csv", base.name(), candidate.name());
-        let file_path = path.as_ref().join(file_name);
-        write_raw_measurements(file_path, &base_samples, &candidate_samples);
-    }
-
-    let base = Summary::from(&base_samples).unwrap();
-    let candidate = Summary::from(&candidate_samples).unwrap();
-    let diff = base_samples
-        .into_iter()
-        .zip(candidate_samples)
-        .map(|(b, c)| c - b)
-        .collect();
-    (base, candidate, diff)
-}
-
-/// Estimates the number of iterations achievable in 1 ms by given pair of functions.
-///
-/// If functions are to slow to be executed in 1ms, the number of iterations will be 1.
-fn estimate_iterations_per_ms<H, N>(
-    generator: &mut dyn Generator<Haystack = H, Needle = N>,
-    a: &dyn BenchmarkFn<H, N>,
-    b: &dyn BenchmarkFn<H, N>,
-) -> usize {
-    let mut needles = Vec::with_capacity(1);
-
-    let haystack = generator.next_haystack();
-    generator.next_needles(&haystack, 1, &mut needles);
-
-    // Measure the amount of iterations achievable in (factor * 1ms) and later divide by this factor
-    // to calculate average number of iterations per 1ms
-    let factor = 10;
-    let duration = Duration::from_millis(1);
-    let deadline = Instant::now() + duration * factor;
-    let mut iterations = 0;
-    while Instant::now() < deadline {
-        b.measure(&haystack, &needles);
-        a.measure(&haystack, &needles);
-        iterations += 1;
-    }
-
-    1.max(iterations / factor as usize)
 }
 
 pub fn calculate_run_result<N: AsRef<str>>(
@@ -709,14 +502,6 @@ pub struct RunResult {
 
     /// Numbers of detected and filtered outliers
     pub outliers: usize,
-}
-
-fn write_raw_measurements(path: impl AsRef<Path>, base: &[i64], candidate: &[i64]) {
-    let mut file = BufWriter::new(File::create(path).unwrap());
-
-    for (b, c) in base.iter().zip(candidate) {
-        writeln!(&mut file, "{},{}", b, c).unwrap();
-    }
 }
 
 /// Statistical summary for a given iterator of numbers.

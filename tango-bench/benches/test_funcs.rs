@@ -150,6 +150,7 @@ pub fn str_take<T>(n: usize, s: &String, _: &T) -> usize {
 
 #[cfg_attr(feature = "align", repr(align(32)))]
 #[cfg_attr(feature = "align", inline(never))]
+#[allow(unused)]
 pub fn sort_unstable<T: Ord + Copy, N>(input: &Vec<T>, _: &N) -> T {
     let mut input = input.clone();
     input.sort_unstable();
@@ -158,6 +159,7 @@ pub fn sort_unstable<T: Ord + Copy, N>(input: &Vec<T>, _: &N) -> T {
 
 #[cfg_attr(feature = "align", repr(align(32)))]
 #[cfg_attr(feature = "align", inline(never))]
+#[allow(unused)]
 pub fn sort_stable<T: Ord + Copy, N>(input: &Vec<T>, _: &N) -> T {
     let mut input = input.clone();
     input.sort();

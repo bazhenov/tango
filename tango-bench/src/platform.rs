@@ -52,7 +52,6 @@ pub fn patch_pie_binary_if_needed(
             return None;
         }
 
-        println!("PIE found");
         let (dyn_idx, _) = dynamic
             .dyns
             .iter()

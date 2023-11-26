@@ -1,4 +1,4 @@
-use crate::{dylib::Spi, platform, Benchmark, MeasurementSettings, Reporter};
+use crate::{dylib::Spi, platform, MeasurementSettings, Reporter};
 use clap::Parser;
 use core::fmt;
 use libloading::Library;
@@ -15,29 +15,6 @@ use self::reporting::{ConsoleReporter, VerboseReporter};
 
 #[derive(Parser, Debug)]
 enum BenchmarkMode {
-    Pair {
-        #[command(flatten)]
-        bench_flags: CargoBenchFlags,
-
-        name: Option<String>,
-
-        #[arg(short = 's', long = "samples")]
-        samples: Option<NonZeroUsize>,
-
-        #[arg(short = 't', long = "time")]
-        time: Option<NonZeroU64>,
-
-        /// write CSV dumps of all the measurements in a given location
-        #[arg(short = 'd', long = "dump")]
-        path_to_dump: Option<PathBuf>,
-
-        /// disable outlier detection
-        #[arg(short = 'o', long = "no-outliers")]
-        skip_outlier_detection: bool,
-
-        #[arg(short = 'v', long = "verbose", default_value_t = false)]
-        verbose: bool,
-    },
     Calibrate {
         #[command(flatten)]
         bench_flags: CargoBenchFlags,
@@ -52,6 +29,10 @@ enum BenchmarkMode {
 
         /// Path to the executable to test agains. Tango will test agains itself if no executable given
         path: Option<PathBuf>,
+
+        /// write CSV dumps of all the measurements in a given location
+        #[arg(short = 'd', long = "dump")]
+        path_to_dump: Option<PathBuf>,
 
         #[arg(short = 's', long = "samples")]
         samples: Option<NonZeroUsize>,
@@ -92,35 +73,6 @@ pub fn run(settings: MeasurementSettings) {
     let opts = Opts::parse();
 
     match opts.subcommand {
-        BenchmarkMode::Pair {
-            name,
-            time,
-            samples,
-            verbose,
-            path_to_dump,
-            skip_outlier_detection,
-            bench_flags: _,
-        } => {
-            let mut reporter: Box<dyn Reporter> = if verbose {
-                Box::<VerboseReporter>::default()
-            } else {
-                Box::<ConsoleReporter>::default()
-            };
-
-            let mut opts = settings;
-            if let Some(samples) = samples {
-                opts.max_samples = samples.into()
-            }
-            if let Some(millis) = time {
-                opts.max_duration = Duration::from_millis(millis.into());
-            }
-            if skip_outlier_detection {
-                opts.outlier_detection_enabled = false;
-            }
-
-            let name_filter = name.as_deref().unwrap_or("");
-            // benchmark.run_by_name(reporter.as_mut(), name_filter, &opts, path_to_dump.as_ref());
-        }
         BenchmarkMode::Calibrate { bench_flags: _ } => {
             todo!();
             // benchmark.run_calibration();
@@ -139,6 +91,7 @@ pub fn run(settings: MeasurementSettings) {
             samples,
             time,
             skip_outlier_detection,
+            path_to_dump,
             bench_flags: _,
         } => {
             let mut reporter: Box<dyn Reporter> = if verbose {
@@ -184,6 +137,7 @@ pub fn run(settings: MeasurementSettings) {
                     name.as_str(),
                     &opts,
                     reporter.as_mut(),
+                    path_to_dump.as_ref(),
                 );
             }
         }
@@ -205,27 +159,47 @@ fn intersect_values<'a, K: Hash + Eq>(
 
 mod commands {
     use crate::{calculate_run_result, Summary};
-    use std::time::Instant;
+    use std::{
+        fs::File,
+        io::{BufWriter, Write as _},
+        path::Path,
+        time::Instant,
+    };
 
     use super::*;
 
+    /// Measure the difference in performance of two functions
+    ///
+    /// Provides a way to save a raw dump of measurements into directory
+    ///
+    /// The format is as follows
+    /// ```txt
+    /// b_1,c_1
+    /// b_2,c_2
+    /// ...
+    /// b_n,c_n
+    /// ```
+    /// where `b_1..b_n` are baseline absolute time (in nanoseconds) measurements
+    /// and `c_1..c_n` are candidate time measurements
     pub(super) fn pairwise_compare(
         a: &Spi,
         b: &Spi,
         test_name: &str,
         settings: &MeasurementSettings,
         reporter: &mut dyn Reporter,
+        samples_dump_path: Option<impl AsRef<Path>>,
     ) {
         let base_idx = *a.tests().get(test_name).unwrap();
         let candidate_idx = *b.tests().get(test_name).unwrap();
 
-        // Number of iterations estimated based on the performance of base algorithm only. We assuming
+        // Number of iterations estimated based on the performance of A algorithm only. We assuming
         // both algorithms performs approximatley the same. We need to divide estimation by 2 to compensate
         // for the fact that 2 algorithms will be executed concurrently.
-        let iterations_per_ms = (a.estimate_iterations(base_idx, 1) / 2)
-            .min(settings.max_iterations_per_sample)
-            .max(settings.min_iterations_per_sample)
-            .max(1);
+        let estimate = a.estimate_iterations(base_idx, 1) / 2;
+        let iterations_per_ms = estimate.clamp(
+            settings.min_iterations_per_sample.max(1),
+            settings.max_iterations_per_sample,
+        );
         let iterations = iterations_per_ms;
 
         let mut a_samples = vec![];
@@ -233,13 +207,22 @@ mod commands {
 
         let deadline = Instant::now() + settings.max_duration;
 
-        let mut a_first = true;
         for i in 0..settings.max_samples {
-            // Trying not to stress benchmarking loop with to much of clock calls
+            // Trying not to stress benchmarking loop with to much of clock calls and check deadline
+            // approximately each millisecond based on the number of iterations already performed
             if i % iterations_per_ms == 0 && Instant::now() >= deadline {
                 break;
             }
-            let (a_time, b_time) = if a_first {
+
+            // !!! IMPORTANT !!!
+            // Algorithms should be called in different order in those two branches.
+            // This equalize the probability of facing unfortunate circumstances like cache misses or page faults
+            // for both functions. Although both algorithms are from distinct shared objects and therefore
+            // must be fully selfcontained in terms of virtual address space (each shared object has its own
+            // generator instances, static variables, memory mappings, etc.) it might be the case that
+            // on the level of physical memory both of them rely on the same memory-mapped test data, for example.
+            // In that case first function will experience the larger amount of major page faults.
+            let (a_time, b_time) = if i % 2 == 0 {
                 let a_time = a.run(base_idx, iterations);
                 let b_time = b.run(candidate_idx, iterations);
 
@@ -253,8 +236,6 @@ mod commands {
 
             a_samples.push(a_time as i64 / iterations as i64);
             b_samples.push(b_time as i64 / iterations as i64);
-
-            a_first = !a_first;
         }
 
         let diff: Vec<_> = a_samples
@@ -262,6 +243,12 @@ mod commands {
             .zip(b_samples.iter())
             .map(|(b, c)| c - b)
             .collect();
+
+        if let Some(path) = samples_dump_path {
+            let file_name = format!("{}.csv", test_name);
+            let file_path = path.as_ref().join(file_name);
+            write_raw_measurements(file_path, &a_samples, &b_samples);
+        }
 
         let a_summary = Summary::from(&a_samples).unwrap();
         let b_summary = Summary::from(&b_samples).unwrap();
@@ -274,6 +261,14 @@ mod commands {
         );
 
         reporter.on_complete(&result);
+    }
+
+    fn write_raw_measurements(path: impl AsRef<Path>, base: &[i64], candidate: &[i64]) {
+        let mut file = BufWriter::new(File::create(path).unwrap());
+
+        for (b, c) in base.iter().zip(candidate) {
+            writeln!(&mut file, "{},{}", b, c).unwrap();
+        }
     }
 }
 
@@ -353,15 +348,9 @@ pub mod reporting {
     }
 
     #[derive(Default)]
-    pub(super) struct ConsoleReporter {
-        current_generator_name: Option<String>,
-    }
+    pub(super) struct ConsoleReporter;
 
     impl Reporter for ConsoleReporter {
-        fn on_start(&mut self, generator_name: &str) {
-            self.current_generator_name = Some(generator_name.into());
-        }
-
         fn on_complete(&mut self, results: &RunResult) {
             let base = results.baseline;
             let candidate = results.candidate;
@@ -371,14 +360,9 @@ pub mod reporting {
 
             let speedup = diff.mean / base.mean * 100.;
             let candidate_faster = diff.mean < 0.;
-            let name = if let Some(gen_name) = &self.current_generator_name {
-                format!("{} {}", gen_name, results.name)
-            } else {
-                format!("{}", results.name)
-            };
             println!(
                 "{:50} [ {:>8} ... {:>8} ]    {:>+7.2}{}",
-                colorize(name, significant, candidate_faster),
+                colorize(&results.name, significant, candidate_faster),
                 HumanTime(base.mean),
                 colorize(HumanTime(candidate.mean), significant, candidate_faster),
                 colorize(speedup, significant, candidate_faster),
