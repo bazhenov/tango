@@ -15,6 +15,19 @@ pub mod platform;
 
 pub const NS_TO_MS: u64 = 1_000_000;
 
+/// Registers benchmark in the system
+#[macro_export]
+macro_rules! benchmarks {
+    ($($func_name:ident),+) => {
+        #[no_mangle]
+        pub fn __tango_create_benchmarks() -> Vec<Box<dyn MeasureTarget>> {
+            let mut benchmarks = vec![];
+            $(benchmarks.extend($func_name().into_benchmarks());)*
+            benchmarks
+        }
+    };
+}
+
 pub fn benchmark_fn<O, F: Fn() -> O + 'static>(
     name: &'static str,
     func: F,
@@ -180,25 +193,20 @@ impl<H, N> MeasureTarget for GenAndFunc<H, N> {
     }
 }
 
-pub struct GeneratorBenchmarks<G> {
+pub struct BenchmarkMatrix<G> {
     generators: Vec<G>,
     functions: Vec<Box<dyn MeasureTarget>>,
 }
 
-impl<H: 'static, N: 'static, G: Generator<Haystack = H, Needle = N> + 'static>
-    GeneratorBenchmarks<G>
-{
-    pub fn with_generator(generator: G) -> Self {
+impl<H: 'static, N: 'static, G: Generator<Haystack = H, Needle = N> + 'static> BenchmarkMatrix<G> {
+    pub fn new(generator: G) -> Self {
         Self {
             generators: vec![generator],
             functions: vec![],
         }
     }
 
-    pub fn with_generators<P>(
-        params: impl IntoIterator<Item = P>,
-        generator: impl Fn(P) -> G,
-    ) -> Self {
+    pub fn with_params<P>(params: impl IntoIterator<Item = P>, generator: impl Fn(P) -> G) -> Self {
         let generators: Vec<_> = params.into_iter().map(generator).collect();
         Self {
             generators,
@@ -206,7 +214,7 @@ impl<H: 'static, N: 'static, G: Generator<Haystack = H, Needle = N> + 'static>
         }
     }
 
-    pub fn add<O, F>(&mut self, name: &'static str, f: F) -> &mut Self
+    pub fn add_function<O, F>(mut self, name: &'static str, f: F) -> Self
     where
         G: Clone,
         O: 'static,
@@ -220,7 +228,7 @@ impl<H: 'static, N: 'static, G: Generator<Haystack = H, Needle = N> + 'static>
     }
 }
 
-impl<G> IntoBenchmarks for GeneratorBenchmarks<G> {
+impl<G> IntoBenchmarks for BenchmarkMatrix<G> {
     fn into_benchmarks(self) -> Vec<Box<dyn MeasureTarget>> {
         self.functions
     }
@@ -230,9 +238,59 @@ pub trait IntoBenchmarks {
     fn into_benchmarks(self) -> Vec<Box<dyn MeasureTarget>>;
 }
 
+impl<const N: usize> IntoBenchmarks for [Box<dyn MeasureTarget>; N] {
+    fn into_benchmarks(self) -> Vec<Box<dyn MeasureTarget>> {
+        self.into_iter().collect()
+    }
+}
+
 impl IntoBenchmarks for Vec<Box<dyn MeasureTarget>> {
     fn into_benchmarks(self) -> Vec<Box<dyn MeasureTarget>> {
         self
+    }
+}
+
+// impl<
+//         H: 'static,
+//         N: 'static,
+//         O,
+//         F: Fn(&H, &N) -> O + 'static,
+//         G: Generator<Haystack = H, Needle = N> + 'static,
+//     > IntoBenchmarks for (&'static str, F, G)
+// {
+//     fn into_benchmarks(self) -> Vec<Box<dyn MeasureTarget>> {
+//         let f = Box::new(Func {
+//             name: self.0,
+//             func: self.1,
+//         });
+//         let g = Box::new(self.2);
+//         let name = self.0.to_string();
+//         vec![Box::new(GenAndFunc { f, g, name })]
+//     }
+// }
+
+impl<
+        H: 'static,
+        N: 'static,
+        O,
+        F: Fn(&H, &N) -> O + Clone + 'static,
+        G: Generator<Haystack = H, Needle = N> + 'static,
+        I: IntoIterator<Item = G>,
+    > IntoBenchmarks for (&'static str, F, I)
+{
+    fn into_benchmarks(self) -> Vec<Box<dyn MeasureTarget>> {
+        let mut benchmarks: Vec<Box<dyn MeasureTarget>> = vec![];
+        for gen in self.2.into_iter() {
+            let f = Box::new(Func {
+                name: self.0,
+                func: self.1.clone(),
+            });
+            let name = self.0.to_string();
+
+            let g = Box::new(gen);
+            benchmarks.push(Box::new(GenAndFunc { f, g, name }));
+        }
+        benchmarks
     }
 }
 

@@ -32,7 +32,7 @@ fn utf8_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("utf8");
 
     group.bench_function("str_length_4950", |b| {
-        let mut generator = RandomString::new().unwrap();
+        let mut generator = RandomString::new();
         b.iter_batched(
             || generator.next_haystack(),
             |s| str_take(4950, &s, &()),
@@ -41,7 +41,7 @@ fn utf8_benchmark(c: &mut Criterion) {
     });
 
     group.bench_function("str_length_5000", |b| {
-        let mut generator = RandomString::new().unwrap();
+        let mut generator = RandomString::new();
         b.iter_batched(
             || generator.next_haystack(),
             |s| str_take(5000, &s, &()),
@@ -50,7 +50,7 @@ fn utf8_benchmark(c: &mut Criterion) {
     });
 
     group.bench_function("std_count", |b| {
-        let mut generator = RandomString::new().unwrap();
+        let mut generator = RandomString::new();
         b.iter_batched(
             || generator.next_haystack(),
             |s| str_count(&s, &()),
@@ -59,7 +59,7 @@ fn utf8_benchmark(c: &mut Criterion) {
     });
 
     group.bench_function("std_count_rev", |b| {
-        let mut generator = RandomString::new().unwrap();
+        let mut generator = RandomString::new();
         b.iter_batched(
             || generator.next_haystack(),
             |s| str_count_rev(&s, &()),

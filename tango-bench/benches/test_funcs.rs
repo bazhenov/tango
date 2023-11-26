@@ -1,5 +1,5 @@
 use rand::{rngs::SmallRng, Fill, Rng, SeedableRng};
-use std::{any::type_name, hint::black_box, io, marker::PhantomData};
+use std::{any::type_name, hint::black_box, marker::PhantomData};
 use tango_bench::Generator;
 
 /// HTML page with a lot of chinese text to test UTF8 decoding speed
@@ -47,17 +47,17 @@ pub struct RandomString {
 
 impl RandomString {
     #[allow(unused)]
-    pub fn new() -> io::Result<Self> {
+    pub fn new() -> Self {
         let char_indicies = INPUT_TEXT
             .char_indices()
             .map(|(idx, _)| idx)
             .collect::<Vec<_>>();
         let rng = SmallRng::seed_from_u64(42);
-        Ok(Self {
+        Self {
             char_indicies,
             rng,
             length: 50000,
-        })
+        }
     }
 }
 impl Generator for RandomString {

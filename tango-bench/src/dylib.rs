@@ -114,7 +114,7 @@ mod ffi {
 
     extern "Rust" {
         /// Each benchmark executable should define this function for the harness to load all benchmarks
-        fn create_benchmarks() -> Vec<Box<dyn MeasureTarget>>;
+        fn __tango_create_benchmarks() -> Vec<Box<dyn MeasureTarget>>;
     }
 
     /// Global state of the benchmarking library
@@ -124,7 +124,7 @@ mod ffi {
     unsafe extern "C" fn tango_init() {
         if STATE.is_none() {
             STATE = Some(State {
-                benchmarks: create_benchmarks(),
+                benchmarks: __tango_create_benchmarks(),
                 selected_function: 0,
             });
         }
