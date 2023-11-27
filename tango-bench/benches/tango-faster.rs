@@ -2,8 +2,7 @@
 
 use crate::test_funcs::{factorial, sum};
 use tango_bench::{
-    benchmark_fn, benchmarks, cli, BenchmarkMatrix, IntoBenchmarks, MeasureTarget,
-    MeasurementSettings,
+    benchmark_fn, benchmarks, cli, BenchmarkMatrix, IntoBenchmarks, MeasurementSettings,
 };
 use test_funcs::{sort_unstable, str_count, str_take, RandomString, RandomVec};
 
@@ -27,7 +26,7 @@ pub fn vec_benchmarks() -> impl IntoBenchmarks {
         .add_function("sort", sort_unstable)
 }
 
-benchmarks!(str_benchmarks, num_benchmarks, vec_benchmarks);
+benchmarks!(str_benchmarks(), num_benchmarks(), vec_benchmarks());
 
 fn main() {
     cli::run(MeasurementSettings::default())

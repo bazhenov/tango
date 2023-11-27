@@ -2,14 +2,14 @@
 
 extern crate tango_bench;
 
-use num_traits::{bounds::UpperBounded, ToPrimitive};
 use ordsearch::OrderedCollection;
 use std::{
     any::type_name, collections::BTreeSet, convert::TryFrom, iter::FromIterator,
-    marker::PhantomData, ops::Bound, usize,
+    marker::PhantomData,
 };
-use tango_bench::{_benchmark_fn, cli, Benchmark, Generator, MeasurementSettings};
+use tango_bench::{cli, BenchmarkMatrix, Generator, IntoBenchmarks, MeasurementSettings};
 
+#[derive(Clone)]
 struct Lcg<T> {
     value: usize,
     _type: PhantomData<T>,
@@ -32,6 +32,7 @@ where
     }
 }
 
+#[derive(Clone)]
 struct RandomVec<T> {
     rng: Lcg<T>,
     size: usize,
@@ -49,7 +50,7 @@ where
     }
 }
 
-struct Sample<T> {
+pub struct Sample<T> {
     vec: Vec<T>,
     ord: OrderedCollection<T>,
     btree: BTreeSet<T>,
@@ -116,64 +117,20 @@ where
         .unwrap()
 }
 
-#[cfg_attr(feature = "align", repr(align(32)))]
-#[cfg_attr(feature = "align", inline(never))]
-fn search_ord<T: Copy + Ord>(haystack: &impl AsRef<OrderedCollection<T>>, needle: &T) -> Option<T> {
-    haystack.as_ref().find_gte(*needle).copied()
-}
-
-#[cfg_attr(feature = "align", repr(align(32)))]
-#[cfg_attr(feature = "align", inline(never))]
-fn search_btree<T: Copy + Ord>(haystack: &impl AsRef<BTreeSet<T>>, needle: &T) -> Option<T> {
-    haystack
-        .as_ref()
-        .range((Bound::Included(needle), Bound::Unbounded))
-        .next()
-        .copied()
-}
-
-#[cfg_attr(feature = "align", repr(align(32)))]
-#[cfg_attr(feature = "align", inline(never))]
-fn search_vec<T: Copy + Ord>(haystack: &impl AsRef<Vec<T>>, needle: &T) -> Option<T> {
-    let haystack = haystack.as_ref();
-    haystack
-        .binary_search(needle)
-        .ok()
-        .and_then(|idx| haystack.get(idx))
-        .copied()
-}
-
-fn create_benchmark<T>() -> Benchmark<Sample<T>, T>
+pub fn search_benchmarks<T, F>(search_func: F) -> impl IntoBenchmarks
 where
-    T: Copy + Ord + TryFrom<usize> + UpperBounded + ToPrimitive + 'static,
+    T: Ord + Copy + TryFrom<usize> + 'static,
     usize: TryFrom<T>,
+    F: Fn(&Sample<T>, &T) -> Option<T> + Copy + 'static,
 {
-    let mut b = Benchmark::default();
-
-    b.add_pair(
-        _benchmark_fn("vec", search_vec),
-        _benchmark_fn("ord", search_ord),
-    );
-    b.add_pair(
-        _benchmark_fn("btree", search_btree),
-        _benchmark_fn("ord", search_ord),
-    );
-
     let sizes = [
         8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4069, 8192, 16384, 32768, 65536,
     ];
 
-    let max_value = T::max_value().to_usize().unwrap_or(usize::max_value());
-    let generators = sizes
-        .into_iter()
-        .filter(|s| *s <= max_value)
-        .map(RandomVec::<T>::new);
-    b.add_generators(generators);
-
-    b
+    BenchmarkMatrix::with_params(sizes, RandomVec::<T>::new).add_function("search", search_func)
 }
 
-fn main() {
+pub fn main() {
     let settings = MeasurementSettings {
         samples_per_haystack: 1_000,
         ..Default::default()

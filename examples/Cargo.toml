@@ -12,5 +12,13 @@ ordsearch = { version = "0.2.*", features = ["nightly"] }
 num-traits = "^0.2"
 
 [[bench]]
-name = "ordsearch"
+name = "search-ord"
+harness = false
+
+[[bench]]
+name = "search-vec"
+harness = false
+
+[[bench]]
+name = "search-btree"
 harness = false

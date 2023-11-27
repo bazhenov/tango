@@ -18,11 +18,13 @@ pub const NS_TO_MS: u64 = 1_000_000;
 /// Registers benchmark in the system
 #[macro_export]
 macro_rules! benchmarks {
-    ($($func_name:ident),+) => {
+    ($($func_name:expr),+) => {
         #[no_mangle]
-        pub fn __tango_create_benchmarks() -> Vec<Box<dyn MeasureTarget>> {
+        pub fn __tango_create_benchmarks() -> Vec<Box<dyn tango_bench::MeasureTarget>> {
+            use tango_bench::IntoBenchmarks;
+
             let mut benchmarks = vec![];
-            $(benchmarks.extend($func_name().into_benchmarks());)*
+            $(benchmarks.extend($func_name.into_benchmarks());)*
             benchmarks
         }
     };
