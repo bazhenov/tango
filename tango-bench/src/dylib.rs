@@ -15,12 +15,12 @@ pub struct Spi<'l> {
 }
 
 impl<'l> Spi<'l> {
-    pub fn for_library(library: &'l Library) -> Self {
+    pub(crate) fn for_library(library: &'l Library) -> Self {
         Self::for_vtable(ffi::LibraryVTable::new(library))
     }
 
     /// TODO: should be singleton
-    pub fn for_self() -> Option<Self> {
+    pub(crate) fn for_self() -> Option<Self> {
         unsafe { ffi::SELF_SPI.take().map(Self::for_vtable) }
     }
 
@@ -46,18 +46,22 @@ impl<'l> Spi<'l> {
         Spi { vt, tests }
     }
 
-    pub fn tests(&self) -> &BTreeMap<String, usize> {
+    pub(crate) fn tests(&self) -> &BTreeMap<String, usize> {
         &self.tests
     }
 
-    pub fn run(&self, idx: usize, iterations: usize) -> u64 {
+    pub(crate) fn run(&self, idx: usize, iterations: usize) -> u64 {
         self.vt.select(idx);
         self.vt.run(iterations)
     }
 
-    pub fn estimate_iterations(&self, idx: usize, time_ms: u32) -> usize {
+    pub(crate) fn estimate_iterations(&self, idx: usize, time_ms: u32) -> usize {
         self.vt.select(idx);
         self.vt.estimate_iterations(time_ms)
+    }
+
+    pub(crate) fn next_haystack(&self) -> bool {
+        self.vt.next_haystack()
     }
 }
 
@@ -95,6 +99,7 @@ mod ffi {
     type SelectFn = unsafe extern "C" fn(usize);
     type RunFn = unsafe extern "C" fn(usize) -> u64;
     type EstimateIterationsFn = unsafe extern "C" fn(u32) -> usize;
+    type NextHaystackFn = unsafe extern "C" fn() -> bool;
     type FreeFn = unsafe extern "C" fn();
 
     /// This block of constants is checking that all exported tango functions are of valid type according to the API.
@@ -173,6 +178,15 @@ mod ffi {
     }
 
     #[no_mangle]
+    unsafe extern "C" fn tango_next_haystack() -> bool {
+        if let Some(s) = STATE.as_mut() {
+            s.selected_mut().next_haystack()
+        } else {
+            false
+        }
+    }
+
+    #[no_mangle]
     unsafe extern "C" fn tango_free() {
         STATE.take();
     }
@@ -184,6 +198,7 @@ mod ffi {
         fn get_test_name(&self, ptr: *mut *const c_char, len: *mut usize);
         fn run(&self, iterations: usize) -> u64;
         fn estimate_iterations(&self, time_ms: u32) -> usize;
+        fn next_haystack(&self) -> bool;
     }
 
     pub(super) static mut SELF_SPI: Option<SelfVTable> = Some(SelfVTable);
@@ -219,6 +234,10 @@ mod ffi {
         fn estimate_iterations(&self, time_ms: u32) -> usize {
             unsafe { tango_estimate_iterations(time_ms) }
         }
+
+        fn next_haystack(&self) -> bool {
+            unsafe { tango_next_haystack() }
+        }
     }
 
     impl Drop for SelfVTable {
@@ -236,6 +255,7 @@ mod ffi {
         get_test_name_fn: Symbol<'l, GetTestNameFn>,
         run_fn: Symbol<'l, RunFn>,
         estimate_iterations_fn: Symbol<'l, EstimateIterationsFn>,
+        next_haystack_fn: Symbol<'l, NextHaystackFn>,
         free_fn: Symbol<'l, FreeFn>,
     }
 
@@ -263,6 +283,10 @@ mod ffi {
         fn estimate_iterations(&self, time_ms: u32) -> usize {
             unsafe { (self.estimate_iterations_fn)(time_ms) }
         }
+
+        fn next_haystack(&self) -> bool {
+            unsafe { (self.next_haystack_fn)() }
+        }
     }
 
     impl<'l> Drop for LibraryVTable<'l> {
@@ -281,6 +305,7 @@ mod ffi {
                     get_test_name_fn: lookup_symbol(library, "tango_get_test_name"),
                     run_fn: lookup_symbol(library, "tango_run"),
                     estimate_iterations_fn: lookup_symbol(library, "tango_estimate_iterations"),
+                    next_haystack_fn: lookup_symbol(library, "tango_next_haystack"),
                     free_fn: lookup_symbol(library, "tango_free"),
                 }
             }

@@ -189,13 +189,13 @@ mod commands {
         reporter: &mut dyn Reporter,
         samples_dump_path: Option<impl AsRef<Path>>,
     ) {
-        let base_idx = *a.tests().get(test_name).unwrap();
-        let candidate_idx = *b.tests().get(test_name).unwrap();
+        let a_idx = *a.tests().get(test_name).unwrap();
+        let b_idx = *b.tests().get(test_name).unwrap();
 
         // Number of iterations estimated based on the performance of A algorithm only. We assuming
         // both algorithms performs approximatley the same. We need to divide estimation by 2 to compensate
         // for the fact that 2 algorithms will be executed concurrently.
-        let estimate = a.estimate_iterations(base_idx, 1) / 2;
+        let estimate = a.estimate_iterations(a_idx, 1) / 2;
         let iterations_per_ms = estimate.clamp(
             settings.min_iterations_per_sample.max(1),
             settings.max_iterations_per_sample,
@@ -214,6 +214,11 @@ mod commands {
                 break;
             }
 
+            if i % settings.samples_per_haystack == 0 {
+                a.next_haystack();
+                b.next_haystack();
+            }
+
             // !!! IMPORTANT !!!
             // Algorithms should be called in different order in those two branches.
             // This equalize the probability of facing unfortunate circumstances like cache misses or page faults
@@ -223,13 +228,13 @@ mod commands {
             // on the level of physical memory both of them rely on the same memory-mapped test data, for example.
             // In that case first function will experience the larger amount of major page faults.
             let (a_time, b_time) = if i % 2 == 0 {
-                let a_time = a.run(base_idx, iterations);
-                let b_time = b.run(candidate_idx, iterations);
+                let a_time = a.run(a_idx, iterations);
+                let b_time = b.run(b_idx, iterations);
 
                 (a_time, b_time)
             } else {
-                let b_time = b.run(candidate_idx, iterations);
-                let a_time = a.run(base_idx, iterations);
+                let b_time = b.run(b_idx, iterations);
+                let a_time = a.run(a_idx, iterations);
 
                 (a_time, b_time)
             };

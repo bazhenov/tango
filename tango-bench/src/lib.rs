@@ -95,6 +95,11 @@ pub trait MeasureTarget {
     ///
     /// Returns the cumulative (all iterations) execution time with nanoseconds precision,
     /// but not necessarily accuracy.
+    ///
+    /// This method should use the same arguments for measuring the test function unless [`next_haystack()`]
+    /// method is called. Only then new set of input arguments should be generated. Although it is allowed
+    /// to call this method without first calling [`next_haystack()`]. In which case first haystack should be
+    /// generated automatically.
     fn measure(&mut self, iterations: usize) -> u64;
 
     /// Estimates the number of iterations achievable within given number of miliseconds
@@ -103,6 +108,12 @@ pub trait MeasureTarget {
     /// estimate. If the single call to measured function is longer than provided timespan the implementation
     /// can return 0.
     fn estimate_iterations(&mut self, time_ms: u32) -> usize;
+
+    /// Generates next haystack for the measurement
+    ///
+    /// Calling this method should update internal haystack used for measurement. Returns `true` if update happend,
+    /// `false` if implementation doesn't support haystack generation.
+    fn next_haystack(&mut self) -> bool;
 
     /// The name of the test function
     fn name(&self) -> &str;
@@ -133,11 +144,16 @@ impl<O, F: Fn() -> O> MeasureTarget for SimpleFunc<F> {
     fn name(&self) -> &str {
         self.name
     }
+
+    fn next_haystack(&mut self) -> bool {
+        false
+    }
 }
 
 pub struct GenAndFunc<H, N> {
     f: Box<dyn BenchmarkFn<H, N>>,
     g: Box<dyn Generator<Haystack = H, Needle = N>>,
+    haystack: Option<H>,
     name: String,
 }
 
@@ -150,6 +166,7 @@ impl<H, N> GenAndFunc<H, N> {
         Self {
             f: Box::new(f),
             g: Box::new(g),
+            haystack: None,
             name,
         }
     }
@@ -166,10 +183,10 @@ impl<H: 'static, N: 'static> GenAndFunc<H, N> {
 
 impl<H, N> MeasureTarget for GenAndFunc<H, N> {
     fn measure(&mut self, iterations: usize) -> u64 {
-        let haystack = self.g.next_haystack();
+        let haystack = &*self.haystack.get_or_insert_with(|| self.g.next_haystack());
         let mut needles = Vec::with_capacity(iterations);
-        self.g.next_needles(&haystack, iterations, &mut needles);
-        self.f.measure(&haystack, &needles)
+        self.g.next_needles(haystack, iterations, &mut needles);
+        self.f.measure(haystack, &needles)
     }
 
     fn estimate_iterations(&mut self, time_ms: u32) -> usize {
@@ -190,6 +207,11 @@ impl<H, N> MeasureTarget for GenAndFunc<H, N> {
 
     fn name(&self) -> &str {
         self.name.as_str()
+    }
+
+    fn next_haystack(&mut self) -> bool {
+        self.haystack = Some(self.g.next_haystack());
+        true
     }
 }
 
@@ -288,7 +310,12 @@ impl<
             let name = self.0.to_string();
 
             let g = Box::new(gen);
-            benchmarks.push(Box::new(GenAndFunc { f, g, name }));
+            benchmarks.push(Box::new(GenAndFunc {
+                f,
+                g,
+                name,
+                haystack: None,
+            }));
         }
         benchmarks
     }
