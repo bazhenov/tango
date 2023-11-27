@@ -6,3 +6,4 @@ Cargo.lock
 /.*
 /*.csv
 .ipynb_checkpoints
+/local
