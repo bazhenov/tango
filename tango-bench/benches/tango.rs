@@ -1,8 +1,11 @@
 #![cfg_attr(feature = "align", feature(fn_align))]
 
+use std::{cell::RefCell, rc::Rc};
+
 use num_traits::ToPrimitive;
 use tango_bench::{
-    benchmark_fn, benchmarks, cli, BenchmarkMatrix, IntoBenchmarks, StaticValue, Summary,
+    benchmark_fn, benchmarks, cli, BenchmarkMatrix, GenAndFunc, IntoBenchmarks, MeasureTarget,
+    StaticValue, Summary, _benchmark_fn,
 };
 use test_funcs::RandomVec;
 
@@ -23,12 +26,23 @@ fn summary_benchmarks() -> impl IntoBenchmarks {
 }
 
 fn empty_benchmarks() -> impl IntoBenchmarks {
-    vec![benchmark_fn("empty_bench", || ())]
+    [benchmark_fn("measure_empty_function", || {
+        benchmark_fn("_", || 42).measure(1000)
+    })]
 }
 
 fn generator_empty_benchmarks() -> impl IntoBenchmarks {
-    let generator = StaticValue((), ());
-    BenchmarkMatrix::new(generator).add_function("generator_empty_bench", |_, _| ())
+    let mut generator = GenAndFunc::new(
+        _benchmark_fn("_", |_, needle| *needle),
+        StaticValue(0usize, 0usize),
+    );
+
+    // warming up
+    generator.measure(1000);
+    let rator = StaticValue(Rc::new(RefCell::new(generator)), ());
+    BenchmarkMatrix::new(rator).add_function("measure_generator_function", |rator, _| {
+        rator.borrow_mut().measure(1000)
+    })
 }
 
 benchmarks!(

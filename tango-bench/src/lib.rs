@@ -411,12 +411,12 @@ pub struct StaticValue<H, N>(
     pub N,
 );
 
-impl<H: Copy, N: Copy> Generator for StaticValue<H, N> {
+impl<H: Clone, N: Copy> Generator for StaticValue<H, N> {
     type Haystack = H;
     type Needle = N;
 
     fn next_haystack(&mut self) -> Self::Haystack {
-        self.0
+        self.0.clone()
     }
 
     fn next_needle(&mut self, _: &Self::Haystack) -> Self::Needle {
