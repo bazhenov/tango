@@ -35,7 +35,7 @@ name = "criterion"
 harness = false
 
 [[bench]]
-name = "tango-bench"
+name = "tango"
 harness = false
 
 [[bench]]

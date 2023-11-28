@@ -403,6 +403,7 @@ pub trait Generator {
 }
 
 /// Generator that provides static value to the benchmark. The value should implement [`Copy`] trait.
+#[derive(Clone)]
 pub struct StaticValue<H, N>(
     /// Haystack value
     pub H,
