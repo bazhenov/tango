@@ -204,6 +204,7 @@ mod commands {
 
         let mut a_samples = vec![];
         let mut b_samples = vec![];
+        let mut diff = vec![];
 
         let deadline = Instant::now() + settings.max_duration;
 
@@ -241,13 +242,8 @@ mod commands {
 
             a_samples.push(a_time as i64 / iterations as i64);
             b_samples.push(b_time as i64 / iterations as i64);
+            diff.push((b_time - a_time) as i64 / iterations as i64);
         }
-
-        let diff: Vec<_> = a_samples
-            .iter()
-            .zip(b_samples.iter())
-            .map(|(b, c)| c - b)
-            .collect();
 
         if let Some(path) = samples_dump_path {
             let file_name = format!("{}.csv", test_name);
