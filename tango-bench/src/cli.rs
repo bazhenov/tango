@@ -132,8 +132,8 @@ pub fn run(settings: MeasurementSettings) {
                     continue;
                 }
                 commands::pairwise_compare(
-                    &spi_self,
                     &spi_lib,
+                    &spi_self,
                     name.as_str(),
                     &opts,
                     reporter.as_mut(),
