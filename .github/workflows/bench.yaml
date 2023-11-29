@@ -1,0 +1,39 @@
+name: Benchmarks
+
+on: workflow_dispatch
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install Rust
+        run: rustup update stable && rustup default stable
+      - name: Install Cargo Export
+        run: cargo install cargo-export
+
+      - name: Restore ./target
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: Cargo/${{ runner.os }}
+
+      - name: Run Tango Benchmarks
+        run: ./scripts/tango.sh
+
+      - name: Run Criterion Benchmarks
+        run: ./scripts/criterion.sh
+
+      - name: Archive Benchmarks Results
+        uses: actions/upload-artifact@v3
+        with:
+          name: benchmarks.zip
+          path: |
+            target/tango.txt
+            target/criterion.txt
