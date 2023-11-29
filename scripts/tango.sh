@@ -12,7 +12,7 @@ cargo export target/benchmarks -- bench --bench='tango-*'
 time (
     for i in {1..30}; do
         ./target/benchmarks/tango_faster compare ./target/benchmarks/tango_slower \
-            -t 1000 -f 'str_length_limit' >> "${FILE}"
+            -t 1000 -o -f 'str_length_limit' >> "${FILE}"
     done
 )
 
