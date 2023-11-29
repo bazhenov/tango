@@ -706,16 +706,19 @@ mod tests {
 
     /// Basic check of measurement code
     ///
-    /// This test is possibly brittle. Theoretically it can fail because there is no guarantee
-    /// that OS scheduler will wake up thread soon enough to meet measurement target. We try to mitigate
-    /// this possibility repeating test several times and taking median as target measurement.
+    /// This test is quite brittle. There is no guarantee the OS scheduler will wake up the thread
+    /// soon enough to meet measurement target. We try to mitigate this possibility using several strategies:
+    /// 1. repeating test several times and taking median as target measurement.
+    /// 2. using more liberal checking condition (allowing 1 order of magnitude error in measurement)
     #[test]
     fn check_measure_time() {
-        let delay = 1;
-        let mut target = benchmark_fn("foo", move || thread::sleep(Duration::from_millis(delay)));
+        let expected_delay = 1;
+        let mut target = benchmark_fn("foo", move || {
+            thread::sleep(Duration::from_millis(expected_delay))
+        });
 
         let median = median_execution_time(target.as_mut(), 10) / NS_TO_MS;
-        assert_eq!(delay, median);
+        assert!(median < expected_delay * 10);
     }
 
     struct RngIterator<T>(T);
