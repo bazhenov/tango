@@ -28,12 +28,17 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo
 
       - name: Run Tests
         run: |
           cargo test
 
       - name: Run Benchmarks
-        run: |
-          cargo bench --bench=tango -- compare
+        run: cargo bench -q --bench=tango -- compare | tee -a target/benchmark.txt
+
+      - name: Archive Benchmarks Results
+        uses: actions/upload-artifact@v3
+        with:
+          name: benchmark.txt
+          path: target/benchmark.txt
