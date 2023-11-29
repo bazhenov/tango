@@ -4,12 +4,37 @@ use std::{cell::RefCell, rc::Rc};
 
 use num_traits::ToPrimitive;
 use tango_bench::{
-    benchmark_fn, benchmarks, cli, BenchmarkMatrix, GenAndFunc, IntoBenchmarks, MeasureTarget,
-    StaticValue, Summary, _benchmark_fn,
+    benchmark_fn, benchmarks, cli, BenchmarkMatrix, GenFunc, Generator, IntoBenchmarks,
+    MeasureTarget, Summary,
 };
 use test_funcs::RandomVec;
 
 mod test_funcs;
+
+#[derive(Clone)]
+struct StaticValue<H, N>(
+    /// Haystack value
+    pub H,
+    /// Needle value
+    pub N,
+);
+
+impl<H: Clone, N: Copy> Generator for StaticValue<H, N> {
+    type Haystack = H;
+    type Needle = N;
+
+    fn next_haystack(&mut self) -> Self::Haystack {
+        self.0.clone()
+    }
+
+    fn next_needle(&mut self, _: &Self::Haystack) -> Self::Needle {
+        self.1
+    }
+
+    fn name(&self) -> String {
+        "StaticValue".to_string()
+    }
+}
 
 #[cfg_attr(feature = "align", repr(align(32)))]
 #[cfg_attr(feature = "align", inline(never))]
@@ -32,10 +57,7 @@ fn empty_benchmarks() -> impl IntoBenchmarks {
 }
 
 fn generator_empty_benchmarks() -> impl IntoBenchmarks {
-    let mut generator = GenAndFunc::new(
-        _benchmark_fn("_", |_, needle| *needle),
-        StaticValue(0usize, 0usize),
-    );
+    let mut generator = GenFunc::new("_", |_, needle| *needle, StaticValue(0usize, 0usize));
 
     // warming up
     generator.measure(1000);

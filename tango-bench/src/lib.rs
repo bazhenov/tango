@@ -2,7 +2,6 @@ use num_traits::{AsPrimitive, ToPrimitive};
 use std::{
     any::type_name,
     cmp::Ordering,
-    collections::BTreeMap,
     hint::black_box,
     ops::{Add, Div},
     time::Duration,
@@ -38,61 +37,7 @@ pub fn benchmark_fn<O, F: Fn() -> O + 'static>(
     Box::new(SimpleFunc { name, func })
 }
 
-pub const fn _benchmark_fn<H, N, O, F>(name: &'static str, func: F) -> impl BenchmarkFn<H, N>
-where
-    F: Fn(&H, &N) -> O,
-{
-    assert!(!name.is_empty());
-    Func { name, func }
-}
-
-pub fn benchmark_fn_with_setup<H, N, O, I: Clone, F, S>(
-    name: impl Into<String>,
-    func: F,
-    setup: S,
-) -> impl BenchmarkFn<H, N>
-where
-    I: Clone,
-    F: Fn(I, &N) -> O,
-    S: Fn(&H) -> I,
-{
-    let name = name.into();
-    assert!(!name.is_empty());
-    SetupFunc { name, func, setup }
-}
-
-pub trait BenchmarkFn<H, N> {
-    fn measure(&self, haystack: &H, needles: &[N]) -> u64;
-    fn name(&self) -> &str;
-}
-
-struct Func<F> {
-    name: &'static str,
-    func: F,
-}
-
-impl<F, H, N, O> BenchmarkFn<H, N> for Func<F>
-where
-    F: Fn(&H, &N) -> O,
-{
-    fn measure(&self, haystack: &H, needles: &[N]) -> u64 {
-        let iterations = needles.len();
-        let mut result = Vec::with_capacity(iterations);
-        let start = ActiveTimer::start();
-        for needle in needles {
-            result.push(black_box((self.func)(haystack, needle)));
-        }
-        let time = ActiveTimer::stop(start);
-        drop(result);
-        time
-    }
-
-    fn name(&self) -> &str {
-        self.name
-    }
-}
-
-pub trait MeasureTarget {
+pub trait MeasureTarget: Named {
     /// Measures the performance if the function
     ///
     /// Returns the cumulative (all iterations) execution time with nanoseconds precision,
@@ -116,7 +61,9 @@ pub trait MeasureTarget {
     /// Calling this method should update internal haystack used for measurement. Returns `true` if update happend,
     /// `false` if implementation doesn't support haystack generation.
     fn next_haystack(&mut self) -> bool;
+}
 
+pub trait Named {
     /// The name of the test function
     fn name(&self) -> &str;
 }
@@ -143,52 +90,58 @@ impl<O, F: Fn() -> O> MeasureTarget for SimpleFunc<F> {
         time_ms as usize * 1_000_000 / median
     }
 
-    fn name(&self) -> &str {
-        self.name
-    }
-
     fn next_haystack(&mut self) -> bool {
         false
     }
 }
 
-pub struct GenAndFunc<H, N> {
-    f: Box<dyn BenchmarkFn<H, N>>,
-    g: Box<dyn Generator<Haystack = H, Needle = N>>,
+impl<F> Named for SimpleFunc<F> {
+    fn name(&self) -> &str {
+        self.name
+    }
+}
+
+pub struct GenFunc<F, G, H> {
+    f: F,
+    g: G,
     haystack: Option<H>,
     name: String,
 }
 
-impl<H, N> GenAndFunc<H, N> {
-    pub fn new(
-        f: impl BenchmarkFn<H, N> + 'static,
-        g: impl Generator<Haystack = H, Needle = N> + 'static,
-    ) -> Self {
-        let name = format!("{}/{}", f.name(), g.name());
+impl<F, H, N, O, G> GenFunc<F, G, H>
+where
+    G: Generator<Haystack = H, Needle = N>,
+    F: Fn(&H, &N) -> O,
+{
+    pub fn new(name: &str, f: F, g: G) -> Self {
+        let name = format!("{}/{}", name, g.name());
         Self {
-            f: Box::new(f),
-            g: Box::new(g),
-            haystack: None,
+            f,
+            g,
             name,
+            haystack: None,
         }
     }
 }
 
-impl<H: 'static, N: 'static> GenAndFunc<H, N> {
-    pub fn new_boxed(
-        f: impl BenchmarkFn<H, N> + 'static,
-        g: impl Generator<Haystack = H, Needle = N> + 'static,
-    ) -> Box<dyn MeasureTarget> {
-        Box::new(Self::new(f, g))
-    }
-}
-
-impl<H, N> MeasureTarget for GenAndFunc<H, N> {
+impl<F, H, N, O, G> MeasureTarget for GenFunc<F, G, H>
+where
+    G: Generator<Haystack = H, Needle = N>,
+    F: Fn(&H, &N) -> O,
+{
     fn measure(&mut self, iterations: usize) -> u64 {
         let haystack = &*self.haystack.get_or_insert_with(|| self.g.next_haystack());
         let mut needles = Vec::with_capacity(iterations);
         self.g.next_needles(haystack, iterations, &mut needles);
-        self.f.measure(haystack, &needles)
+
+        let mut result = Vec::with_capacity(iterations);
+        let start = ActiveTimer::start();
+        for needle in &needles {
+            result.push(black_box((self.f)(&haystack, needle)));
+        }
+        let time = ActiveTimer::stop(start);
+        drop(result);
+        time
     }
 
     fn estimate_iterations(&mut self, time_ms: u32) -> usize {
@@ -200,15 +153,13 @@ impl<H, N> MeasureTarget for GenAndFunc<H, N> {
 
         let mut measurements = Vec::with_capacity(iterations);
 
-        for needle in needles {
-            measurements.push(self.f.measure(&haystack, &[needle]));
+        for needle in &needles {
+            let start = ActiveTimer::start();
+            black_box((self.f)(&haystack, needle));
+            measurements.push(ActiveTimer::stop(start));
         }
 
         (time_ms as usize * 1_000_000) / median(measurements) as usize
-    }
-
-    fn name(&self) -> &str {
-        self.name.as_str()
     }
 
     fn next_haystack(&mut self) -> bool {
@@ -217,12 +168,18 @@ impl<H, N> MeasureTarget for GenAndFunc<H, N> {
     }
 }
 
+impl<F, H, N> Named for GenFunc<F, H, N> {
+    fn name(&self) -> &str {
+        &self.name
+    }
+}
+
 pub struct BenchmarkMatrix<G> {
     generators: Vec<G>,
     functions: Vec<Box<dyn MeasureTarget>>,
 }
 
-impl<H: 'static, N: 'static, G: Generator<Haystack = H, Needle = N> + 'static> BenchmarkMatrix<G> {
+impl<H: 'static, N, G: Generator<Haystack = H, Needle = N> + Clone + 'static> BenchmarkMatrix<G> {
     pub fn new(generator: G) -> Self {
         Self {
             generators: vec![generator],
@@ -238,16 +195,15 @@ impl<H: 'static, N: 'static, G: Generator<Haystack = H, Needle = N> + 'static> B
         }
     }
 
-    pub fn add_function<O, F>(mut self, name: &'static str, f: F) -> Self
+    pub fn add_function<O, F>(mut self, name: &str, f: F) -> Self
     where
-        G: Clone,
-        O: 'static,
         F: Fn(&H, &N) -> O + Copy + 'static,
     {
-        for g in &self.generators {
-            let f = _benchmark_fn(name, f);
-            self.functions.push(Box::new(GenAndFunc::new(f, g.clone())));
-        }
+        self.generators
+            .iter()
+            .map(|g| GenFunc::new(name, f, g.clone()))
+            .map(Box::new)
+            .for_each(|f| self.functions.push(f));
         self
     }
 }
@@ -271,85 +227,6 @@ impl<const N: usize> IntoBenchmarks for [Box<dyn MeasureTarget>; N] {
 impl IntoBenchmarks for Vec<Box<dyn MeasureTarget>> {
     fn into_benchmarks(self) -> Vec<Box<dyn MeasureTarget>> {
         self
-    }
-}
-
-// impl<
-//         H: 'static,
-//         N: 'static,
-//         O,
-//         F: Fn(&H, &N) -> O + 'static,
-//         G: Generator<Haystack = H, Needle = N> + 'static,
-//     > IntoBenchmarks for (&'static str, F, G)
-// {
-//     fn into_benchmarks(self) -> Vec<Box<dyn MeasureTarget>> {
-//         let f = Box::new(Func {
-//             name: self.0,
-//             func: self.1,
-//         });
-//         let g = Box::new(self.2);
-//         let name = self.0.to_string();
-//         vec![Box::new(GenAndFunc { f, g, name })]
-//     }
-// }
-
-impl<
-        H: 'static,
-        N: 'static,
-        O,
-        F: Fn(&H, &N) -> O + Clone + 'static,
-        G: Generator<Haystack = H, Needle = N> + 'static,
-        I: IntoIterator<Item = G>,
-    > IntoBenchmarks for (&'static str, F, I)
-{
-    fn into_benchmarks(self) -> Vec<Box<dyn MeasureTarget>> {
-        let mut benchmarks: Vec<Box<dyn MeasureTarget>> = vec![];
-        for gen in self.2.into_iter() {
-            let f = Box::new(Func {
-                name: self.0,
-                func: self.1.clone(),
-            });
-            let name = self.0.to_string();
-
-            let g = Box::new(gen);
-            benchmarks.push(Box::new(GenAndFunc {
-                f,
-                g,
-                name,
-                haystack: None,
-            }));
-        }
-        benchmarks
-    }
-}
-
-struct SetupFunc<S, F> {
-    name: String,
-    setup: S,
-    func: F,
-}
-
-impl<S, F, H, N, I, O> BenchmarkFn<H, N> for SetupFunc<S, F>
-where
-    S: Fn(&H) -> I,
-    F: Fn(I, &N) -> O,
-    I: Clone,
-{
-    fn measure(&self, haystack: &H, needles: &[N]) -> u64 {
-        let iterations = needles.len();
-        let mut results = Vec::with_capacity(iterations);
-        let haystack = (self.setup)(haystack);
-        let start = ActiveTimer::start();
-        for needle in needles {
-            results.push(black_box((self.func)(haystack.clone(), needle)));
-        }
-        let time = ActiveTimer::stop(start);
-        drop(results);
-        time
-    }
-
-    fn name(&self) -> &str {
-        self.name.as_str()
     }
 }
 
@@ -402,37 +279,9 @@ pub trait Generator {
     fn reset(&mut self) {}
 }
 
-/// Generator that provides static value to the benchmark. The value should implement [`Copy`] trait.
-#[derive(Clone)]
-pub struct StaticValue<H, N>(
-    /// Haystack value
-    pub H,
-    /// Needle value
-    pub N,
-);
-
-impl<H: Clone, N: Copy> Generator for StaticValue<H, N> {
-    type Haystack = H;
-    type Needle = N;
-
-    fn next_haystack(&mut self) -> Self::Haystack {
-        self.0.clone()
-    }
-
-    fn next_needle(&mut self, _: &Self::Haystack) -> Self::Needle {
-        self.1
-    }
-
-    fn name(&self) -> String {
-        "StaticValue".to_string()
-    }
-}
-
 pub trait Reporter {
     fn on_complete(&mut self, _results: &RunResult) {}
 }
-
-type FnPair<H, N> = (Box<dyn BenchmarkFn<H, N>>, Box<dyn BenchmarkFn<H, N>>);
 
 /// Describes basic settings for the benchmarking process
 ///
@@ -473,55 +322,6 @@ impl Default for MeasurementSettings {
             min_iterations_per_sample: 1,
             max_iterations_per_sample: 50,
         }
-    }
-}
-
-pub struct Benchmark<H, N> {
-    funcs: BTreeMap<String, FnPair<H, N>>,
-    generators: Vec<Box<dyn Generator<Haystack = H, Needle = N>>>,
-    reporters: Vec<Box<dyn Reporter>>,
-}
-
-impl<H, N> Default for Benchmark<H, N> {
-    fn default() -> Self {
-        Self {
-            funcs: BTreeMap::new(),
-            generators: vec![],
-            reporters: vec![],
-        }
-    }
-}
-
-impl<H, N> Benchmark<H, N> {
-    pub fn add_reporter(&mut self, reporter: impl Reporter + 'static) {
-        self.reporters.push(Box::new(reporter))
-    }
-
-    pub fn add_generator(&mut self, generator: impl Generator<Haystack = H, Needle = N> + 'static) {
-        self.generators.push(Box::new(generator))
-    }
-
-    pub fn add_generators<T>(&mut self, generators: impl IntoIterator<Item = T>)
-    where
-        T: Generator<Haystack = H, Needle = N> + 'static,
-    {
-        for generator in generators {
-            self.add_generator(generator);
-        }
-    }
-
-    pub fn add_pair(
-        &mut self,
-        baseline: impl BenchmarkFn<H, N> + 'static,
-        candidate: impl BenchmarkFn<H, N> + 'static,
-    ) {
-        let key = format!("{}-{}", baseline.name(), candidate.name());
-        self.funcs
-            .insert(key, (Box::new(baseline), Box::new(candidate)));
-    }
-
-    pub fn list_functions(&self) -> impl Iterator<Item = &str> {
-        self.funcs.keys().map(String::as_str)
     }
 }
 
