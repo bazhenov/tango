@@ -1,0 +1,39 @@
+name: Test
+
+on: push
+
+jobs:
+  build:
+    # strategy:
+    #   matrix:
+    #     include:
+    #       - target: x86_64-unknown-linux-gnu
+    #         os: ubuntu-22.04
+    #       - target: x86_64-apple-darwin
+    #         os: macos-11
+    # runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install Rust
+        run: rustup update stable && rustup default stable
+
+      - name: Restore ./target
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Run Tests
+        run: |
+          cargo test
+
+      - name: Run Benchmarks
+        run: |
+          cargo bench --bench=tango -- compare
