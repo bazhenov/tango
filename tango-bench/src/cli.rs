@@ -240,9 +240,10 @@ mod commands {
                 (a_time, b_time)
             };
 
-            a_samples.push(a_time as i64 / iterations as i64);
-            b_samples.push(b_time as i64 / iterations as i64);
-            diff.push((b_time - a_time) as i64 / iterations as i64);
+            a_samples.push(a_time as u64 / iterations as u64);
+            b_samples.push(b_time as u64 / iterations as u64);
+            // need to convert both of measurement to i64 because difference can be negative
+            diff.push((b_time as i64 - a_time as i64) / iterations as i64);
         }
 
         if let Some(path) = samples_dump_path {
@@ -255,8 +256,9 @@ mod commands {
         let b_summary = Summary::from(&b_samples).unwrap();
 
         let result = calculate_run_result(
-            (test_name, a_summary),
-            (test_name, b_summary),
+            test_name,
+            a_summary,
+            b_summary,
             diff,
             settings.outlier_detection_enabled,
         );
@@ -264,7 +266,7 @@ mod commands {
         reporter.on_complete(&result);
     }
 
-    fn write_raw_measurements(path: impl AsRef<Path>, base: &[i64], candidate: &[i64]) {
+    fn write_raw_measurements<T: Display>(path: impl AsRef<Path>, base: &[T], candidate: &[T]) {
         let mut file = BufWriter::new(File::create(path).unwrap());
 
         for (b, c) in base.iter().zip(candidate) {
@@ -307,13 +309,6 @@ pub mod reporting {
                 ""
             );
             println!(
-                "    {:12} │ {:>15} {:>15} {:>15}",
-                "min",
-                HumanTime(base.min as f64),
-                HumanTime(candidate.min as f64),
-                HumanTime((candidate.min - base.min) as f64)
-            );
-            println!(
                 "    {:12} │ {:>15} {:>15} {:>15}  {:+4.2}{}",
                 "mean",
                 HumanTime(base.mean),
@@ -332,10 +327,17 @@ pub mod reporting {
             );
             println!(
                 "    {:12} │ {:>15} {:>15} {:>15}",
+                "min",
+                HumanTime(base.min as f64),
+                HumanTime(candidate.min as f64),
+                HumanTime(candidate.min as f64 - base.min as f64)
+            );
+            println!(
+                "    {:12} │ {:>15} {:>15} {:>15}",
                 "max",
                 HumanTime(base.max as f64),
                 HumanTime(candidate.max as f64),
-                HumanTime((candidate.max - base.max) as f64),
+                HumanTime(candidate.max as f64 - base.max as f64),
             );
             println!(
                 "    {:12} │ {:>15} {:>15} {:>15}",
@@ -425,7 +427,13 @@ impl fmt::Display for HumanTime {
         } else if self.0.abs() > USEC {
             f.pad(&format!("{:.1} us", self.0 / USEC))
         } else {
-            f.pad(&format!("{:.0} ns", self.0))
+            if self.0 < 1. {
+                // do not print values less than 1 because it can generate strings like "-0 ns",
+                // which is meaningless
+                f.pad("0 ns")
+            } else {
+                f.pad(&format!("{:.0} ns", self.0))
+            }
         }
     }
 }

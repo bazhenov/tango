@@ -3,7 +3,7 @@ use std::{
     any::type_name,
     cmp::Ordering,
     hint::black_box,
-    ops::{Add, Div},
+    ops::{Add, Div, RangeInclusive},
     time::Duration,
 };
 use timer::{ActiveTimer, Timer};
@@ -325,49 +325,50 @@ impl Default for MeasurementSettings {
     }
 }
 
-pub fn calculate_run_result<N: AsRef<str>>(
-    baseline: (N, Summary<i64>),
-    candidate: (N, Summary<i64>),
+pub fn calculate_run_result<N: Into<String>>(
+    name: N,
+    baseline: Summary<u64>,
+    candidate: Summary<u64>,
     diff: Vec<i64>,
     filter_outliers: bool,
 ) -> RunResult {
+    assert!(diff.len() == baseline.n);
+    assert!(diff.len() == candidate.n);
+
     let n = diff.len();
 
-    let diff_summary = if filter_outliers {
-        let input = diff.to_vec();
-        let (min, max) = iqr_variance_thresholds(input).unwrap_or((i64::MIN, i64::MAX));
+    // Calculating measurements range. All measurements outside this interval concidered outliers
+    let range = if filter_outliers {
+        iqr_variance_thresholds(diff.to_vec())
+    } else {
+        None
+    };
 
-        let measurements = diff
-            .iter()
-            .copied()
-            .filter(|i| min < *i && *i < max)
+    // Cleaning difference measurements from outliers if needed
+    let diff = if let Some(range) = range {
+        let filtered = diff
+            .into_iter()
+            .filter(|i| range.contains(i))
             .collect::<Vec<_>>();
-        Summary::from(&measurements).unwrap()
+        Summary::from(&filtered).unwrap()
     } else {
         Summary::from(&diff).unwrap()
     };
 
-    let outliers_filtered = n - diff_summary.n;
+    let std_dev = diff.variance.sqrt();
+    let std_err = std_dev / (diff.n as f64).sqrt();
+    let z_score = diff.mean / std_err;
 
-    let std_dev = diff_summary.variance.sqrt();
-    let std_err = std_dev / (diff_summary.n as f64).sqrt();
-    let z_score = diff_summary.mean / std_err;
-
-    let name = if baseline.0.as_ref() == candidate.0.as_ref() {
-        baseline.0.as_ref().to_string()
-    } else {
-        format!("{}/{}", baseline.0.as_ref(), candidate.0.as_ref())
-    };
     RunResult {
-        name,
-        baseline: baseline.1,
-        candidate: candidate.1,
-        diff: diff_summary,
+        baseline,
+        candidate,
+        diff,
+        name: name.into(),
         // significant result is far away from 0 and have more than 0.5%
         // base/candidate difference
         // z_score = 2.6 corresponds to 99% significance level
-        significant: z_score.abs() >= 2.6 && (diff_summary.mean / candidate.1.mean).abs() > 0.005,
-        outliers: outliers_filtered,
+        significant: z_score.abs() >= 2.6 && (diff.mean / candidate.mean).abs() > 0.005,
+        outliers: n - diff.n,
     }
 }
 
@@ -377,10 +378,10 @@ pub struct RunResult {
     pub name: String,
 
     /// statistical summary of baseline function measurements
-    pub baseline: Summary<i64>,
+    pub baseline: Summary<u64>,
 
     /// statistical summary of candidate function measurements
-    pub candidate: Summary<i64>,
+    pub candidate: Summary<u64>,
 
     /// individual measurements of a benchmark (candidate - baseline)
     pub diff: Summary<i64>,
@@ -488,7 +489,7 @@ where
 /// Outlier detection algorithm based on interquartile range
 ///
 /// Outliers are observations are 5 IQR away from the corresponding quartile.
-fn iqr_variance_thresholds(mut input: Vec<i64>) -> Option<(i64, i64)> {
+fn iqr_variance_thresholds(mut input: Vec<i64>) -> Option<RangeInclusive<i64>> {
     const FACTOR: i64 = 5;
 
     input.sort();
@@ -519,7 +520,7 @@ fn iqr_variance_thresholds(mut input: Vec<i64>) -> Option<(i64, i64)> {
     // Calculating the equal number of observations which should be removed from each "side" of observations
     let outliers_cnt = low_threshold_idx.min(input.len() - high_threshold_idx);
 
-    Some((input[outliers_cnt], input[input.len() - outliers_cnt]))
+    Some(input[outliers_cnt]..=(input[input.len() - outliers_cnt]))
 }
 
 mod timer {
