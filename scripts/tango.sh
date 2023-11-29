@@ -7,8 +7,13 @@ if [ -f "${FILE}" ]; then
     rm -f "${FILE}"
 fi
 
-for i in {1..30}; do
-    cargo bench --bench=tango -- pair sum -t 1000 -v -o >> "${FILE}"
-done
+cargo export target/benchmarks -- bench --bench='tango-*'
 
-cat "${FILE}" | grep 'mean' | awk '{print $10}' | sed 's/%//'
+time (
+    for i in {1..30}; do
+        ./target/benchmarks/tango_faster compare ./target/benchmarks/tango_slower \
+            -t 1000 -f 'str_length_limit' >> "${FILE}"
+    done
+)
+
+cat "${FILE}" | awk '{print $(NF)}' | sed 's/%//'
