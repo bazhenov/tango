@@ -158,7 +158,7 @@ fn intersect_values<'a, K: Hash + Eq>(
 }
 
 mod commands {
-    use crate::{calculate_run_result, Summary};
+    use crate::calculate_run_result;
     use std::{
         fs::File,
         io::{BufWriter, Write as _},
@@ -204,7 +204,6 @@ mod commands {
 
         let mut a_samples = vec![];
         let mut b_samples = vec![];
-        let mut diff = vec![];
 
         let deadline = Instant::now() + settings.max_duration;
 
@@ -240,37 +239,40 @@ mod commands {
                 (a_time, b_time)
             };
 
-            a_samples.push(a_time as u64 / iterations as u64);
-            b_samples.push(b_time as u64 / iterations as u64);
-            // need to convert both of measurement to i64 because difference can be negative
-            diff.push((b_time as i64 - a_time as i64) / iterations as i64);
+            a_samples.push(a_time as u64);
+            b_samples.push(b_time as u64);
         }
 
         if let Some(path) = samples_dump_path {
             let file_name = format!("{}.csv", test_name);
             let file_path = path.as_ref().join(file_name);
-            write_raw_measurements(file_path, &a_samples, &b_samples);
+            let values = a_samples
+                .iter()
+                .copied()
+                .zip(b_samples.iter().copied())
+                .map(|(a, b)| (a / iterations as u64, b / iterations as u64));
+            write_raw_measurements(file_path, values);
         }
-
-        let a_summary = Summary::from(&a_samples).unwrap();
-        let b_summary = Summary::from(&b_samples).unwrap();
 
         let result = calculate_run_result(
             test_name,
-            a_summary,
-            b_summary,
-            diff,
+            a_samples,
+            b_samples,
+            iterations,
             settings.outlier_detection_enabled,
         );
 
         reporter.on_complete(&result);
     }
 
-    fn write_raw_measurements<T: Display>(path: impl AsRef<Path>, base: &[T], candidate: &[T]) {
+    fn write_raw_measurements<T: Display>(
+        path: impl AsRef<Path>,
+        values: impl IntoIterator<Item = (T, T)>,
+    ) {
         let mut file = BufWriter::new(File::create(path).unwrap());
 
-        for (b, c) in base.iter().zip(candidate) {
-            writeln!(&mut file, "{},{}", b, c).unwrap();
+        for (a, b) in values {
+            writeln!(&mut file, "{},{}", a, b).unwrap();
         }
     }
 }

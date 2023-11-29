@@ -327,15 +327,31 @@ impl Default for MeasurementSettings {
 
 pub fn calculate_run_result<N: Into<String>>(
     name: N,
-    baseline: Summary<u64>,
-    candidate: Summary<u64>,
-    diff: Vec<i64>,
+    mut baseline: Vec<u64>,
+    mut candidate: Vec<u64>,
+    iterations_per_sample: usize,
     filter_outliers: bool,
 ) -> RunResult {
-    assert!(diff.len() == baseline.n);
-    assert!(diff.len() == candidate.n);
+    assert!(baseline.len() == candidate.len());
+
+    let mut diff = candidate
+        .iter()
+        .copied()
+        .zip(baseline.iter().copied())
+        // need to convert both of measurement to i64 because difference can be negative
+        .map(|(c, b)| (c as i64, b as i64))
+        .map(|(c, b)| (c - b) / iterations_per_sample as i64)
+        .collect::<Vec<i64>>();
 
     let n = diff.len();
+
+    // Normalizing measurements
+    for v in baseline.iter_mut() {
+        *v /= iterations_per_sample as u64;
+    }
+    for v in candidate.iter_mut() {
+        *v /= iterations_per_sample as u64;
+    }
 
     // Calculating measurements range. All measurements outside this interval concidered outliers
     let range = if filter_outliers {
@@ -344,16 +360,29 @@ pub fn calculate_run_result<N: Into<String>>(
         None
     };
 
-    // Cleaning difference measurements from outliers if needed
-    let diff = if let Some(range) = range {
-        let filtered = diff
-            .into_iter()
-            .filter(|i| range.contains(i))
-            .collect::<Vec<_>>();
-        Summary::from(&filtered).unwrap()
-    } else {
-        Summary::from(&diff).unwrap()
+    // Cleaning measurements from outliers if needed
+    if let Some(range) = range {
+        // We filtering outliers to build statistical Summary and the order of elements in arrays
+        // doesn't matter, therefore swap_remove() is used. But we need to make sure that all arrays
+        // has the same length
+        assert_eq!(diff.len(), baseline.len());
+        assert_eq!(diff.len(), candidate.len());
+
+        let mut i = 0;
+        while i < diff.len() {
+            if range.contains(&diff[i]) {
+                i += 1;
+            } else {
+                diff.swap_remove(i);
+                baseline.swap_remove(i);
+                candidate.swap_remove(i);
+            }
+        }
     };
+
+    let diff = Summary::from(&diff).unwrap();
+    let baseline = Summary::from(&baseline).unwrap();
+    let candidate = Summary::from(&candidate).unwrap();
 
     let std_dev = diff.variance.sqrt();
     let std_err = std_dev / (diff.n as f64).sqrt();
