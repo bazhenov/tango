@@ -6,12 +6,17 @@ use tango_bench::Generator;
 const INPUT_TEXT: &str = include_str!("./input.txt");
 
 #[derive(Clone)]
-pub struct RandomVec<T>(SmallRng, usize, PhantomData<T>);
+pub struct RandomVec<T>(SmallRng, usize, PhantomData<T>, String);
 
 impl<T> RandomVec<T> {
     #[allow(unused)]
     pub fn new(size: usize) -> Self {
-        Self(SmallRng::seed_from_u64(42), size, PhantomData)
+        Self(
+            SmallRng::seed_from_u64(42),
+            size,
+            PhantomData,
+            format!("RandomVec<{}, {}>", type_name::<T>(), size),
+        )
     }
 }
 
@@ -23,7 +28,7 @@ where
     type Needle = ();
 
     fn next_haystack(&mut self) -> Self::Haystack {
-        let RandomVec(rng, size, _) = self;
+        let RandomVec(rng, size, _, _) = self;
         let mut v = vec![T::default(); *size];
         rng.fill(&mut v[..]);
         v
@@ -31,8 +36,8 @@ where
 
     fn next_needle(&mut self, _haystack: &Self::Haystack) -> Self::Needle {}
 
-    fn name(&self) -> String {
-        format!("RandomVec<{}, {}>", type_name::<T>(), self.1)
+    fn name(&self) -> &str {
+        &self.3
     }
 
     fn reset(&mut self) {}
@@ -43,6 +48,7 @@ pub struct RandomString {
     char_indicies: Vec<usize>,
     rng: SmallRng,
     length: usize,
+    name: String,
 }
 
 impl RandomString {
@@ -53,10 +59,12 @@ impl RandomString {
             .map(|(idx, _)| idx)
             .collect::<Vec<_>>();
         let rng = SmallRng::seed_from_u64(42);
+        let length = 50000;
         Self {
             char_indicies,
             rng,
-            length: 50000,
+            length,
+            name: format!("RandomString<{}>", length),
         }
     }
 }
@@ -74,8 +82,8 @@ impl Generator for RandomString {
         INPUT_TEXT[from..to].to_string()
     }
 
-    fn name(&self) -> String {
-        format!("RandomString<{}>", self.length)
+    fn name(&self) -> &str {
+        &self.name
     }
 
     fn next_needle(&mut self, _haystack: &Self::Haystack) -> Self::Needle {}

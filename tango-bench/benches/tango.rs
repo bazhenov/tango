@@ -31,8 +31,8 @@ impl<H: Clone, N: Copy> Generator for StaticValue<H, N> {
         self.1
     }
 
-    fn name(&self) -> String {
-        "StaticValue".to_string()
+    fn name(&self) -> &str {
+        "StaticValue"
     }
 }
 

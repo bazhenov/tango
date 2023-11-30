@@ -255,13 +255,13 @@ pub trait Generator {
     /// Generates next random needle for the benchmark
     fn next_needle(&mut self, haystack: &Self::Haystack) -> Self::Needle;
 
-    fn name(&self) -> String {
+    fn name(&self) -> &str {
         let name = type_name::<Self>();
         if let Some(idx) = name.rfind("::") {
             // it's safe to operate on byte offsets here because ':' symbols is 1-byte ascii
-            name[idx + 2..].to_string()
+            &name[idx + 2..]
         } else {
-            name.to_string()
+            name
         }
     }
 

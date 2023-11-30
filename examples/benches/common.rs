@@ -36,6 +36,7 @@ where
 struct RandomVec<T> {
     rng: Lcg<T>,
     size: usize,
+    name: String,
 }
 
 impl<T> RandomVec<T>
@@ -46,6 +47,7 @@ where
         Self {
             rng: Lcg::new(0),
             size,
+            name: format!("Size<{}, {}>", type_name::<T>(), size),
         }
     }
 }
@@ -90,8 +92,8 @@ where
         Sample { vec, ord, btree }
     }
 
-    fn name(&self) -> String {
-        format!("Size<{}, {}>", type_name::<T>(), self.size)
+    fn name(&self) -> &str {
+        &self.name
     }
 
     fn next_needle(&mut self, haystack: &Self::Haystack) -> Self::Needle {
