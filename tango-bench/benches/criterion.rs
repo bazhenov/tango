@@ -6,6 +6,16 @@ use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 use tango_bench::Generator;
 use test_funcs::{factorial, str_count, str_count_rev, str_take, sum, RandomString};
 
+/// Because benchmarks are builded with linker flag -rdynamic there should be
+/// library entry point defined in all benchmarks.
+/// On macOS linker is able to strip all tango_*() FFI functions, because the corresponding
+/// module tango_bench::cli is not used.
+#[cfg(target_os = "linux")]
+mod linker_fix {
+    use tango_bench::benchmarks;
+    benchmarks!([]);
+}
+
 fn sum_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("arithmetic");
 
