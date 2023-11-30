@@ -145,20 +145,9 @@ where
     }
 
     fn estimate_iterations(&mut self, time_ms: u32) -> usize {
-        let iterations = 10;
-
-        let haystack = self.g.next_haystack();
-        let mut needles = Vec::with_capacity(iterations);
-        self.g.next_needles(&haystack, iterations, &mut needles);
-
-        let mut measurements = Vec::with_capacity(iterations);
-
-        for needle in &needles {
-            let start = ActiveTimer::start();
-            black_box((self.f)(&haystack, needle));
-            measurements.push(ActiveTimer::stop(start));
-        }
-
+        // Here we relying on the fact that measure() is not generating a new haystack
+        // without a call to next_haystack()
+        let measurements = (0..10).map(|_| self.measure(1)).collect::<Vec<_>>();
         (time_ms as usize * 1_000_000) / median(measurements) as usize
     }
 
