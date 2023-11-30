@@ -8,6 +8,7 @@ use std::{
     hash::Hash,
     num::{NonZeroU64, NonZeroUsize},
     path::PathBuf,
+    process::exit,
     time::Duration,
 };
 
@@ -39,6 +40,9 @@ enum BenchmarkMode {
 
         #[arg(short = 't', long = "time")]
         time: Option<NonZeroU64>,
+
+        #[arg(long = "fail-threshold")]
+        fail_threshold: Option<f64>,
 
         #[arg(short = 'f', long = "filter")]
         filter: Option<String>,
@@ -92,6 +96,7 @@ pub fn run(settings: MeasurementSettings) {
             time,
             skip_outlier_detection,
             path_to_dump,
+            fail_threshold,
             bench_flags: _,
         } => {
             let mut reporter: Box<dyn Reporter> = if verbose {
@@ -131,7 +136,7 @@ pub fn run(settings: MeasurementSettings) {
                 if !name.contains(filter) {
                     continue;
                 }
-                commands::pairwise_compare(
+                let diff = commands::pairwise_compare(
                     &spi_lib,
                     &spi_self,
                     name.as_str(),
@@ -139,6 +144,15 @@ pub fn run(settings: MeasurementSettings) {
                     reporter.as_mut(),
                     path_to_dump.as_ref(),
                 );
+                if let Some((diff, threshold)) = diff.zip(fail_threshold) {
+                    if diff >= threshold {
+                        eprintln!(
+                            "[ERROR] Performance regressed {:+.1}% >= {:.1}%  -  test: {}",
+                            diff, threshold, name
+                        );
+                        exit(1);
+                    }
+                }
             }
         }
     }
@@ -181,6 +195,9 @@ mod commands {
     /// ```
     /// where `b_1..b_n` are baseline absolute time (in nanoseconds) measurements
     /// and `c_1..c_n` are candidate time measurements
+    ///
+    /// Returns a percentage difference in performance of two functions if this change is
+    /// statistically significant
     pub(super) fn pairwise_compare(
         a: &Spi,
         b: &Spi,
@@ -188,7 +205,7 @@ mod commands {
         settings: &MeasurementSettings,
         reporter: &mut dyn Reporter,
         samples_dump_path: Option<impl AsRef<Path>>,
-    ) {
+    ) -> Option<f64> {
         let a_idx = *a.tests().get(test_name).unwrap();
         let b_idx = *b.tests().get(test_name).unwrap();
 
@@ -263,6 +280,12 @@ mod commands {
         );
 
         reporter.on_complete(&result);
+
+        if result.significant {
+            Some(result.diff.mean / result.baseline.mean * 100.)
+        } else {
+            None
+        }
     }
 
     fn write_raw_measurements<T: Display>(
