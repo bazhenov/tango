@@ -57,11 +57,13 @@ fn empty_benchmarks() -> impl IntoBenchmarks {
 }
 
 fn generator_empty_benchmarks() -> impl IntoBenchmarks {
-    let mut generator = GenFunc::new("_", |_, needle| *needle, StaticValue(0usize, 0usize));
+    let generator = Rc::new(RefCell::new(StaticValue(0usize, 0usize)));
+    let f = |_: &usize, needle: &usize| *needle;
+    let mut target = GenFunc::new("_", Rc::new(RefCell::new(f)), generator);
 
     // warming up
-    generator.measure(1000);
-    let rator = StaticValue(Rc::new(RefCell::new(generator)), ());
+    target.measure(1000);
+    let rator = StaticValue(Rc::new(RefCell::new(target)), ());
     BenchmarkMatrix::new(rator).add_function("measure_generator_function", |rator, _| {
         rator.borrow_mut().measure(1000)
     })

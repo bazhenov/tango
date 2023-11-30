@@ -1,9 +1,11 @@
 use num_traits::{AsPrimitive, ToPrimitive};
 use std::{
     any::type_name,
+    cell::RefCell,
     cmp::Ordering,
     hint::black_box,
     ops::{Add, Div, RangeInclusive},
+    rc::Rc,
     time::Duration,
 };
 use timer::{ActiveTimer, Timer};
@@ -102,8 +104,8 @@ impl<F> Named for SimpleFunc<F> {
 }
 
 pub struct GenFunc<F, G, H> {
-    f: F,
-    g: G,
+    f: Rc<RefCell<F>>,
+    g: Rc<RefCell<G>>,
     haystack: Option<H>,
     name: String,
 }
@@ -113,8 +115,8 @@ where
     G: Generator<Haystack = H, Needle = N>,
     F: Fn(&H, &N) -> O,
 {
-    pub fn new(name: &str, f: F, g: G) -> Self {
-        let name = format!("{}/{}", name, g.name());
+    pub fn new(name: &str, f: Rc<RefCell<F>>, g: Rc<RefCell<G>>) -> Self {
+        let name = format!("{}/{}", name, g.borrow().name());
         Self {
             f,
             g,
@@ -130,14 +132,16 @@ where
     F: Fn(&H, &N) -> O,
 {
     fn measure(&mut self, iterations: usize) -> u64 {
-        let haystack = &*self.haystack.get_or_insert_with(|| self.g.next_haystack());
+        let mut g = self.g.borrow_mut();
+        let haystack = &*self.haystack.get_or_insert_with(|| g.next_haystack());
         let mut needles = Vec::with_capacity(iterations);
-        self.g.next_needles(haystack, iterations, &mut needles);
+        g.next_needles(haystack, iterations, &mut needles);
 
+        let f = self.f.borrow_mut();
         let mut result = Vec::with_capacity(iterations);
         let start = ActiveTimer::start();
         for needle in &needles {
-            result.push(black_box((self.f)(&haystack, needle)));
+            result.push(black_box((f)(&haystack, needle)));
         }
         let time = ActiveTimer::stop(start);
         drop(result);
@@ -152,7 +156,7 @@ where
     }
 
     fn next_haystack(&mut self) -> bool {
-        self.haystack = Some(self.g.next_haystack());
+        self.haystack = Some(self.g.borrow_mut().next_haystack());
         true
     }
 }
@@ -164,12 +168,13 @@ impl<F, H, N> Named for GenFunc<F, H, N> {
 }
 
 pub struct BenchmarkMatrix<G> {
-    generators: Vec<G>,
+    generators: Vec<Rc<RefCell<G>>>,
     functions: Vec<Box<dyn MeasureTarget>>,
 }
 
-impl<H: 'static, N, G: Generator<Haystack = H, Needle = N> + Clone + 'static> BenchmarkMatrix<G> {
+impl<H: 'static, N, G: Generator<Haystack = H, Needle = N> + 'static> BenchmarkMatrix<G> {
     pub fn new(generator: G) -> Self {
+        let generator = Rc::new(RefCell::new(generator));
         Self {
             generators: vec![generator],
             functions: vec![],
@@ -177,7 +182,12 @@ impl<H: 'static, N, G: Generator<Haystack = H, Needle = N> + Clone + 'static> Be
     }
 
     pub fn with_params<P>(params: impl IntoIterator<Item = P>, generator: impl Fn(P) -> G) -> Self {
-        let generators: Vec<_> = params.into_iter().map(generator).collect();
+        let generators: Vec<_> = params
+            .into_iter()
+            .map(generator)
+            .map(RefCell::new)
+            .map(Rc::new)
+            .collect();
         Self {
             generators,
             functions: vec![],
@@ -186,11 +196,13 @@ impl<H: 'static, N, G: Generator<Haystack = H, Needle = N> + Clone + 'static> Be
 
     pub fn add_function<O, F>(mut self, name: &str, f: F) -> Self
     where
-        F: Fn(&H, &N) -> O + Copy + 'static,
+        F: Fn(&H, &N) -> O + 'static,
     {
+        let f = Rc::new(RefCell::new(f));
         self.generators
             .iter()
-            .map(|g| GenFunc::new(name, f, g.clone()))
+            .map(Rc::clone)
+            .map(|g| GenFunc::new(name, Rc::clone(&f), g))
             .map(Box::new)
             .for_each(|f| self.functions.push(f));
         self
