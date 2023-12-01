@@ -5,7 +5,7 @@ extern crate tango_bench;
 use ordsearch::OrderedCollection;
 use std::{
     any::type_name, collections::BTreeSet, convert::TryFrom, iter::FromIterator,
-    marker::PhantomData,
+    marker::PhantomData, process::ExitCode,
 };
 use tango_bench::{cli, BenchmarkMatrix, Generator, IntoBenchmarks, MeasurementSettings};
 
@@ -132,11 +132,11 @@ where
     BenchmarkMatrix::with_params(sizes, RandomVec::<T>::new).add_function("search", search_func)
 }
 
-pub fn main() {
+pub fn main() -> tango_bench::Result<ExitCode> {
     let settings = MeasurementSettings {
         samples_per_haystack: 1_000,
         ..Default::default()
     };
 
-    cli::run(settings);
+    cli::run(settings)
 }

@@ -14,6 +14,8 @@ pub mod cli;
 pub mod dylib;
 pub mod platform;
 
+pub type Result<T> = anyhow::Result<T>;
+
 pub const NS_TO_MS: u64 = 1_000_000;
 
 /// Registers benchmark in the system

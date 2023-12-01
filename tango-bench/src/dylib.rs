@@ -1,30 +1,43 @@
 use self::ffi::VTable;
 use crate::MeasureTarget;
-use core::slice;
 use libloading::{Library, Symbol};
 use std::{
     collections::BTreeMap,
     ffi::c_char,
     ptr::{addr_of, null},
-    str,
+    slice,
+    str::{self, Utf8Error},
 };
+use thiserror::Error;
 
 pub struct Spi<'l> {
     tests: BTreeMap<String, usize>,
     vt: Box<dyn VTable + 'l>,
 }
 
+#[derive(Error, Debug)]
+pub enum Error {
+    #[error("Error")]
+    Foo,
+
+    #[error("Invalid string pointer from FFI")]
+    InvalidStrPoint(Utf8Error),
+
+    #[error("Unable to load library symbol")]
+    UnableToLoadSymbol(#[source] libloading::Error),
+}
+
 impl<'l> Spi<'l> {
-    pub(crate) fn for_library(library: &'l Library) -> Self {
-        Self::for_vtable(ffi::LibraryVTable::new(library))
+    pub(crate) fn for_library(library: &'l Library) -> Result<Self, Error> {
+        Self::for_vtable(ffi::LibraryVTable::new(library)?)
     }
 
     /// TODO: should be singleton
-    pub(crate) fn for_self() -> Option<Self> {
+    pub(crate) fn for_self() -> Option<Result<Self, Error>> {
         unsafe { ffi::SELF_SPI.take().map(Self::for_vtable) }
     }
 
-    fn for_vtable<T: VTable + 'l>(vt: T) -> Self {
+    fn for_vtable<T: VTable + 'l>(vt: T) -> Result<Self, Error> {
         let vt = Box::new(vt);
         vt.init();
 
@@ -39,11 +52,11 @@ impl<'l> Spi<'l> {
                 continue;
             }
             let slice = unsafe { slice::from_raw_parts(name_ptr as *const u8, length) };
-            let str = str::from_utf8(slice).unwrap();
+            let str = str::from_utf8(slice).map_err(Error::InvalidStrPoint)?;
             tests.insert(str.to_string(), i);
         }
 
-        Spi { vt, tests }
+        Ok(Spi { vt, tests })
     }
 
     pub(crate) fn tests(&self) -> &BTreeMap<String, usize> {
@@ -296,26 +309,29 @@ mod ffi {
     }
 
     impl<'l> LibraryVTable<'l> {
-        pub(super) fn new(library: &'l Library) -> Self {
+        pub(super) fn new(library: &'l Library) -> Result<Self, Error> {
             unsafe {
-                Self {
-                    init_fn: lookup_symbol(library, "tango_init"),
-                    count_fn: lookup_symbol(library, "tango_count"),
-                    select_fn: lookup_symbol(library, "tango_select"),
-                    get_test_name_fn: lookup_symbol(library, "tango_get_test_name"),
-                    run_fn: lookup_symbol(library, "tango_run"),
-                    estimate_iterations_fn: lookup_symbol(library, "tango_estimate_iterations"),
-                    next_haystack_fn: lookup_symbol(library, "tango_next_haystack"),
-                    free_fn: lookup_symbol(library, "tango_free"),
-                }
+                Ok(Self {
+                    init_fn: lookup_symbol(library, "tango_init")?,
+                    count_fn: lookup_symbol(library, "tango_count")?,
+                    select_fn: lookup_symbol(library, "tango_select")?,
+                    get_test_name_fn: lookup_symbol(library, "tango_get_test_name")?,
+                    run_fn: lookup_symbol(library, "tango_run")?,
+                    estimate_iterations_fn: lookup_symbol(library, "tango_estimate_iterations")?,
+                    next_haystack_fn: lookup_symbol(library, "tango_next_haystack")?,
+                    free_fn: lookup_symbol(library, "tango_free")?,
+                })
             }
         }
     }
 
-    unsafe fn lookup_symbol<'l, T>(library: &'l Library, name: &'static str) -> Symbol<'l, T> {
+    unsafe fn lookup_symbol<'l, T>(
+        library: &'l Library,
+        name: &'static str,
+    ) -> Result<Symbol<'l, T>, Error> {
         library
             .get(name.as_bytes())
-            .unwrap_or_else(|_| panic!("Unable to get {}() symbol", name))
+            .map_err(Error::UnableToLoadSymbol)
     }
 }
 

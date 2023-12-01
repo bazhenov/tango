@@ -1,4 +1,5 @@
-use crate::{dylib::Spi, platform, MeasurementSettings, Reporter};
+use self::reporting::{ConsoleReporter, VerboseReporter};
+use crate::{dylib::Spi, platform, MeasurementSettings, Reporter, Result};
 use clap::Parser;
 use colorz::mode::{self, Mode};
 use core::fmt;
@@ -9,12 +10,10 @@ use std::{
     hash::Hash,
     num::{NonZeroU64, NonZeroUsize},
     path::PathBuf,
-    process::exit,
+    process::ExitCode,
     str::FromStr,
     time::Duration,
 };
-
-use self::reporting::{ConsoleReporter, VerboseReporter};
 
 #[derive(Parser, Debug)]
 enum BenchmarkMode {
@@ -78,7 +77,7 @@ struct CargoBenchFlags {
     bench: bool,
 }
 
-pub fn run(settings: MeasurementSettings) {
+pub fn run(settings: MeasurementSettings) -> Result<ExitCode> {
     let opts = Opts::parse();
 
     let coloring_mode: Mode = Mode::from_str(&opts.coloring_mode).unwrap();
@@ -90,11 +89,12 @@ pub fn run(settings: MeasurementSettings) {
             // benchmark.run_calibration();
         }
         BenchmarkMode::List { bench_flags: _ } => {
-            let spi = Spi::for_self().unwrap();
+            let spi = Spi::for_self().unwrap().unwrap();
             let test_names = spi.tests().keys();
             for name in test_names {
                 println!("{}", name);
             }
+            Ok(ExitCode::SUCCESS)
         }
         BenchmarkMode::Compare {
             path,
@@ -122,8 +122,11 @@ pub fn run(settings: MeasurementSettings) {
                 path
             };
             let lib = unsafe { Library::new(path) }.expect("Unable to load library");
-            let spi_lib = Spi::for_library(&lib);
-            let spi_self = Spi::for_self().expect("SelfSpi already called once");
+            // .expect("Unable to create SPI for library")
+            let spi_lib = Spi::for_library(&lib)?;
+            let spi_self = Spi::for_self()
+                .expect("SelfSpi already called once")
+                .expect("Unale to create SPI for self");
 
             let mut test_names = intersect_values(spi_lib.tests().keys(), spi_self.tests().keys());
             test_names.sort();
@@ -158,10 +161,11 @@ pub fn run(settings: MeasurementSettings) {
                             "[ERROR] Performance regressed {:+.1}% >= {:.1}%  -  test: {}",
                             diff, threshold, name
                         );
-                        exit(1);
+                        return Ok(ExitCode::FAILURE);
                     }
                 }
             }
+            Ok(ExitCode::SUCCESS)
         }
     }
 }

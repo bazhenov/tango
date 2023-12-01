@@ -12,11 +12,13 @@ categories = ["development-tools", "development-tools::profiling"]
 keywords = ["benchmarks", "performance"]
 
 [dependencies]
+anyhow = "^1.0"
 clap = { version = "^4.4", features = ["derive"] }
 colorz = { version = "^1.1", features = ["supports-color"] }
 libloading = "^0.8"
 num-traits = "^0.2"
 rand = { version = "^0.8", features = ["small_rng"] }
+thiserror = "^1.0"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 goblin = "^0.7"

@@ -1,6 +1,7 @@
 #![cfg_attr(feature = "align", feature(fn_align))]
 
 use crate::test_funcs::{factorial, sum};
+use std::process::ExitCode;
 use tango_bench::{
     benchmark_fn, benchmarks, cli, BenchmarkMatrix, IntoBenchmarks, MeasurementSettings,
 };
@@ -28,6 +29,6 @@ fn vec_benchmarks() -> impl IntoBenchmarks {
 
 benchmarks!(str_benchmarks(), num_benchmarks(), vec_benchmarks());
 
-fn main() {
+fn main() -> tango_bench::Result<ExitCode> {
     cli::run(MeasurementSettings::default())
 }
