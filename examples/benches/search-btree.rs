@@ -1,8 +1,7 @@
 #![cfg_attr(feature = "align", feature(fn_align))]
 
-use std::{collections::BTreeSet, ops::Bound};
-
 use common::search_benchmarks;
+use std::{collections::BTreeSet, ops::Bound, process::ExitCode};
 use tango_bench::benchmarks;
 
 mod common;
@@ -19,6 +18,6 @@ fn search_btree<T: Copy + Ord>(haystack: &impl AsRef<BTreeSet<T>>, needle: &T) -
 
 benchmarks!(search_benchmarks::<u64, _>(search_btree));
 
-pub fn main() {
+pub fn main() -> tango_bench::cli::Result<ExitCode> {
     common::main()
 }
