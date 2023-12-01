@@ -334,14 +334,3 @@ mod ffi {
             .map_err(Error::UnableToLoadSymbol)
     }
 }
-
-#[deprecated]
-#[macro_export]
-macro_rules! prevent_shared_function_deletion {
-    () => {
-        use tango_bench::cli::dylib;
-        let funcs: &[*const fn()] = &[dylib::tango_init as _];
-        #[allow(forgetting_references)]
-        std::mem::forget(funcs);
-    };
-}
