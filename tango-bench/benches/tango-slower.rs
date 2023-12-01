@@ -5,12 +5,12 @@ use std::process::ExitCode;
 use tango_bench::{
     benchmark_fn, benchmarks, cli, BenchmarkMatrix, IntoBenchmarks, MeasurementSettings,
 };
-use test_funcs::{sort_stable, str_count_rev, str_take, RandomString, RandomVec};
+use test_funcs::{sort_stable, str_count_rev, str_take, RandomSubstring, RandomVec};
 
 mod test_funcs;
 
 fn str_benchmarks() -> impl IntoBenchmarks {
-    BenchmarkMatrix::new(RandomString::new())
+    BenchmarkMatrix::new(RandomSubstring::new())
         .add_function("str_length", str_count_rev)
         .add_function("str_length_limit", |h, n| str_take(5000, h, n))
 }
