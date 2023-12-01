@@ -453,12 +453,10 @@ impl fmt::Display for HumanTime {
         } else if self.0.abs() > USEC {
             f.pad(&format!("{:.1} us", self.0 / USEC))
         } else {
-            if self.0 < 1. {
-                // do not print values less than 1 because it can generate strings like "-0 ns",
-                // which is meaningless
+            if self.0 == 0. {
                 f.pad("0 ns")
             } else {
-                f.pad(&format!("{:.0} ns", self.0))
+                f.pad(&format!("{:.1} ns", self.0))
             }
         }
     }
@@ -470,10 +468,10 @@ mod tests {
 
     #[test]
     fn check_human_time() {
-        assert_eq!(format!("{}", HumanTime(0.1)), "0 ns");
+        assert_eq!(format!("{}", HumanTime(0.1)), "0.1 ns");
         assert_eq!(format!("{:>5}", HumanTime(0.)), " 0 ns");
 
-        assert_eq!(format!("{}", HumanTime(120.)), "120 ns");
+        assert_eq!(format!("{}", HumanTime(120.)), "120.0 ns");
 
         assert_eq!(format!("{}", HumanTime(1200.)), "1.2 us");
 
