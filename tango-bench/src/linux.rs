@@ -21,6 +21,15 @@ pub enum Error {
     #[error("Unable to serialize ELF file")]
     UnableToSerializeElf(GoblinError),
 
+    #[error("Unable to found DT_FLAGS_1 position")]
+    NoDTFlags1Found,
+
+    #[error("Unable to find PT_DYNAMIC section")]
+    NoDynamicSectionFound,
+
+    #[error("DT_FLAGS_1 flag crosscheck failed")]
+    FlagCrosscheckFailed,
+
     #[error("IOError")]
     IOError(#[from] std::io::Error),
 }
@@ -66,14 +75,15 @@ pub fn patch_pie_binary_if_needed(
         .iter()
         .enumerate()
         .find(|(_, d)| d.d_tag == DT_FLAGS_1)
-        .expect("Unable to found DT_FLAGS_1 position");
+        .ok_or(Error::NoDTFlags1Found)?;
 
     // Finding PT_DYNAMIC section offset
     let header = elf
         .program_headers
         .iter()
         .find(|h| h.p_type == PT_DYNAMIC)
-        .expect("Unable to find PT_DYNAMIC section");
+        .ok_or(Error::NoDynamicSectionFound)?;
+
     // Finding target Dyn item offset
     let dyn_offset = header.p_offset as usize + dyn_idx * mem::size_of::<Dyn>();
 
@@ -81,22 +91,18 @@ pub fn patch_pie_binary_if_needed(
     let mut dyn_item = bytes
         .pread::<Dyn>(dyn_offset)
         .map_err(Error::UnableToSerializeElf)?;
-    assert!(
-        dyn_item.d_tag == DT_FLAGS_1,
-        "DT_FLAGS_1 flag crosscheck failed"
-    );
-    assert!(
-        dyn_item.d_val == dynamic.info.flags_1,
-        "DT_FLAGS_1 flag crosscheck failed"
-    );
 
-    let path = path.as_ref().with_extension("patched");
+    if dyn_item.d_tag != DT_FLAGS_1 || dyn_item.d_val != dynamic.info.flags_1 {
+        return Err(Error::FlagCrosscheckFailed);
+    }
 
     // clearing DF_1_PIE bit and writing patched binary
     dyn_item.d_val &= !DF_1_PIE;
     bytes
         .pwrite(dyn_item, dyn_offset)
         .map_err(Error::UnableToSerializeElf)?;
+
+    let path = path.as_ref().with_extension("patched");
     fs::write(&path, bytes)?;
 
     Ok(Some(path))
