@@ -226,8 +226,9 @@ mod commands {
 
         for i in 0..settings.max_samples {
             // Trying not to stress benchmarking loop with to much of clock calls and check deadline
-            // approximately each millisecond based on the number of iterations already performed
-            if i % iterations_per_ms == 0 && Instant::now() >= deadline {
+            // approximately each 8 milliseconds based on the number of iterations already performed
+            // (we're assuming each iteration is approximately 1 ms)
+            if (i & 0b111) == 0 && Instant::now() >= deadline {
                 break;
             }
 
