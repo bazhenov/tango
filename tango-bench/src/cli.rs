@@ -1,5 +1,6 @@
 use crate::{dylib::Spi, platform, MeasurementSettings, Reporter};
 use clap::Parser;
+use colorz::mode::{self, Mode};
 use core::fmt;
 use libloading::Library;
 use std::{
@@ -9,6 +10,7 @@ use std::{
     num::{NonZeroU64, NonZeroUsize},
     path::PathBuf,
     process::exit,
+    str::FromStr,
     time::Duration,
 };
 
@@ -64,6 +66,9 @@ struct Opts {
 
     #[command(flatten)]
     bench_flags: CargoBenchFlags,
+
+    #[arg(long = "color", default_value = "detect")]
+    coloring_mode: String,
 }
 
 /// Definition of the flags required to comply with `cargo bench` calling conventions.
@@ -75,6 +80,9 @@ struct CargoBenchFlags {
 
 pub fn run(settings: MeasurementSettings) {
     let opts = Opts::parse();
+
+    let coloring_mode: Mode = Mode::from_str(&opts.coloring_mode).unwrap();
+    mode::set_coloring_mode(coloring_mode);
 
     match opts.subcommand {
         BenchmarkMode::Calibrate { bench_flags: _ } => {
@@ -302,9 +310,9 @@ mod commands {
 }
 
 pub mod reporting {
-
-    use crate::cli::{colorize, Color, Colored, HumanTime};
+    use crate::cli::{colorize, HumanTime};
     use crate::{Reporter, RunResult};
+    use colorz::{mode::Stream, Colorize};
 
     #[derive(Default)]
     pub(super) struct VerboseReporter;
@@ -318,7 +326,7 @@ pub mod reporting {
 
             println!(
                 "{}  (n: {}, outliers: {})",
-                Colored(&results.name, Color::Bold),
+                results.name.bold().stream(Stream::Stdout),
                 results.diff.n,
                 results.outliers
             );
@@ -326,9 +334,9 @@ pub mod reporting {
             println!(
                 "    {:12}   {:>15} {:>15} {:>15}",
                 "",
-                Colored("baseline", Color::Bold),
-                Colored("candidate", Color::Bold),
-                Colored("∆", Color::Bold),
+                "baseline".bold().stream(Stream::Stdout),
+                "candidate".bold().stream(Stream::Stdout),
+                "∆".bold().stream(Stream::Stdout),
             );
             println!(
                 "    {:12} ╭────────────────────────────────────────────────",
@@ -401,40 +409,21 @@ pub mod reporting {
     }
 }
 
-fn colorize<T: Display>(value: T, do_paint: bool, indicator: bool) -> Colored<T> {
+fn colorize<T: Display>(value: T, do_paint: bool, is_improved: bool) -> impl Display {
+    use colorz::{ansi, mode::Stream::Stdout, Colorize, Style};
+
+    const RED: Style = Style::new().fg(ansi::Red).const_into_runtime_style();
+    const GREEN: Style = Style::new().fg(ansi::Green).const_into_runtime_style();
+    const DEFAULT: Style = Style::new().const_into_runtime_style();
+
     if do_paint {
-        let color = if indicator { Color::Green } else { Color::Red };
-        Colored(value, color)
-    } else {
-        Colored(value, Color::Reset)
-    }
-}
-
-enum Color {
-    Red,
-    Green,
-    Bold,
-    Reset,
-}
-
-impl Color {
-    fn ascii_color_code(&self) -> &'static str {
-        match self {
-            Color::Red => "\x1B[31m",
-            Color::Green => "\x1B[32m",
-            Color::Bold => "\x1B[1m",
-            Color::Reset => "\x1B[0m",
+        if is_improved {
+            value.into_style_with(RED).stream(Stdout)
+        } else {
+            value.into_style_with(GREEN).stream(Stdout)
         }
-    }
-}
-
-struct Colored<T>(T, Color);
-
-impl<T: Display> Display for Colored<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.1.ascii_color_code())
-            .and_then(|_| self.0.fmt(f))
-            .and_then(|_| write!(f, "{}", Color::Reset.ascii_color_code()))
+    } else {
+        value.into_style_with(DEFAULT).stream(Stdout)
     }
 }
 
