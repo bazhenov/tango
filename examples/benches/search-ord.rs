@@ -15,6 +15,6 @@ fn search_ord<T: Copy + Ord>(haystack: &impl AsRef<OrderedCollection<T>>, needle
 
 benchmarks!(search_benchmarks::<u64, _>(search_ord));
 
-pub fn main() -> tango_bench::Result<ExitCode> {
+pub fn main() -> tango_bench::cli::Result<ExitCode> {
     common::main()
 }

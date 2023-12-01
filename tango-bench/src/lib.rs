@@ -6,17 +6,32 @@ use std::{
     hint::black_box,
     ops::{Add, Div, RangeInclusive},
     rc::Rc,
+    str::Utf8Error,
     time::Duration,
 };
+use thiserror::Error;
 use timer::{ActiveTimer, Timer};
 
 pub mod cli;
 pub mod dylib;
 pub mod platform;
 
-pub type Result<T> = anyhow::Result<T>;
-
 pub const NS_TO_MS: u64 = 1_000_000;
+
+#[derive(Debug, Error)]
+pub enum Error {
+    #[error("No measurements given")]
+    NoMeasurements,
+
+    #[error("Invalid string pointer from FFI")]
+    InvalidFFIString(Utf8Error),
+
+    #[error("Spi::self() was already called")]
+    SpiSelfWasMoved,
+
+    #[error("Unable to load library symbol")]
+    UnableToLoadSymbol(#[source] libloading::Error),
+}
 
 /// Registers benchmark in the system
 #[macro_export]
@@ -334,7 +349,7 @@ pub fn calculate_run_result<N: Into<String>>(
     mut candidate: Vec<u64>,
     iterations_per_sample: usize,
     filter_outliers: bool,
-) -> RunResult {
+) -> Result<RunResult, Error> {
     assert!(baseline.len() == candidate.len());
 
     let mut diff = candidate
@@ -383,15 +398,15 @@ pub fn calculate_run_result<N: Into<String>>(
         }
     };
 
-    let diff = Summary::from(&diff).unwrap();
-    let baseline = Summary::from(&baseline).unwrap();
-    let candidate = Summary::from(&candidate).unwrap();
+    let diff = Summary::from(&diff).ok_or(Error::NoMeasurements)?;
+    let baseline = Summary::from(&baseline).ok_or(Error::NoMeasurements)?;
+    let candidate = Summary::from(&candidate).ok_or(Error::NoMeasurements)?;
 
     let std_dev = diff.variance.sqrt();
     let std_err = std_dev / (diff.n as f64).sqrt();
     let z_score = diff.mean / std_err;
 
-    RunResult {
+    Ok(RunResult {
         baseline,
         candidate,
         diff,
@@ -401,7 +416,7 @@ pub fn calculate_run_result<N: Into<String>>(
         // z_score = 2.6 corresponds to 99% significance level
         significant: z_score.abs() >= 2.6 && (diff.mean / candidate.mean).abs() > 0.005,
         outliers: n - diff.n,
-    }
+    })
 }
 
 /// Describes the results of a single benchmark run

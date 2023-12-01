@@ -1,11 +1,13 @@
 use self::reporting::{ConsoleReporter, VerboseReporter};
-use crate::{dylib::Spi, platform, MeasurementSettings, Reporter, Result};
+use crate::{dylib::Spi, platform, Error, MeasurementSettings, Reporter};
+use anyhow::Context;
 use clap::Parser;
 use colorz::mode::{self, Mode};
 use core::fmt;
 use libloading::Library;
 use std::{
     collections::HashSet,
+    env::args,
     fmt::Display,
     hash::Hash,
     num::{NonZeroU64, NonZeroUsize},
@@ -15,12 +17,10 @@ use std::{
     time::Duration,
 };
 
+pub type Result<T> = anyhow::Result<T>;
+
 #[derive(Parser, Debug)]
 enum BenchmarkMode {
-    Calibrate {
-        #[command(flatten)]
-        bench_flags: CargoBenchFlags,
-    },
     List {
         #[command(flatten)]
         bench_flags: CargoBenchFlags,
@@ -84,12 +84,8 @@ pub fn run(settings: MeasurementSettings) -> Result<ExitCode> {
     mode::set_coloring_mode(coloring_mode);
 
     match opts.subcommand {
-        BenchmarkMode::Calibrate { bench_flags: _ } => {
-            todo!();
-            // benchmark.run_calibration();
-        }
         BenchmarkMode::List { bench_flags: _ } => {
-            let spi = Spi::for_self().unwrap().unwrap();
+            let spi = Spi::for_self().ok_or(Error::SpiSelfWasMoved)??;
             let test_names = spi.tests().keys();
             for name in test_names {
                 println!("{}", name);
@@ -113,20 +109,15 @@ pub fn run(settings: MeasurementSettings) -> Result<ExitCode> {
                 Box::<ConsoleReporter>::default()
             };
 
-            let self_path = PathBuf::from(std::env::args().next().unwrap());
-            let path = path.unwrap_or(self_path);
+            let path = path
+                .or_else(|| args().next().map(PathBuf::from))
+                .expect("No path given");
+            let path = platform::patch_pie_binary_if_needed(&path).unwrap_or(path);
 
-            let path = if let Some(replacement) = platform::patch_pie_binary_if_needed(&path) {
-                replacement
-            } else {
-                path
-            };
-            let lib = unsafe { Library::new(path) }.expect("Unable to load library");
-            // .expect("Unable to create SPI for library")
+            let lib = unsafe { Library::new(&path) }
+                .with_context(|| format!("Unable to open library: {}", path.display()))?;
             let spi_lib = Spi::for_library(&lib)?;
-            let spi_self = Spi::for_self()
-                .expect("SelfSpi already called once")
-                .expect("Unale to create SPI for self");
+            let spi_self = Spi::for_self().ok_or(Error::SpiSelfWasMoved)??;
 
             let mut test_names = intersect_values(spi_lib.tests().keys(), spi_self.tests().keys());
             test_names.sort();
@@ -154,7 +145,7 @@ pub fn run(settings: MeasurementSettings) -> Result<ExitCode> {
                     &opts,
                     reporter.as_mut(),
                     path_to_dump.as_ref(),
-                );
+                )?;
                 if let Some((diff, threshold)) = diff.zip(fail_threshold) {
                     if diff >= threshold {
                         eprintln!(
@@ -187,7 +178,7 @@ mod commands {
     use crate::calculate_run_result;
     use std::{
         fs::File,
-        io::{BufWriter, Write as _},
+        io::{self, BufWriter, Write as _},
         path::Path,
         time::Instant,
     };
@@ -217,9 +208,9 @@ mod commands {
         settings: &MeasurementSettings,
         reporter: &mut dyn Reporter,
         samples_dump_path: Option<impl AsRef<Path>>,
-    ) -> Option<f64> {
-        let a_idx = *a.tests().get(test_name).unwrap();
-        let b_idx = *b.tests().get(test_name).unwrap();
+    ) -> Result<Option<f64>> {
+        let a_idx = *a.tests().get(test_name).expect("Invalid test name given");
+        let b_idx = *b.tests().get(test_name).expect("Invalid test name given");
 
         // Number of iterations estimated based on the performance of A algorithm only. We assuming
         // both algorithms performs approximatley the same. We need to divide estimation by 2 to compensate
@@ -281,7 +272,8 @@ mod commands {
                 .copied()
                 .zip(b_samples.iter().copied())
                 .map(|(a, b)| (a / iterations as u64, b / iterations as u64));
-            write_raw_measurements(file_path, values);
+            write_raw_measurements(file_path, values)
+                .context("Unable to write raw measurements")?;
         }
 
         let result = calculate_run_result(
@@ -290,26 +282,27 @@ mod commands {
             b_samples,
             iterations,
             settings.outlier_detection_enabled,
-        );
+        )?;
 
         reporter.on_complete(&result);
 
         if result.significant {
-            Some(result.diff.mean / result.baseline.mean * 100.)
+            Ok(Some(result.diff.mean / result.baseline.mean * 100.))
         } else {
-            None
+            Ok(None)
         }
     }
 
     fn write_raw_measurements<T: Display>(
         path: impl AsRef<Path>,
         values: impl IntoIterator<Item = (T, T)>,
-    ) {
-        let mut file = BufWriter::new(File::create(path).unwrap());
+    ) -> io::Result<()> {
+        let mut file = BufWriter::new(File::create(path)?);
 
         for (a, b) in values {
-            writeln!(&mut file, "{},{}", a, b).unwrap();
+            writeln!(&mut file, "{},{}", a, b)?;
         }
+        Ok(())
     }
 }
 
@@ -422,9 +415,9 @@ fn colorize<T: Display>(value: T, do_paint: bool, is_improved: bool) -> impl Dis
 
     if do_paint {
         if is_improved {
-            value.into_style_with(RED).stream(Stdout)
-        } else {
             value.into_style_with(GREEN).stream(Stdout)
+        } else {
+            value.into_style_with(RED).stream(Stdout)
         }
     } else {
         value.into_style_with(DEFAULT).stream(Stdout)

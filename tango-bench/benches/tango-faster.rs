@@ -29,6 +29,6 @@ fn vec_benchmarks() -> impl IntoBenchmarks {
 
 benchmarks!(str_benchmarks(), num_benchmarks(), vec_benchmarks());
 
-fn main() -> tango_bench::Result<ExitCode> {
+fn main() -> tango_bench::cli::Result<ExitCode> {
     cli::run(MeasurementSettings::default())
 }

@@ -19,6 +19,6 @@ fn search_vec<T: Copy + Ord>(haystack: &impl AsRef<Vec<T>>, needle: &T) -> Optio
 
 benchmarks!(search_benchmarks::<u64, _>(search_vec));
 
-pub fn main() -> tango_bench::Result<ExitCode> {
+pub fn main() -> tango_bench::cli::Result<ExitCode> {
     common::main()
 }

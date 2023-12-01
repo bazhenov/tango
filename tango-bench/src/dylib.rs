@@ -1,27 +1,16 @@
 use self::ffi::VTable;
-use crate::MeasureTarget;
+use crate::{Error, MeasureTarget};
 use libloading::{Library, Symbol};
 use std::{
     collections::BTreeMap,
     ffi::c_char,
     ptr::{addr_of, null},
-    slice,
-    str::{self, Utf8Error},
+    slice, str,
 };
-use thiserror::Error;
 
 pub struct Spi<'l> {
     tests: BTreeMap<String, usize>,
     vt: Box<dyn VTable + 'l>,
-}
-
-#[derive(Error, Debug)]
-pub enum Error {
-    #[error("Invalid string pointer from FFI")]
-    InvalidFFIString(Utf8Error),
-
-    #[error("Unable to load library symbol")]
-    UnableToLoadSymbol(#[source] libloading::Error),
 }
 
 impl<'l> Spi<'l> {
@@ -49,8 +38,8 @@ impl<'l> Spi<'l> {
                 continue;
             }
             let slice = unsafe { slice::from_raw_parts(name_ptr as *const u8, length) };
-            let str = str::from_utf8(slice).map_err(Error::InvalidFFIString)?;
-            tests.insert(str.to_string(), i);
+            let string = str::from_utf8(slice).map_err(Error::InvalidFFIString)?;
+            tests.insert(string.to_string(), i);
         }
 
         Ok(Spi { vt, tests })

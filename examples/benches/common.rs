@@ -132,7 +132,7 @@ where
     BenchmarkMatrix::with_params(sizes, RandomVec::<T>::new).add_function("search", search_func)
 }
 
-pub fn main() -> tango_bench::Result<ExitCode> {
+pub fn main() -> tango_bench::cli::Result<ExitCode> {
     let settings = MeasurementSettings {
         samples_per_haystack: 1_000,
         ..Default::default()

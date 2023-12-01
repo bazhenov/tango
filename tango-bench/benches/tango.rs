@@ -76,6 +76,6 @@ benchmarks!(
     summary_benchmarks()
 );
 
-fn main() -> tango_bench::Result<ExitCode> {
+fn main() -> tango_bench::cli::Result<ExitCode> {
     cli::run(MeasurementSettings::default())
 }
