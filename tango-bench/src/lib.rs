@@ -438,18 +438,18 @@ pub struct Summary<T> {
     pub variance: f64,
 }
 
-impl<'a, T: PartialOrd + Copy + Default + 'a> Summary<T> {
-    pub fn from<C>(values: C) -> Option<Self>
+impl<T: PartialOrd> Summary<T> {
+    pub fn from<'a, C>(values: C) -> Option<Self>
     where
-        T: ToPrimitive,
         C: IntoIterator<Item = &'a T>,
+        T: ToPrimitive + Copy + Default + 'a,
     {
         Self::running(values.into_iter().copied()).last()
     }
 
     pub fn running<I>(iter: I) -> impl Iterator<Item = Summary<T>>
     where
-        T: ToPrimitive,
+        T: ToPrimitive + Copy + Default,
         I: Iterator<Item = T>,
     {
         RunningSummary {
