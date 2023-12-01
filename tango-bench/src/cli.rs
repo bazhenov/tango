@@ -1,5 +1,6 @@
 use crate::{dylib::Spi, platform, MeasurementSettings, Reporter};
 use clap::Parser;
+use colorz::mode::{self, Mode};
 use core::fmt;
 use libloading::Library;
 use std::{
@@ -9,6 +10,7 @@ use std::{
     num::{NonZeroU64, NonZeroUsize},
     path::PathBuf,
     process::exit,
+    str::FromStr,
     time::Duration,
 };
 
@@ -64,6 +66,9 @@ struct Opts {
 
     #[command(flatten)]
     bench_flags: CargoBenchFlags,
+
+    #[arg(long = "color", default_value = "detect")]
+    coloring_mode: String,
 }
 
 /// Definition of the flags required to comply with `cargo bench` calling conventions.
@@ -75,6 +80,9 @@ struct CargoBenchFlags {
 
 pub fn run(settings: MeasurementSettings) {
     let opts = Opts::parse();
+
+    let coloring_mode: Mode = Mode::from_str(&opts.coloring_mode).unwrap();
+    mode::set_coloring_mode(coloring_mode);
 
     match opts.subcommand {
         BenchmarkMode::Calibrate { bench_flags: _ } => {
