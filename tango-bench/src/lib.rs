@@ -4,6 +4,7 @@ use std::{
     cell::RefCell,
     cmp::Ordering,
     hint::black_box,
+    io,
     ops::{Add, Div, RangeInclusive},
     rc::Rc,
     str::Utf8Error,
@@ -14,7 +15,8 @@ use timer::{ActiveTimer, Timer};
 
 pub mod cli;
 pub mod dylib;
-pub mod platform;
+#[cfg(target_os = "linux")]
+pub mod linux;
 
 pub const NS_TO_MS: u64 = 1_000_000;
 
@@ -31,6 +33,9 @@ pub enum Error {
 
     #[error("Unable to load library symbol")]
     UnableToLoadSymbol(#[source] libloading::Error),
+
+    #[error("IO Error")]
+    IOError(#[from] io::Error),
 }
 
 /// Registers benchmark in the system
@@ -499,7 +504,7 @@ where
 
     fn next(&mut self) -> Option<Self::Item> {
         let value = self.iter.next()?;
-        let fvalue = value.to_f64().unwrap();
+        let fvalue = value.to_f64().expect("f64 overflow detected");
 
         if self.n == 0 {
             self.min = value;

@@ -1,5 +1,5 @@
 use self::reporting::{ConsoleReporter, VerboseReporter};
-use crate::{dylib::Spi, platform, Error, MeasurementSettings, Reporter};
+use crate::{dylib::Spi, Error, MeasurementSettings, Reporter};
 use anyhow::Context;
 use clap::Parser;
 use colorz::mode::{self, Mode};
@@ -80,8 +80,10 @@ struct CargoBenchFlags {
 pub fn run(settings: MeasurementSettings) -> Result<ExitCode> {
     let opts = Opts::parse();
 
-    let coloring_mode: Mode = Mode::from_str(&opts.coloring_mode).unwrap();
-    mode::set_coloring_mode(coloring_mode);
+    match Mode::from_str(&opts.coloring_mode) {
+        Ok(coloring_mode) => mode::set_coloring_mode(coloring_mode),
+        Err(_) => eprintln!("[WARN] Invalid coloring mode: {}", opts.coloring_mode),
+    }
 
     match opts.subcommand {
         BenchmarkMode::List { bench_flags: _ } => {
@@ -112,7 +114,9 @@ pub fn run(settings: MeasurementSettings) -> Result<ExitCode> {
             let path = path
                 .or_else(|| args().next().map(PathBuf::from))
                 .expect("No path given");
-            let path = platform::patch_pie_binary_if_needed(&path).unwrap_or(path);
+
+            #[cfg(target_os = "linux")]
+            let path = crate::linux::patch_pie_binary_if_needed(&path)?.unwrap_or(path);
 
             let lib = unsafe { Library::new(&path) }
                 .with_context(|| format!("Unable to open library: {}", path.display()))?;
