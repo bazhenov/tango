@@ -269,8 +269,8 @@ mod commands {
                 (a_time, b_time)
             };
 
-            a_samples.push(a_time as u64);
-            b_samples.push(b_time as u64);
+            a_samples.push(a_time);
+            b_samples.push(b_time);
         }
 
         if let Some(path) = samples_dump_path {
@@ -445,12 +445,10 @@ impl fmt::Display for HumanTime {
             f.pad(&format!("{:.1} ms", self.0 / MSEC))
         } else if self.0.abs() > USEC {
             f.pad(&format!("{:.1} us", self.0 / USEC))
+        } else if self.0 == 0. {
+            f.pad("0 ns")
         } else {
-            if self.0 == 0. {
-                f.pad("0 ns")
-            } else {
-                f.pad(&format!("{:.1} ns", self.0))
-            }
+            f.pad(&format!("{:.1} ns", self.0))
         }
     }
 }

@@ -143,7 +143,7 @@ where
         let mut result = Vec::with_capacity(iterations);
         let start = ActiveTimer::start();
         for needle in &needles {
-            result.push(black_box((f)(&haystack, needle)));
+            result.push(black_box((f)(haystack, needle)));
         }
         let time = ActiveTimer::stop(start);
         drop(result);

@@ -17,11 +17,8 @@ pub struct Spi<'l> {
 
 #[derive(Error, Debug)]
 pub enum Error {
-    #[error("Error")]
-    Foo,
-
     #[error("Invalid string pointer from FFI")]
-    InvalidStrPoint(Utf8Error),
+    InvalidFFIString(Utf8Error),
 
     #[error("Unable to load library symbol")]
     UnableToLoadSymbol(#[source] libloading::Error),
@@ -52,7 +49,7 @@ impl<'l> Spi<'l> {
                 continue;
             }
             let slice = unsafe { slice::from_raw_parts(name_ptr as *const u8, length) };
-            let str = str::from_utf8(slice).map_err(Error::InvalidStrPoint)?;
+            let str = str::from_utf8(slice).map_err(Error::InvalidFFIString)?;
             tests.insert(str.to_string(), i);
         }
 
