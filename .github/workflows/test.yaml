@@ -3,7 +3,7 @@ name: Test
 on: push
 
 jobs:
-  build:
+  test:
     strategy:
       matrix:
         include:
@@ -15,49 +15,63 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Install Rust
+      - name: Prepare Environment
         run: rustup update stable && rustup default stable
 
-      - name: Install Cargo Export
-        run: cargo install cargo-export --version 0.2.0
-
-      - name: Restore ./target
-        uses: actions/cache@v3
+      - uses: actions/cache@v3
         with:
           path: |
             ~/.cargo/bin/
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-            target/
-          key: Cargo/${{ runner.os }}
+            ./target/
+          key: Test/${{ runner.os }}
 
       - name: Run Tests
-        run: |
-          cargo test
+        run: cargo test
 
-      - name: Exporting Branch Benchmarks
-        run: cargo export target/benchmarks -- bench --bench=tango
-
-      - name: Switching to Master
-        uses: actions/checkout@v3
+  bench:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/checkout@v3
         with:
           ref: dev
-          path: main-branch
+          path: baseline-branch
 
-      - name: Exporting Main Benchmarks
-        working-directory: main-branch
+      - name: Prepare Environment
+        run: |
+          rustup update stable
+          rustup default stable
+          cargo install cargo-export --version 0.2.0
+
+      - uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            ./target/
+            ./baseline-branch/target/
+          key: Bench/${{ runner.os }}
+
+      - name: Exporting Benchmarks
+        run: cargo export target/benchmarks -- bench --bench=tango
+
+      - name: Exporting Baseline Benchmarks
+        working-directory: baseline-branch
         run: cargo export target/benchmarks -- bench --bench=tango
 
       - name: Run Benchmarks
         run: |
           set -eo pipefail
 
-          target/benchmarks/tango compare main-branch/target/benchmarks/tango -v -t 1000 --fail-threshold 10 \
+          target/benchmarks/tango compare baseline-branch/target/benchmarks/tango -v -t 1000 --fail-threshold 10 \
             | tee target/benchmark.txt
 
-      - name: Archive Benchmarks Results
-        uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v3
         with:
           name: benchmark.txt
           path: target/benchmark.txt
