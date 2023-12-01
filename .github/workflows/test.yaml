@@ -57,19 +57,18 @@ jobs:
             ./baseline-branch/target/
           key: Bench/${{ runner.os }}
 
-      - name: Exporting Benchmarks
-        run: cargo export target/benchmarks -- bench --bench=tango
-
-      - name: Exporting Baseline Benchmarks
-        working-directory: baseline-branch
-        run: cargo export target/benchmarks -- bench --bench=tango
+      - name: Building Benchmarks
+        run: |
+          cargo export target/benchmarks -- bench --bench=tango
+          cd baseline-branch
+          cargo export target/benchmarks -- bench --bench=tango
 
       - name: Run Benchmarks
         run: |
           set -eo pipefail
 
-          target/benchmarks/tango compare baseline-branch/target/benchmarks/tango -v -t 1000 --fail-threshold 10 \
-            | tee target/benchmark.txt
+          target/benchmarks/tango --color=never compare baseline-branch/target/benchmarks/tango \
+            -v -t 1000 --fail-threshold 10 | tee target/benchmark.txt
 
       - uses: actions/upload-artifact@v3
         with:
