@@ -156,14 +156,13 @@ where
     fn measure(&mut self, iterations: usize) -> u64 {
         let mut g = self.g.borrow_mut();
         let haystack = &*self.haystack.get_or_insert_with(|| g.next_haystack());
-        let mut needles = Vec::with_capacity(iterations);
-        g.next_needles(haystack, iterations, &mut needles);
 
         let f = self.f.borrow_mut();
         let mut result = Vec::with_capacity(iterations);
         let start = ActiveTimer::start();
-        for needle in &needles {
-            result.push(black_box((f)(haystack, needle)));
+        for _ in 0..iterations {
+            let needle = g.next_needle(&haystack);
+            result.push(black_box((f)(haystack, &needle)));
         }
         let time = ActiveTimer::stop(start);
         drop(result);

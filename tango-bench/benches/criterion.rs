@@ -1,10 +1,10 @@
 #![cfg_attr(feature = "align", feature(fn_align))]
 
-mod test_funcs;
-
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 use tango_bench::Generator;
-use test_funcs::{factorial, str_count, str_count_rev, str_take, sum, RandomString};
+use test_funcs::{factorial, str_take, sum, RandomSubstring};
+
+mod test_funcs;
 
 /// Because benchmarks are builded with linker flag -rdynamic there should be
 /// library entry point defined in all benchmarks.
@@ -12,8 +12,7 @@ use test_funcs::{factorial, str_count, str_count_rev, str_take, sum, RandomStrin
 /// module tango_bench::cli is not used.
 #[cfg(target_os = "linux")]
 mod linker_fix {
-    use tango_bench::benchmarks;
-    benchmarks!([]);
+    tango_bench::benchmarks!([]);
 }
 
 fn sum_benchmark(c: &mut Criterion) {
@@ -41,42 +40,18 @@ fn sum_benchmark(c: &mut Criterion) {
 fn utf8_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("utf8");
 
-    group.bench_function("str_length_4950", |b| {
-        let mut generator = RandomString::new();
-        b.iter_batched(
-            || generator.next_haystack(),
-            |s| str_take(4950, &s, &()),
-            BatchSize::SmallInput,
-        );
-    });
+    group.bench_function("str_length_4950", str_length::<4950>);
+    group.bench_function("str_length_5000", str_length::<5000>);
+}
 
-    group.bench_function("str_length_5000", |b| {
-        let mut generator = RandomString::new();
-        b.iter_batched(
-            || generator.next_haystack(),
-            |s| str_take(5000, &s, &()),
-            BatchSize::SmallInput,
-        );
-    });
-
-    group.bench_function("std_count", |b| {
-        let mut generator = RandomString::new();
-        b.iter_batched(
-            || generator.next_haystack(),
-            |s| str_count(&s, &()),
-            BatchSize::SmallInput,
-        );
-    });
-
-    group.bench_function("std_count_rev", |b| {
-        let mut generator = RandomString::new();
-        b.iter_batched(
-            || generator.next_haystack(),
-            |s| str_count_rev(&s, &()),
-            BatchSize::SmallInput,
-        );
-    });
-    group.finish();
+fn str_length<const N: usize>(b: &mut criterion::Bencher<'_>) {
+    let mut generator = RandomSubstring::new();
+    let string = generator.next_haystack();
+    b.iter_batched(
+        || generator.next_needle(&string),
+        |offset| str_take(N, &string, &offset),
+        BatchSize::SmallInput,
+    );
 }
 
 criterion_group!(benches, utf8_benchmark, sum_benchmark);

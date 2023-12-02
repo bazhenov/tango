@@ -344,7 +344,7 @@ pub mod reporting {
                 ""
             );
             println!(
-                "    {:12} │ {:>15} {:>15} {:>15}  {:+4.2}{}",
+                "    {:12} │ {:>15} {:>15} {:>15}  {:+4.2}{}{}",
                 "mean",
                 HumanTime(base.mean),
                 HumanTime(candidate.mean),
@@ -358,7 +358,8 @@ pub mod reporting {
                     significant,
                     results.diff.mean < 0.
                 ),
-                colorize("%", significant, results.diff.mean < 0.)
+                colorize("%", significant, results.diff.mean < 0.),
+                if significant { "*" } else { "" },
             );
             println!(
                 "    {:12} │ {:>15} {:>15} {:>15}",
@@ -399,12 +400,13 @@ pub mod reporting {
             let speedup = diff.mean / base.mean * 100.;
             let candidate_faster = diff.mean < 0.;
             println!(
-                "{:50} [ {:>8} ... {:>8} ]    {:>+7.2}{}",
+                "{:50} [ {:>8} ... {:>8} ]    {:>+7.2}{}{}",
                 colorize(&results.name, significant, candidate_faster),
                 HumanTime(base.mean),
                 colorize(HumanTime(candidate.mean), significant, candidate_faster),
                 colorize(speedup, significant, candidate_faster),
-                colorize("%", significant, candidate_faster)
+                colorize("%", significant, candidate_faster),
+                if significant { "*" } else { "" },
             )
         }
     }
