@@ -161,7 +161,7 @@ where
         let mut result = Vec::with_capacity(iterations);
         let start = ActiveTimer::start();
         for _ in 0..iterations {
-            let needle = g.next_needle(&haystack);
+            let needle = g.next_needle(haystack);
             result.push(black_box((f)(haystack, &needle)));
         }
         let time = ActiveTimer::stop(start);
