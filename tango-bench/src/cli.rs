@@ -6,10 +6,8 @@ use colorz::mode::{self, Mode};
 use core::fmt;
 use libloading::Library;
 use std::{
-    collections::HashSet,
     env::args,
     fmt::Display,
-    hash::Hash,
     num::{NonZeroU64, NonZeroUsize},
     path::PathBuf,
     process::ExitCode,
@@ -88,9 +86,8 @@ pub fn run(settings: MeasurementSettings) -> Result<ExitCode> {
     match opts.subcommand {
         BenchmarkMode::List { bench_flags: _ } => {
             let spi = Spi::for_self().ok_or(Error::SpiSelfWasMoved)??;
-            let test_names = spi.tests().keys();
-            for name in test_names {
-                println!("{}", name);
+            for func in spi.tests() {
+                println!("{}", func.name);
             }
             Ok(ExitCode::SUCCESS)
         }
@@ -123,9 +120,6 @@ pub fn run(settings: MeasurementSettings) -> Result<ExitCode> {
             let spi_lib = Spi::for_library(&lib)?;
             let spi_self = Spi::for_self().ok_or(Error::SpiSelfWasMoved)??;
 
-            let mut test_names = intersect_values(spi_lib.tests().keys(), spi_self.tests().keys());
-            test_names.sort();
-
             let mut opts = settings;
             if let Some(samples) = samples {
                 opts.max_samples = samples.into()
@@ -138,14 +132,14 @@ pub fn run(settings: MeasurementSettings) -> Result<ExitCode> {
             }
 
             let filter = filter.as_deref().unwrap_or("");
-            for name in test_names {
-                if !name.contains(filter) {
+            for func in spi_self.tests() {
+                if !func.name.contains(filter) || spi_lib.lookup(&func.name).is_none() {
                     continue;
                 }
                 let diff = commands::pairwise_compare(
                     &spi_lib,
                     &spi_self,
-                    name.as_str(),
+                    func.name.as_str(),
                     &opts,
                     reporter.as_mut(),
                     path_to_dump.as_ref(),
@@ -154,7 +148,7 @@ pub fn run(settings: MeasurementSettings) -> Result<ExitCode> {
                     if diff >= threshold {
                         eprintln!(
                             "[ERROR] Performance regressed {:+.1}% >= {:.1}%  -  test: {}",
-                            diff, threshold, name
+                            diff, threshold, func.name
                         );
                         return Ok(ExitCode::FAILURE);
                     }
@@ -163,19 +157,6 @@ pub fn run(settings: MeasurementSettings) -> Result<ExitCode> {
             Ok(ExitCode::SUCCESS)
         }
     }
-}
-
-/// Returning the intersection of the values of two iterators buffering them in an intermediate [`HashSet`].
-fn intersect_values<'a, K: Hash + Eq>(
-    a: impl Iterator<Item = &'a K>,
-    b: impl Iterator<Item = &'a K>,
-) -> Vec<&'a K> {
-    let a_values = a.collect::<HashSet<_>>();
-    let b_values = b.collect::<HashSet<_>>();
-    a_values
-        .intersection(&b_values)
-        .copied()
-        .collect::<Vec<_>>()
 }
 
 mod commands {
@@ -213,13 +194,13 @@ mod commands {
         reporter: &mut dyn Reporter,
         samples_dump_path: Option<impl AsRef<Path>>,
     ) -> Result<Option<f64>> {
-        let a_idx = *a.tests().get(test_name).expect("Invalid test name given");
-        let b_idx = *b.tests().get(test_name).expect("Invalid test name given");
+        let a_func = a.lookup(test_name).expect("Invalid test name given");
+        let b_func = b.lookup(test_name).expect("Invalid test name given");
 
         // Number of iterations estimated based on the performance of A algorithm only. We assuming
         // both algorithms performs approximatley the same. We need to divide estimation by 2 to compensate
         // for the fact that 2 algorithms will be executed concurrently.
-        let estimate = a.estimate_iterations(a_idx, 1) / 2;
+        let estimate = a.estimate_iterations(a_func, 1) / 2;
         let iterations_per_ms = estimate.clamp(
             settings.min_iterations_per_sample.max(1),
             settings.max_iterations_per_sample,
@@ -253,13 +234,13 @@ mod commands {
             // on the level of physical memory both of them rely on the same memory-mapped test data, for example.
             // In that case first function will experience the larger amount of major page faults.
             let (a_time, b_time) = if i % 2 == 0 {
-                let a_time = a.run(a_idx, iterations);
-                let b_time = b.run(b_idx, iterations);
+                let a_time = a.run(a_func, iterations);
+                let b_time = b.run(b_func, iterations);
 
                 (a_time, b_time)
             } else {
-                let b_time = b.run(b_idx, iterations);
-                let a_time = a.run(a_idx, iterations);
+                let b_time = b.run(b_func, iterations);
+                let a_time = a.run(a_func, iterations);
 
                 (a_time, b_time)
             };

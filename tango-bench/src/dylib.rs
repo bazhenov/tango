@@ -2,15 +2,21 @@ use self::ffi::VTable;
 use crate::{Error, MeasureTarget};
 use libloading::{Library, Symbol};
 use std::{
-    collections::BTreeMap,
     ffi::c_char,
     ptr::{addr_of, null},
     slice, str,
 };
 
 pub struct Spi<'l> {
-    tests: BTreeMap<String, usize>,
+    tests: Vec<NamedFunction>,
     vt: Box<dyn VTable + 'l>,
+}
+
+pub struct NamedFunction {
+    pub name: String,
+
+    ///  Function index in FFI API
+    idx: usize,
 }
 
 impl<'l> Spi<'l> {
@@ -27,9 +33,9 @@ impl<'l> Spi<'l> {
         let vt = Box::new(vt);
         vt.init();
 
-        let mut tests = BTreeMap::new();
-        for i in 0..vt.count() {
-            vt.select(i);
+        let mut tests = vec![];
+        for idx in 0..vt.count() {
+            vt.select(idx);
 
             let mut length = 0usize;
             let name_ptr: *const c_char = null();
@@ -38,24 +44,30 @@ impl<'l> Spi<'l> {
                 continue;
             }
             let slice = unsafe { slice::from_raw_parts(name_ptr as *const u8, length) };
-            let string = str::from_utf8(slice).map_err(Error::InvalidFFIString)?;
-            tests.insert(string.to_string(), i);
+            let name = str::from_utf8(slice)
+                .map_err(Error::InvalidFFIString)?
+                .to_string();
+            tests.push(NamedFunction { name, idx });
         }
 
         Ok(Spi { vt, tests })
     }
 
-    pub(crate) fn tests(&self) -> &BTreeMap<String, usize> {
+    pub(crate) fn tests(&self) -> &[NamedFunction] {
         &self.tests
     }
 
-    pub(crate) fn run(&self, idx: usize, iterations: usize) -> u64 {
-        self.vt.select(idx);
+    pub(crate) fn lookup(&self, name: &str) -> Option<&NamedFunction> {
+        self.tests.iter().find(|f| f.name == name)
+    }
+
+    pub(crate) fn run(&self, func: &NamedFunction, iterations: usize) -> u64 {
+        self.vt.select(func.idx);
         self.vt.run(iterations)
     }
 
-    pub(crate) fn estimate_iterations(&self, idx: usize, time_ms: u32) -> usize {
-        self.vt.select(idx);
+    pub(crate) fn estimate_iterations(&self, func: &NamedFunction, time_ms: u32) -> usize {
+        self.vt.select(func.idx);
         self.vt.estimate_iterations(time_ms)
     }
 
