@@ -47,7 +47,7 @@ where
         Self {
             rng: Lcg::new(0),
             size,
-            name: format!("Size<{}, {}>", type_name::<T>(), size),
+            name: format!("Vec<{}, {}>", type_name::<T>(), size),
         }
     }
 }

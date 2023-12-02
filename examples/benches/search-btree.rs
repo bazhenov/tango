@@ -16,7 +16,12 @@ fn search_btree<T: Copy + Ord>(haystack: &impl AsRef<BTreeSet<T>>, needle: &T) -
         .copied()
 }
 
-benchmarks!(search_benchmarks::<u64, _>(search_btree));
+benchmarks!(
+    search_benchmarks::<u8, _>(search_btree),
+    search_benchmarks::<u16, _>(search_btree),
+    search_benchmarks::<u32, _>(search_btree),
+    search_benchmarks::<u64, _>(search_btree)
+);
 
 pub fn main() -> tango_bench::cli::Result<ExitCode> {
     common::main()
