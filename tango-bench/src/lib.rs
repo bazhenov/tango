@@ -41,13 +41,11 @@ pub enum Error {
 /// Registers benchmark in the system
 #[macro_export]
 macro_rules! benchmarks {
-    ($($func_name:expr),+) => {
+    ($($func_expr:expr),+) => {
         #[no_mangle]
-        pub fn __tango_create_benchmarks() -> Vec<Box<dyn tango_bench::MeasureTarget>> {
-            use tango_bench::IntoBenchmarks;
-
+        pub fn __tango_create_benchmarks() -> Vec<Box<dyn $crate::MeasureTarget>> {
             let mut benchmarks = vec![];
-            $(benchmarks.extend($func_name.into_benchmarks());)*
+            $(benchmarks.extend($crate::IntoBenchmarks::into_benchmarks($func_expr));)*
             benchmarks
         }
     };
