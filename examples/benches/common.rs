@@ -2,12 +2,12 @@
 
 extern crate tango_bench;
 
-use ordsearch::OrderedCollection;
-use std::{
-    any::type_name, collections::BTreeSet, convert::TryFrom, iter::FromIterator,
-    marker::PhantomData, process::ExitCode,
-};
+use std::{any::type_name, convert::TryFrom, marker::PhantomData, process::ExitCode};
 use tango_bench::{cli, BenchmarkMatrix, Generator, IntoBenchmarks, MeasurementSettings};
+
+const SIZES: [usize; 14] = [
+    8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4069, 8192, 16384, 32768, 65536,
+];
 
 #[derive(Clone)]
 struct Lcg<T> {
@@ -33,72 +33,71 @@ where
 }
 
 #[derive(Clone)]
-struct RandomVec<T> {
+pub struct RandomCollection<C, T> {
     rng: Lcg<T>,
     size: usize,
     name: String,
+    phantom: PhantomData<C>,
 }
 
-impl<T> RandomVec<T>
+impl<T, C> RandomCollection<C, T>
 where
     T: Ord + Copy + TryFrom<usize>,
 {
-    fn new(size: usize) -> Self {
+    pub fn new(size: usize) -> Self {
         Self {
             rng: Lcg::new(0),
             size,
-            name: format!("Vec<{}, {}>", type_name::<T>(), size),
+            name: format!("{}/{}", type_name::<T>(), size),
+            phantom: PhantomData,
         }
     }
 }
 
-pub struct Sample<T> {
-    vec: Vec<T>,
-    ord: OrderedCollection<T>,
-    btree: BTreeSet<T>,
+pub struct Sample<C> {
+    collection: C,
+    max_value: usize,
 }
 
-impl<T> AsRef<BTreeSet<T>> for Sample<T> {
-    fn as_ref(&self) -> &BTreeSet<T> {
-        &self.btree
+impl<C> AsRef<C> for Sample<C> {
+    fn as_ref(&self) -> &C {
+        &self.collection
     }
 }
 
-impl<T> AsRef<OrderedCollection<T>> for Sample<T> {
-    fn as_ref(&self) -> &OrderedCollection<T> {
-        &self.ord
+pub trait FromSortedVec<T> {
+    fn from_sorted_vec(v: Vec<T>) -> Self;
+}
+
+impl<T> FromSortedVec<T> for Vec<T> {
+    fn from_sorted_vec(v: Vec<T>) -> Self {
+        v
     }
 }
 
-impl<T> AsRef<Vec<T>> for Sample<T> {
-    fn as_ref(&self) -> &Vec<T> {
-        &self.vec
-    }
-}
-
-impl<T> Generator for RandomVec<T>
+impl<T, C: FromSortedVec<T>> Generator for RandomCollection<C, T>
 where
     T: Ord + Copy + TryFrom<usize>,
     usize: TryFrom<T>,
 {
-    type Haystack = Sample<T>;
+    type Haystack = Sample<C>;
     type Needle = T;
 
     fn next_haystack(&mut self) -> Self::Haystack {
         let vec = generate_sorted_vec(self.size);
-        let ord = OrderedCollection::from_sorted_iter(vec.iter().copied());
-        let btree = BTreeSet::from_iter(vec.iter().copied());
-
-        Sample { vec, ord, btree }
+        let max = usize::try_from(*vec.last().unwrap()).ok().unwrap();
+        Sample {
+            collection: C::from_sorted_vec(vec),
+            max_value: max,
+        }
     }
 
     fn name(&self) -> &str {
         &self.name
     }
 
-    fn next_needle(&mut self, haystack: &Self::Haystack) -> Self::Needle {
-        let max = (haystack.vec.len() - 1) * 2;
-        self.rng.next(max + 1)
+    fn next_needle(&mut self, sample: &Self::Haystack) -> Self::Needle {
+        self.rng.next(sample.max_value + 1)
     }
 
     fn reset(&mut self) {
@@ -119,17 +118,22 @@ where
         .unwrap()
 }
 
-pub fn search_benchmarks<T, F>(search_func: F) -> impl IntoBenchmarks
-where
-    T: Ord + Copy + TryFrom<usize> + 'static,
-    usize: TryFrom<T>,
-    F: Fn(&Sample<T>, &T) -> Option<T> + Copy + 'static,
-{
-    let sizes = [
-        8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4069, 8192, 16384, 32768, 65536,
-    ];
+pub struct SearchBenchmarks<SearchF, GeneratorF>(pub GeneratorF, pub SearchF);
 
-    BenchmarkMatrix::with_params(sizes, RandomVec::<T>::new).add_function("search", search_func)
+impl<F, R, G, H, O, N> IntoBenchmarks for SearchBenchmarks<F, R>
+where
+    F: Fn(&H, &N) -> O + Copy + 'static,
+    R: Fn(usize) -> G,
+    H: 'static,
+    G: Generator<Haystack = H, Needle = N> + 'static,
+{
+    fn into_benchmarks(self) -> Vec<Box<dyn tango_bench::MeasureTarget>> {
+        let SearchBenchmarks(generator_func, search_func) = self;
+
+        BenchmarkMatrix::with_params(SIZES, generator_func)
+            .add_function("search", search_func)
+            .into_benchmarks()
+    }
 }
 
 pub fn main() -> tango_bench::cli::Result<ExitCode> {

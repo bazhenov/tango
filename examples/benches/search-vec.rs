@@ -1,6 +1,6 @@
 #![cfg_attr(feature = "align", feature(fn_align))]
 
-use common::search_benchmarks;
+use common::{RandomCollection, SearchBenchmarks};
 use std::process::ExitCode;
 use tango_bench::benchmarks;
 
@@ -18,10 +18,10 @@ fn search_vec<T: Copy + Ord>(haystack: &impl AsRef<Vec<T>>, needle: &T) -> Optio
 }
 
 benchmarks!(
-    search_benchmarks::<u8, _>(search_vec),
-    search_benchmarks::<u16, _>(search_vec),
-    search_benchmarks::<u32, _>(search_vec),
-    search_benchmarks::<u64, _>(search_vec)
+    SearchBenchmarks(RandomCollection::<Vec<u8>, _>::new, search_vec),
+    SearchBenchmarks(RandomCollection::<Vec<u16>, _>::new, search_vec),
+    SearchBenchmarks(RandomCollection::<Vec<u32>, _>::new, search_vec),
+    SearchBenchmarks(RandomCollection::<Vec<u64>, _>::new, search_vec)
 );
 
 pub fn main() -> tango_bench::cli::Result<ExitCode> {
