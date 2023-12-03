@@ -355,7 +355,7 @@ impl Default for MeasurementSettings {
             outlier_detection_enabled: true,
             samples_per_haystack: 1,
             min_iterations_per_sample: 1,
-            max_iterations_per_sample: 50,
+            max_iterations_per_sample: 5000,
         }
     }
 }
