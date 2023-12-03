@@ -1,4 +1,4 @@
-use num_traits::{AsPrimitive, ToPrimitive};
+use num_traits::ToPrimitive;
 use std::{
     any::type_name,
     cell::RefCell,
@@ -170,7 +170,7 @@ where
     fn estimate_iterations(&mut self, time_ms: u32) -> usize {
         // Here we relying on the fact that measure() is not generating a new haystack
         // without a call to next_haystack()
-        let measurements = (0..10).map(|_| self.measure(1)).collect::<Vec<_>>();
+        let measurements = (0..11).map(|_| self.measure(1)).collect::<Vec<_>>();
         (time_ms as usize * 1_000_000) / median(measurements) as usize
     }
 
@@ -191,7 +191,7 @@ pub struct BenchmarkMatrix<G> {
     functions: Vec<Box<dyn MeasureTarget>>,
 }
 
-impl<H: 'static, N, G: Generator<Haystack = H, Needle = N> + 'static> BenchmarkMatrix<G> {
+impl<G: Generator> BenchmarkMatrix<G> {
     pub fn new(generator: G) -> Self {
         let generator = Rc::new(RefCell::new(generator));
         Self {
@@ -213,9 +213,24 @@ impl<H: 'static, N, G: Generator<Haystack = H, Needle = N> + 'static> BenchmarkM
         }
     }
 
-    pub fn add_function<O, F>(mut self, name: &str, f: F) -> Self
+    pub fn add_generators_with_params<P>(
+        mut self,
+        params: impl IntoIterator<Item = P>,
+        generator: impl Fn(P) -> G,
+    ) -> Self {
+        let generators = params
+            .into_iter()
+            .map(generator)
+            .map(RefCell::new)
+            .map(Rc::new);
+        self.generators.extend(generators);
+        self
+    }
+
+    pub fn add_function<F, O>(mut self, name: &str, f: F) -> Self
     where
-        F: Fn(&H, &N) -> O + 'static,
+        G: 'static,
+        F: Fn(&G::Haystack, &G::Needle) -> O + 'static,
     {
         let f = Rc::new(RefCell::new(f));
         self.generators
@@ -634,18 +649,10 @@ fn median_execution_time(target: &mut dyn MeasureTarget, iterations: u32) -> u64
     median(measures)
 }
 
-fn median<T: Copy + Ord + Add<Output = T> + Div<Output = T> + 'static>(mut measures: Vec<T>) -> T
-where
-    u32: AsPrimitive<T>,
-{
+fn median<T: Copy + Ord + Add<Output = T> + Div<Output = T>>(mut measures: Vec<T>) -> T {
+    assert!(!measures.is_empty(), "Vec is empty");
     measures.sort();
-
-    let n = measures.len();
-    if n % 2 == 0 {
-        (measures[n / 2 - 1] + measures[n / 2]) / 2.as_()
-    } else {
-        measures[n / 2]
-    }
+    measures[measures.len() / 2]
 }
 
 #[cfg(test)]
