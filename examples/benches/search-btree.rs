@@ -1,14 +1,14 @@
 #![cfg_attr(feature = "align", feature(fn_align))]
 
-use common::{FromSortedVec, RandomCollection, SearchBenchmarks};
+use common::{search_benchmarks, FromSortedVec};
 use std::{collections::BTreeSet, ops::Bound, process::ExitCode};
 use tango_bench::benchmarks;
 
 mod common;
 
-type RandomBTreeSet<T> = RandomCollection<BTreeSet<T>, T>;
+impl<T: Ord> FromSortedVec for BTreeSet<T> {
+    type Item = T;
 
-impl<T: Ord> FromSortedVec<T> for BTreeSet<T> {
     fn from_sorted_vec(v: Vec<T>) -> Self {
         BTreeSet::from_iter(v)
     }
@@ -25,10 +25,10 @@ fn search_btree<T: Copy + Ord>(haystack: &impl AsRef<BTreeSet<T>>, needle: &T) -
 }
 
 benchmarks!(
-    SearchBenchmarks(RandomBTreeSet::<u8>::new, search_btree),
-    SearchBenchmarks(RandomBTreeSet::<u16>::new, search_btree),
-    SearchBenchmarks(RandomBTreeSet::<u32>::new, search_btree),
-    SearchBenchmarks(RandomBTreeSet::<u64>::new, search_btree)
+    search_benchmarks(search_btree::<u8>),
+    search_benchmarks(search_btree::<u16>),
+    search_benchmarks(search_btree::<u32>),
+    search_benchmarks(search_btree::<u64>)
 );
 
 pub fn main() -> tango_bench::cli::Result<ExitCode> {

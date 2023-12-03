@@ -1,15 +1,14 @@
 #![cfg_attr(feature = "align", feature(fn_align))]
 
-use common::{FromSortedVec, RandomCollection, SearchBenchmarks};
+use common::{search_benchmarks, FromSortedVec};
 use ordsearch::OrderedCollection;
 use std::process::ExitCode;
 use tango_bench::benchmarks;
 
 mod common;
 
-type RandomOrderedCollection<T> = RandomCollection<OrderedCollection<T>, T>;
-
-impl<T: Ord> FromSortedVec<T> for OrderedCollection<T> {
+impl<T: Ord> FromSortedVec for OrderedCollection<T> {
+    type Item = T;
     fn from_sorted_vec(v: Vec<T>) -> Self {
         OrderedCollection::from_sorted_iter(v)
     }
@@ -22,10 +21,10 @@ fn search_ord<T: Copy + Ord>(haystack: &impl AsRef<OrderedCollection<T>>, needle
 }
 
 benchmarks!(
-    SearchBenchmarks(RandomOrderedCollection::<u8>::new, search_ord),
-    SearchBenchmarks(RandomOrderedCollection::<u16>::new, search_ord),
-    SearchBenchmarks(RandomOrderedCollection::<u32>::new, search_ord),
-    SearchBenchmarks(RandomOrderedCollection::<u64>::new, search_ord)
+    search_benchmarks(search_ord::<u8>),
+    search_benchmarks(search_ord::<u16>),
+    search_benchmarks(search_ord::<u32>),
+    search_benchmarks(search_ord::<u64>)
 );
 
 pub fn main() -> tango_bench::cli::Result<ExitCode> {

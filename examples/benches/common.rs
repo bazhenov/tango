@@ -2,89 +2,62 @@
 
 extern crate tango_bench;
 
-use std::{any::type_name, convert::TryFrom, marker::PhantomData, process::ExitCode};
+use std::{any::type_name, convert::TryFrom, iter, marker::PhantomData, process::ExitCode};
 use tango_bench::{cli, BenchmarkMatrix, Generator, IntoBenchmarks, MeasurementSettings};
 
 const SIZES: [usize; 14] = [
     8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4069, 8192, 16384, 32768, 65536,
 ];
 
-#[derive(Clone)]
-struct Lcg<T> {
-    value: usize,
-    _type: PhantomData<T>,
-}
+struct Lcg(usize);
 
-impl<T> Lcg<T>
-where
-    T: TryFrom<usize>,
-{
-    fn new(seed: usize) -> Self {
-        Self {
-            value: seed,
-            _type: PhantomData,
-        }
-    }
-
-    fn next(&mut self, max_value: usize) -> T {
-        self.value = self.value.wrapping_mul(1664525).wrapping_add(1013904223);
-        T::try_from((self.value >> 32) % max_value).ok().unwrap()
+impl Lcg {
+    fn next<T: TryFrom<usize>>(&mut self, max_value: usize) -> T {
+        self.0 = self.0.wrapping_mul(1664525).wrapping_add(1013904223);
+        T::try_from((self.0 >> 32) % max_value).ok().unwrap()
     }
 }
 
-#[derive(Clone)]
-pub struct RandomCollection<C, T> {
-    rng: Lcg<T>,
+pub struct RandomCollection<C: FromSortedVec> {
+    rng: Lcg,
     size: usize,
     name: String,
+    value_dup_factor: usize,
     phantom: PhantomData<C>,
 }
 
-impl<T, C> RandomCollection<C, T>
+impl<C: FromSortedVec> RandomCollection<C>
 where
-    T: Ord + Copy + TryFrom<usize>,
+    C::Item: Ord + Copy + TryFrom<usize>,
 {
-    pub fn new(size: usize) -> Self {
+    pub fn new(size: usize, value_dup_factor: usize) -> Self {
+        let type_name = type_name::<C::Item>();
+        let name = if value_dup_factor > 1 {
+            format!("<{}, {}, dup-{}>", type_name, size, value_dup_factor)
+        } else {
+            format!("<{}, {}>", type_name, size)
+        };
+
         Self {
-            rng: Lcg::new(0),
+            rng: Lcg(0),
             size,
-            name: format!("{}/{}", type_name::<T>(), size),
+            value_dup_factor,
+            name,
             phantom: PhantomData,
         }
     }
 }
 
-pub struct Sample<C> {
-    collection: C,
-    max_value: usize,
-}
-
-impl<C> AsRef<C> for Sample<C> {
-    fn as_ref(&self) -> &C {
-        &self.collection
-    }
-}
-
-pub trait FromSortedVec<T> {
-    fn from_sorted_vec(v: Vec<T>) -> Self;
-}
-
-impl<T> FromSortedVec<T> for Vec<T> {
-    fn from_sorted_vec(v: Vec<T>) -> Self {
-        v
-    }
-}
-
-impl<T, C: FromSortedVec<T>> Generator for RandomCollection<C, T>
+impl<C: FromSortedVec> Generator for RandomCollection<C>
 where
-    T: Ord + Copy + TryFrom<usize>,
-    usize: TryFrom<T>,
+    C::Item: Ord + Copy + TryFrom<usize>,
+    usize: TryFrom<C::Item>,
 {
     type Haystack = Sample<C>;
-    type Needle = T;
+    type Needle = C::Item;
 
     fn next_haystack(&mut self) -> Self::Haystack {
-        let vec = generate_sorted_vec(self.size);
+        let vec = generate_sorted_vec(self.size, self.value_dup_factor);
         let max = usize::try_from(*vec.last().unwrap()).ok().unwrap();
         Sample {
             collection: C::from_sorted_vec(vec),
@@ -101,39 +74,58 @@ where
     }
 
     fn reset(&mut self) {
-        self.rng = Lcg::new(0);
+        self.rng = Lcg(0);
     }
 }
 
-fn generate_sorted_vec<T>(size: usize) -> Vec<T>
+fn generate_sorted_vec<T>(size: usize, dup_factor: usize) -> Vec<T>
 where
     T: Ord + Copy + TryFrom<usize>,
 {
-    (0..size)
+    (0..)
         .map(|v| 2 * v)
         .map(|v| T::try_from(v))
-        .take_while(|r| r.is_ok())
-        .collect::<Result<Vec<_>, _>>()
-        .ok()
-        .unwrap()
+        .map_while(Result::ok)
+        .flat_map(|v| iter::repeat(v).take(dup_factor))
+        .take(size)
+        .collect()
 }
 
-pub struct SearchBenchmarks<SearchF, GeneratorF>(pub GeneratorF, pub SearchF);
+pub struct Sample<C> {
+    collection: C,
+    max_value: usize,
+}
 
-impl<F, R, G, H, O, N> IntoBenchmarks for SearchBenchmarks<F, R>
-where
-    F: Fn(&H, &N) -> O + Copy + 'static,
-    R: Fn(usize) -> G,
-    H: 'static,
-    G: Generator<Haystack = H, Needle = N> + 'static,
-{
-    fn into_benchmarks(self) -> Vec<Box<dyn tango_bench::MeasureTarget>> {
-        let SearchBenchmarks(generator_func, search_func) = self;
-
-        BenchmarkMatrix::with_params(SIZES, generator_func)
-            .add_function("search", search_func)
-            .into_benchmarks()
+impl<C> AsRef<C> for Sample<C> {
+    fn as_ref(&self) -> &C {
+        &self.collection
     }
+}
+
+pub trait FromSortedVec {
+    type Item;
+    fn from_sorted_vec(v: Vec<Self::Item>) -> Self;
+}
+
+impl<T> FromSortedVec for Vec<T> {
+    type Item = T;
+
+    fn from_sorted_vec(v: Vec<T>) -> Self {
+        v
+    }
+}
+
+pub fn search_benchmarks<C, F>(f: F) -> impl IntoBenchmarks
+where
+    C: FromSortedVec + 'static,
+    F: Fn(&Sample<C>, &C::Item) -> Option<C::Item> + Copy + 'static,
+    C::Item: Copy + Ord + TryFrom<usize>,
+    usize: TryFrom<C::Item>,
+{
+    BenchmarkMatrix::with_params(SIZES, |size| RandomCollection::<C>::new(size, 1))
+        .add_generators_with_params(SIZES, |size| RandomCollection::<C>::new(size, 16))
+        .add_function("search", f)
+        .into_benchmarks()
 }
 
 pub fn main() -> tango_bench::cli::Result<ExitCode> {
