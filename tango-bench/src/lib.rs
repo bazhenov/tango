@@ -568,9 +568,7 @@ pub struct RunResult {
 /// Statistical summary for a given iterator of numbers.
 ///
 /// Calculates all the information using single pass over the data. Mean and variance are calculated using
-/// streaming algorithm described in [1].
-///
-/// [1]: Art of Computer Programming, Vol 2, page 232
+/// streaming algorithm described in _Art of Computer Programming, Vol 2, page 232_.
 #[derive(Clone, Copy)]
 pub struct Summary<T> {
     pub n: usize,
