@@ -1,6 +1,6 @@
 [package]
 name = "tango-bench"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 license = "MIT"
 description = "Tango benchmarking harness"
@@ -28,7 +28,6 @@ tempfile = "^3.8"
 [features]
 align = []
 hw_timer = []
-aa_test = []
 
 [[bench]]
 name = "tango"

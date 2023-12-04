@@ -798,9 +798,9 @@ mod tests {
 
     #[test]
     fn check_summary_statistics_types() {
-        let _ = Summary::from(<&[i64]>::default());
-        let _ = Summary::from(<&[u32]>::default());
-        let _ = Summary::from(&Vec::<i64>::default());
+        Summary::from(<&[i64]>::default());
+        Summary::from(<&[u32]>::default());
+        Summary::from(&Vec::<i64>::default());
     }
 
     #[test]

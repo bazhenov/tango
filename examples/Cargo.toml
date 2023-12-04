@@ -35,3 +35,6 @@ harness = false
 [[bench]]
 name = "tango-slower"
 harness = false
+
+[features]
+align = []
