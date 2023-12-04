@@ -50,7 +50,7 @@ Tango is designed to have the capability to detect a 1% change in performance wi
 
    ```rust,no_run
    use std::hint::black_box;
-   use tango_bench::{benchmark_fn, tango_benchmarks, tango_main, IntoBenchmarks, MeasurementSettings};
+   use tango_bench::{benchmark_fn, tango_benchmarks, tango_main, IntoBenchmarks};
 
    pub fn factorial(mut n: usize) -> usize {
        let mut result = 1usize;
