@@ -12,7 +12,7 @@ Introducing Tango.rs, a novel benchmarking framework that employs paired benchma
 Features:
 
 - very high sensitivity to changes which allows to converge on results quicker than traditional (pointwise) approach. Often the fraction of a second is enough;
-- ability to test different versions of the same code from different VCS commits (A/B-benchmarking);
+- ability to compare different versions of the same code from different VCS commits (A/B-benchmarking);
 
 ## 1 second, 1 percent, 1 error
 
@@ -20,74 +20,82 @@ Compared to traditional pointwise benchmarking, pairwise benchmarking is signifi
 
 Tango is designed to have the capability to detect a 1% change in performance within just 1 second in at least 9 out of 10 test runs.
 
-## Getting Started
-
-### Prerequirements
+## Prerequirements
 
 1. Rust and Cargo toolchain installed
 2. [`cargo-export`](https://github.com/bazhenov/cargo-export) installed
 
-Add cargo dependency and create new benchmark:
+## Getting started
 
-```toml
-[dev-dependencies]
-tango-bench = "^0.2"
+1. Add cargo dependency and create new benchmark:
 
-[[bench]]
-name = "factorial"
-harness = false
-```
+   ```toml
+   [dev-dependencies]
+   tango-bench = "^0.2"
+   
+   [[bench]]
+   name = "factorial"
+   harness = false
+   ```
 
-Add `benches/factorial.rs` with the following content:
+1. Add build script (`build.rs`) which allows benchmarks to export symbols for dynamic linking
 
-```rust,no_run
-use std::{hint::black_box, process::ExitCode};
-use tango_bench::{benchmark_fn, benchmarks, cli, IntoBenchmarks, MeasurementSettings};
+   ```rust,ignore
+   fn main() {
+       println!("cargo:rustc-link-arg-benches=-rdynamic");
+   }
+   ```
 
-pub fn factorial(mut n: usize) -> usize {
-    let mut result = 1usize;
-    while n > 0 {
-        result = result.wrapping_mul(black_box(n));
-        n -= 1;
-    }
-    result
-}
+1. Add `benches/factorial.rs` with the following content:
 
-fn factorial_benchmarks() -> impl IntoBenchmarks {
-    [
-        benchmark_fn("factorial", || factorial(500)),
-    ]
-}
+   ```rust,no_run
+   use std::{hint::black_box, process::ExitCode};
+   use tango_bench::{benchmark_fn, benchmarks, cli, IntoBenchmarks, MeasurementSettings};
+   
+   pub fn factorial(mut n: usize) -> usize {
+       let mut result = 1usize;
+       while n > 0 {
+           result = result.wrapping_mul(black_box(n));
+           n -= 1;
+       }
+       result
+   }
+   
+   fn factorial_benchmarks() -> impl IntoBenchmarks {
+       [
+           benchmark_fn("factorial", || factorial(500)),
+       ]
+   }
+   
+   benchmarks!(factorial_benchmarks());
+   
+   fn main() -> cli::Result<ExitCode> {
+       cli::run(MeasurementSettings::default())
+   }
+   ```
 
-benchmarks!(factorial_benchmarks());
+1. Build and export benchmark to `target/benchmarks` directory:
 
-fn main() -> cli::Result<ExitCode> {
-    cli::run(MeasurementSettings::default())
-}
-```
+   ```console
+   $ cargo export target/benchmarks -- bench --bench=factorial
+   ```
 
-Build and export benchmark to `target/benchmarks` directory:
+1. Now lets try to modify `factorial.rs` and make factorial faster :)
 
-```console
-$ cargo export target/benchmarks -- bench --bench=factorial
-```
+   ```rust,ignore
+   fn factorial_benchmarks() -> impl IntoBenchmarks {
+       [
+           benchmark_fn("factorial", || factorial(495)),
+       ]
+   }
+   ```
 
-Now lets try to modify `factorial.rs` and make factorial faster :)
+1. Now we can compare new version with already built one:
 
-```rust,ignore
-fn factorial_benchmarks() -> impl IntoBenchmarks {
-    [
-        benchmark_fn("factorial", || factorial(495)),
-    ]
-}
-```
-
-Now we can compare new version with already built one:
-
-```console
-$ cargo bench -q --bench=factorial -- compare target/benchmarks/factorial
-factorial             [ 375.5 ns ... 369.0 ns ]      -1.58%*
-```
+   ```console
+   $ cargo bench -q --bench=factorial -- compare target/benchmarks/factorial
+   factorial             [ 375.5 ns ... 369.0 ns ]      -1.58%*
+   ```
 
 The result shows that indeed there is indeed ~1% difference between `factorial(500)` and `factorial(495)`.
 
