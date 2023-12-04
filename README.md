@@ -30,30 +30,30 @@ harness = false
 
 Add `benches/bench.rs` with the following content:
 
-```rust
-use std::hint::black_box;
-use tango_bench::{benchmark_fn, cli, Benchmark, MeasurementSettings, StaticValue};
+```rust,no_run
+use std::{hint::black_box, process::ExitCode};
+use tango_bench::{benchmark_fn, benchmarks, cli, IntoBenchmarks, MeasurementSettings};
 
 pub fn factorial(mut n: usize) -> usize {
-  let mut result = 1usize;
-  while n > 0 {
-    result = result.wrapping_mul(black_box(n));
-    n -= 1;
-  }
-  result
+    let mut result = 1usize;
+    while n > 0 {
+        result = result.wrapping_mul(black_box(n));
+        n -= 1;
+    }
+    result
 }
 
-fn main() {
-  let mut benchmark = Benchmark::default();
-  benchmark.add_generator(StaticValue((), ()));
+fn factorial_benchmarks() -> impl IntoBenchmarks {
+    [
+        benchmark_fn("factorial_500", || factorial(500)),
+        benchmark_fn("factorial_495", || factorial(495)),
+    ]
+}
 
-  benchmark.add_pair(
-    benchmark_fn("factorial_500", |_, _| factorial(500)),
-    benchmark_fn("factorial_495", |_, _| factorial(495)),
-  );
+benchmarks!(factorial_benchmarks());
 
-  let settings = MeasurementSettings::default();
-  cli::run(benchmark, settings)
+fn main() -> cli::Result<ExitCode> {
+    cli::run(MeasurementSettings::default())
 }
 ```
 

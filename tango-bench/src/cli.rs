@@ -1,3 +1,5 @@
+//! Contains functionality of a `cargo bench` harness
+
 use self::reporting::{ConsoleReporter, VerboseReporter};
 use crate::{dylib::Spi, Error, MeasurementSettings, Reporter};
 use anyhow::Context;

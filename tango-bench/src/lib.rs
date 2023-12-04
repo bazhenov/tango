@@ -1,3 +1,5 @@
+#![doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../README.md"))]
+
 use num_traits::ToPrimitive;
 use std::{
     any::type_name,
@@ -15,10 +17,11 @@ use timer::{ActiveTimer, Timer};
 
 pub mod cli;
 pub mod dylib;
+pub mod generators;
 #[cfg(target_os = "linux")]
 pub mod linux;
 
-pub const NS_TO_MS: u64 = 1_000_000;
+const NS_TO_MS: usize = 1_000_000;
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -62,26 +65,31 @@ pub fn benchmark_fn<O, F: Fn() -> O + 'static>(
 pub trait MeasureTarget: Named {
     /// Measures the performance if the function
     ///
-    /// Returns the cumulative (all iterations) execution time with nanoseconds precision,
-    /// but not necessarily accuracy.
+    /// Returns the cumulative execution time (all iterations) with nanoseconds precision,
+    /// but not necessarily accuracy. Usually this time is get by `clock_gettime()` call or some other
+    /// platform-specific system call.
     ///
     /// This method should use the same arguments for measuring the test function unless [`next_haystack()`]
     /// method is called. Only then new set of input arguments should be generated. Although it is allowed
     /// to call this method without first calling [`next_haystack()`]. In which case first haystack should be
     /// generated automatically.
+    ///
+    /// [`next_haystack()`]: Self::next_haystack()
     fn measure(&mut self, iterations: usize) -> u64;
 
-    /// Estimates the number of iterations achievable within given number of miliseconds
+    /// Estimates the number of iterations achievable within given time.
     ///
-    /// Estimate can be an approximation. If possible the same input arguments should be used when building the
-    /// estimate. If the single call to measured function is longer than provided timespan the implementation
-    /// can return 0.
+    /// Time span is given in milliseconds (`time_ms`). Estimate can be an approximation and it is important
+    /// for implementation to be fast (in the order of 10 ms).
+    /// If possible the same input arguments should be used when building the estimate.
+    /// If the single call of a function is longer than provided timespan the implementation should return 0.
     fn estimate_iterations(&mut self, time_ms: u32) -> usize;
 
     /// Generates next haystack for the measurement
     ///
     /// Calling this method should update internal haystack used for measurement. Returns `true` if update happend,
     /// `false` if implementation doesn't support haystack generation.
+    /// Haystack/Needle distinction is described in [`Generator`] trait.
     fn next_haystack(&mut self) -> bool;
 }
 
@@ -109,7 +117,7 @@ impl<O, F: Fn() -> O> MeasureTarget for SimpleFunc<F> {
 
     fn estimate_iterations(&mut self, time_ms: u32) -> usize {
         let median = median_execution_time(self, 10) as usize;
-        time_ms as usize * 1_000_000 / median
+        time_ms as usize * NS_TO_MS / median
     }
 
     fn next_haystack(&mut self) -> bool {
@@ -171,7 +179,7 @@ where
         // Here we relying on the fact that measure() is not generating a new haystack
         // without a call to next_haystack()
         let measurements = (0..11).map(|_| self.measure(1)).collect::<Vec<_>>();
-        (time_ms as usize * 1_000_000) / median(measurements) as usize
+        (time_ms as usize * NS_TO_MS) / median(measurements) as usize
     }
 
     fn next_haystack(&mut self) -> bool {
@@ -186,6 +194,25 @@ impl<F, H, N> Named for GenFunc<F, H, N> {
     }
 }
 
+/// Matrix of functions is used to perform benchmark with different generator strategies
+///
+/// It is a common task to benchmark function with different payload size and/or different structure of the payload.
+/// `BenchmarkMatrix` creates a new [`MeasureTarget`] for each unique combination of [`Generator`]
+/// and tested function.
+///
+/// # Example
+/// ```rust
+/// use tango_bench::{generators::RandomVec, BenchmarkMatrix, IntoBenchmarks};
+///
+/// fn sum_positive(haystack: &Vec<u32>, _: &()) -> u32 {
+///     haystack.iter().copied().filter(|v| *v > 0).sum()
+/// }
+///
+/// fn sorting_benchmarks() -> impl IntoBenchmarks {
+///     BenchmarkMatrix::with_params([100, 1_000, 10_000], RandomVec::new)
+///         .add_function("sum_positive", sum_positive)
+/// }
+/// ```
 pub struct BenchmarkMatrix<G> {
     generators: Vec<Rc<RefCell<G>>>,
     functions: Vec<Box<dyn MeasureTarget>>,
@@ -744,7 +771,7 @@ mod tests {
             thread::sleep(Duration::from_millis(expected_delay))
         });
 
-        let median = median_execution_time(target.as_mut(), 10) / NS_TO_MS;
+        let median = median_execution_time(target.as_mut(), 10) / NS_TO_MS as u64;
         assert!(median < expected_delay * 10);
     }
 

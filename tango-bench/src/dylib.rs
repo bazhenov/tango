@@ -1,3 +1,5 @@
+//! Loading and resolving symbols from .dylib/.so libraries
+
 use self::ffi::VTable;
 use crate::{Error, MeasureTarget};
 use libloading::{Library, Symbol};
