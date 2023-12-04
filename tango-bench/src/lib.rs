@@ -92,6 +92,7 @@ pub trait MeasureTarget {
     /// Haystack/Needle distinction is described in [`Generator`] trait.
     fn next_haystack(&mut self) -> bool;
 
+    /// Name of the benchmark
     fn name(&self) -> &str;
 }
 
@@ -113,7 +114,7 @@ impl<O, F: Fn() -> O> MeasureTarget for SimpleFunc<F> {
     }
 
     fn estimate_iterations(&mut self, time_ms: u32) -> usize {
-        let median = median_execution_time(self, 10) as usize;
+        let median = median_execution_time(self, 11) as usize;
         time_ms as usize * NS_TO_MS / median
     }
 
@@ -126,17 +127,17 @@ impl<O, F: Fn() -> O> MeasureTarget for SimpleFunc<F> {
     }
 }
 
-pub struct GenFunc<F, G, H> {
+pub struct GenFunc<F, G: Generator> {
     f: Rc<RefCell<F>>,
     g: Rc<RefCell<G>>,
-    haystack: Option<H>,
+    haystack: Option<G::Haystack>,
     name: String,
 }
 
-impl<F, H, N, O, G> GenFunc<F, G, H>
+impl<F, O, G> GenFunc<F, G>
 where
-    G: Generator<Haystack = H, Needle = N>,
-    F: Fn(&H, &N) -> O,
+    G: Generator,
+    F: Fn(&G::Haystack, &G::Needle) -> O,
 {
     pub fn new(name: &str, f: Rc<RefCell<F>>, g: Rc<RefCell<G>>) -> Self {
         let name = format!("{}/{}", name, g.borrow().name());
@@ -149,10 +150,10 @@ where
     }
 }
 
-impl<F, H, N, O, G> MeasureTarget for GenFunc<F, G, H>
+impl<F, O, G> MeasureTarget for GenFunc<F, G>
 where
-    G: Generator<Haystack = H, Needle = N>,
-    F: Fn(&H, &N) -> O,
+    G: Generator,
+    F: Fn(&G::Haystack, &G::Needle) -> O,
 {
     fn measure(&mut self, iterations: usize) -> u64 {
         let mut g = self.g.borrow_mut();
