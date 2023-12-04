@@ -294,24 +294,47 @@ impl IntoBenchmarks for Vec<Box<dyn MeasureTarget>> {
 
 /// Generates the payload for the benchmarking functions
 ///
-/// Generator provides two type of values to the tested functions: *haystack* and *needle*.
+/// One of the most important parts of the benchmarking process is generating the payload to test the algorithm. This /// is what this trait is doing. Test function registered in the system can accepts two arguments:
+/// - *haystack* - usually the data structure we're testing the algorithm on
+/// - *needle* - the supplementary used to test the algorithm.
 ///
 /// ## Haystack
-/// Haystack is typically some sort of a collection that is used in benchmarking.
+/// Haystack is typically some sort of a collection that is used in benchmarking. It can be quite large and
+/// expensive to generate, because it is generated once per sample or less. The frequency of haystack generation
+/// is controlled by [`MeasurementSettings::samples_per_haystack`].
 ///
 /// ## Needle
-/// Needle is some type of query that is presented to the algorithm. In case of searching algorithm, usually it is the
-/// value we search in the collection.
+/// Needle is usually some type of query that is presented to the algorithm. In case of searching algorithm it
+/// can be value we search in the collection.
 ///
-/// It might be the case that algorithm being tested is not using both type of values. In this case corresponding value
-/// type should unit type  –`()`.
+/// Important distinction between haystack and needle is that haystack generation is not included in timing while
+/// needle generation is a part of measurement loop. Therefore needle generation should be relativley lightweight.
+///
+/// Sometimes haystack generation might be so expensive that it makes sense to leave haystack fixed and provide
+/// randomness by generating different needles. For example, instead of generating new random `Vec<T>` for each sample
+/// it might be more practical to generate a single `Vec` and a new `Range<usize>` as a haystack at each iteration.
+///
+/// It might be the case that the algorithm being tested is not using both type of values.
+/// In this case corresponding value type should unit type – `()`.
+/// Depending on the type of algorithm you might not need to generate both of them. Here are some examples:
+///
+/// | Algorithm | Haystack | Needle |
+/// |----------|----------|--------|
+/// | Searching in a string | String | substrung to search for and/or range to search over |
+/// | Searching in a collection | Collection | Value to search for and/or range to search over |
+/// | Soring | Collection | – |
+/// | Numerical computation: factorial, DP problems, etc. | – | Input parameters |
+///
+/// Tango orchestrates the generating of haystack and needle and guarantees that both benchmarking
+/// functions are called with the same input parameters. Therefore performance difference is predictable.
 pub trait Generator {
     type Haystack;
     type Needle;
 
     /// Generates next random haystack for the benchmark
     ///
-    /// The number of generated haystacks is controlled by [`MeasurementSettings::samples_per_haystack`]
+    /// All iterations within sample are using the same haystack. Haystack are changed only between samples
+    /// (see. [`MeasureTarget::next_haystack()`]).
     fn next_haystack(&mut self) -> Self::Haystack;
 
     fn next_needles(

@@ -32,7 +32,7 @@ Tango is designed to have the capability to detect a 1% change in performance wi
    ```toml
    [dev-dependencies]
    tango-bench = "^0.2"
-   
+
    [[bench]]
    name = "factorial"
    harness = false
@@ -51,7 +51,7 @@ Tango is designed to have the capability to detect a 1% change in performance wi
    ```rust,no_run
    use std::{hint::black_box, process::ExitCode};
    use tango_bench::{benchmark_fn, benchmarks, cli, IntoBenchmarks, MeasurementSettings};
-   
+
    pub fn factorial(mut n: usize) -> usize {
        let mut result = 1usize;
        while n > 0 {
@@ -60,15 +60,15 @@ Tango is designed to have the capability to detect a 1% change in performance wi
        }
        result
    }
-   
+
    fn factorial_benchmarks() -> impl IntoBenchmarks {
        [
            benchmark_fn("factorial", || factorial(500)),
        ]
    }
-   
+
    benchmarks!(factorial_benchmarks());
-   
+
    fn main() -> cli::Result<ExitCode> {
        cli::run(MeasurementSettings::default())
    }
@@ -100,25 +100,6 @@ Tango is designed to have the capability to detect a 1% change in performance wi
 The result shows that indeed there is indeed ~1% difference between `factorial(500)` and `factorial(495)`.
 
 Additional examples are available in `examples` directory.
-
-### Generators
-
-One of the most important parts of the benchmarking process is generating the payload to test the algorithm. This is what `Generator` trait is doing. Each test function registered in the system accepts two arguments:
-
-- haystack - usually the data structure we're testing the algorithm on
-- needle - the supplementary used to test the algorithm.
-
-Depending on the type of algorithm you might not need to generate both of them. Here are some examples:
-
-| Algorithm | Haystack | Needle |
-|----------|----------|--------|
-| Searching | Collection/String | Value to search for and/or range to search over |
-| Soring | Collection | – |
-| Numerical computation: factorial, DP problems, etc. | – | Input parameters |
-
-Important distinction between haystack and needle is that haystack generation is not included in timing while needle generation is part of measurement loop. Therefore needle generation should be relativley lightweight.
-
-Tango orchestrates the generating of haystack and needle and guarantees that both benchmarking functions are called with the same input parameters. Therefore performance difference is predictable.
 
 ## Contributing
 
