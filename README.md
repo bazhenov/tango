@@ -74,7 +74,7 @@ $ cargo export target/benchmarks -- bench --bench=factorial
 
 Now lets try to modify `factorial.rs` and make factorial faster :)
 
-```rust,no_run
+```rust,ignore
 fn factorial_benchmarks() -> impl IntoBenchmarks {
     [
         benchmark_fn("factorial", || factorial(495)),
