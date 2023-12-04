@@ -42,6 +42,21 @@ pub enum Error {
 }
 
 /// Registers benchmark in the system
+///
+/// Macros accepts a list of functions that produce any [`IntoBenchmarks`] type. All of the benchmarks
+/// created by those functions are registered in the harness.
+///
+/// ## Example
+/// ```rust
+/// use std::time::Instant;
+/// use tango_bench::{benchmark_fn, IntoBenchmarks, tango_benchmarks};
+///
+/// fn time_benchmarks() -> impl IntoBenchmarks {
+///     [benchmark_fn("current_time", || Instant::now())]
+/// }
+///
+/// tango_benchmarks!(time_benchmarks());
+/// ```
 #[macro_export]
 macro_rules! tango_benchmarks {
     ($($func_expr:expr),+) => {
@@ -55,6 +70,19 @@ macro_rules! tango_benchmarks {
 }
 
 /// Main entrypoint for benchmarks
+///
+/// This macro generate `main()` function for the benchmark harness. Can be used in a form with providing
+/// measurement settings:
+/// ```rust
+/// use tango_bench::{tango_main, MeasurementSettings};
+///
+/// tango_main!(MeasurementSettings {
+///     samples_per_haystack: 1000,
+///     min_iterations_per_sample: 10,
+///     max_iterations_per_sample: 10_000,
+///     ..Default::default()
+/// });
+/// ```
 #[macro_export]
 macro_rules! tango_main {
     ($settings:expr) => {
@@ -144,6 +172,8 @@ impl<O, F: Fn() -> O> MeasureTarget for SimpleFunc<F> {
     fn reset(&mut self, _: u64) {}
 }
 
+/// Implementation of a [`MeasureTarget`] which uses [`Generator`] to generates a new payload for a function
+/// each new sample.
 pub struct GenFunc<F, G: Generator> {
     f: Rc<RefCell<F>>,
     g: Rc<RefCell<G>>,
@@ -156,13 +186,18 @@ where
     G: Generator,
     F: Fn(&G::Haystack, &G::Needle) -> O,
 {
-    pub fn new(name: &str, f: Rc<RefCell<F>>, g: Rc<RefCell<G>>) -> Self {
-        let name = format!("{}/{}", name, g.borrow().name());
+    pub fn new(name: &str, f: F, g: G) -> Self {
+        let f = Rc::new(RefCell::new(f));
+        let g = Rc::new(RefCell::new(g));
+        Self::from_ref_cell(name, f, g)
+    }
+
+    fn from_ref_cell(name: &str, f: Rc<RefCell<F>>, g: Rc<RefCell<G>>) -> Self {
         Self {
+            name: format!("{}/{}", name, g.borrow().name()),
+            haystack: None,
             f,
             g,
-            name,
-            haystack: None,
         }
     }
 }
@@ -242,6 +277,7 @@ impl<G: Generator> BenchmarkMatrix<G> {
         }
     }
 
+    /// New matrix with generator created for a given set of parameters
     pub fn with_params<P>(params: impl IntoIterator<Item = P>, generator: impl Fn(P) -> G) -> Self {
         let generators: Vec<_> = params
             .into_iter()
@@ -278,7 +314,7 @@ impl<G: Generator> BenchmarkMatrix<G> {
         self.generators
             .iter()
             .map(Rc::clone)
-            .map(|g| GenFunc::new(name, Rc::clone(&f), g))
+            .map(|g| GenFunc::from_ref_cell(name, Rc::clone(&f), g))
             .map(Box::new)
             .for_each(|f| self.functions.push(f));
         self
@@ -287,6 +323,7 @@ impl<G: Generator> BenchmarkMatrix<G> {
 
 impl<G> IntoBenchmarks for BenchmarkMatrix<G> {
     fn into_benchmarks(self) -> Vec<Box<dyn MeasureTarget>> {
+        assert!(!self.functions.is_empty(), "No functions was given");
         self.functions
     }
 }

@@ -60,11 +60,7 @@ fn empty_benchmarks() -> impl IntoBenchmarks {
 fn generator_empty_benchmarks() -> impl IntoBenchmarks {
     let generator = StaticValue(0usize, 0usize);
     let func = |_: &usize, needle: &usize| *needle;
-    let target = GenFunc::new(
-        "_",
-        Rc::new(RefCell::new(func)),
-        Rc::new(RefCell::new(generator)),
-    );
+    let target = GenFunc::new("_", func, generator);
 
     let generator = StaticValue(Rc::new(RefCell::new(target)), ());
     BenchmarkMatrix::new(generator).add_function("measure_generator_function", |t, _| {
