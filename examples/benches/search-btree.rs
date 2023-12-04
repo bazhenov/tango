@@ -1,8 +1,8 @@
 #![cfg_attr(feature = "align", feature(fn_align))]
 
 use common::{search_benchmarks, FromSortedVec};
-use std::{collections::BTreeSet, ops::Bound, process::ExitCode};
-use tango_bench::benchmarks;
+use std::{collections::BTreeSet, ops::Bound};
+use tango_bench::{tango_benchmarks, tango_main};
 
 mod common;
 
@@ -24,13 +24,10 @@ fn search_btree<T: Copy + Ord>(haystack: &impl AsRef<BTreeSet<T>>, needle: &T) -
         .copied()
 }
 
-benchmarks!(
+tango_benchmarks!(
     search_benchmarks(search_btree::<u8>),
     search_benchmarks(search_btree::<u16>),
     search_benchmarks(search_btree::<u32>),
     search_benchmarks(search_btree::<u64>)
 );
-
-pub fn main() -> tango_bench::cli::Result<ExitCode> {
-    common::main()
-}
+tango_main!(common::SETTINGS);

@@ -1,14 +1,11 @@
 #![cfg_attr(feature = "align", feature(fn_align))]
 
 use num_traits::ToPrimitive;
-use std::{cell::RefCell, process::ExitCode, rc::Rc};
+use std::{cell::RefCell, rc::Rc};
 use tango_bench::{
-    benchmark_fn, benchmarks, cli, BenchmarkMatrix, GenFunc, Generator, IntoBenchmarks,
-    MeasureTarget, MeasurementSettings, Summary,
+    benchmark_fn, generators::RandomVec, tango_benchmarks, tango_main, BenchmarkMatrix, GenFunc,
+    Generator, IntoBenchmarks, MeasureTarget, Summary,
 };
-use test_funcs::RandomVec;
-
-mod test_funcs;
 
 #[derive(Clone)]
 struct StaticValue<H, N>(
@@ -33,6 +30,8 @@ impl<H: Clone, N: Copy> Generator for StaticValue<H, N> {
     fn name(&self) -> &str {
         "StaticValue"
     }
+
+    fn sync(&mut self, _: u64) {}
 }
 
 #[cfg_attr(feature = "align", repr(align(32)))]
@@ -58,11 +57,7 @@ fn empty_benchmarks() -> impl IntoBenchmarks {
 fn generator_empty_benchmarks() -> impl IntoBenchmarks {
     let generator = StaticValue(0usize, 0usize);
     let func = |_: &usize, needle: &usize| *needle;
-    let target = GenFunc::new(
-        "_",
-        Rc::new(RefCell::new(func)),
-        Rc::new(RefCell::new(generator)),
-    );
+    let target = GenFunc::new("_", func, generator);
 
     let generator = StaticValue(Rc::new(RefCell::new(target)), ());
     BenchmarkMatrix::new(generator).add_function("measure_generator_function", |t, _| {
@@ -70,12 +65,9 @@ fn generator_empty_benchmarks() -> impl IntoBenchmarks {
     })
 }
 
-benchmarks!(
+tango_benchmarks!(
     empty_benchmarks(),
     generator_empty_benchmarks(),
     summary_benchmarks()
 );
-
-fn main() -> tango_bench::cli::Result<ExitCode> {
-    cli::run(MeasurementSettings::default())
-}
+tango_main!();

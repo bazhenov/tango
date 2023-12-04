@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 tango-bench = { path="../tango-bench" }
+rand = { version = "^0.8", features = ["small_rng"] }
 
 [dev-dependencies]
 criterion = "0.5.1"
@@ -21,4 +22,16 @@ harness = false
 
 [[bench]]
 name = "search-btree"
+harness = false
+
+[[bench]]
+name = "criterion"
+harness = false
+
+[[bench]]
+name = "tango-faster"
+harness = false
+
+[[bench]]
+name = "tango-slower"
 harness = false

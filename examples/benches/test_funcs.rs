@@ -1,47 +1,9 @@
-use rand::{rngs::SmallRng, Fill, Rng, SeedableRng};
-use std::{any::type_name, hint::black_box, marker::PhantomData, ops::Range, rc::Rc};
+use rand::{rngs::SmallRng, Rng, SeedableRng};
+use std::{hint::black_box, ops::Range, rc::Rc};
 use tango_bench::Generator;
 
 /// HTML page with a lot of chinese text to test UTF8 decoding speed
 const INPUT_TEXT: &str = include_str!("./input.txt");
-
-#[derive(Clone)]
-pub struct RandomVec<T>(SmallRng, usize, PhantomData<T>, String);
-
-impl<T> RandomVec<T> {
-    #[allow(unused)]
-    pub fn new(size: usize) -> Self {
-        Self(
-            SmallRng::seed_from_u64(42),
-            size,
-            PhantomData,
-            format!("RandomVec<{}, {}>", type_name::<T>(), size),
-        )
-    }
-}
-
-impl<T: Default + Copy> Generator for RandomVec<T>
-where
-    [T]: Fill,
-{
-    type Haystack = Vec<T>;
-    type Needle = ();
-
-    fn next_haystack(&mut self) -> Self::Haystack {
-        let RandomVec(rng, size, _, _) = self;
-        let mut v = vec![T::default(); *size];
-        rng.fill(&mut v[..]);
-        v
-    }
-
-    fn next_needle(&mut self, _haystack: &Self::Haystack) -> Self::Needle {}
-
-    fn name(&self) -> &str {
-        &self.3
-    }
-
-    fn reset(&mut self) {}
-}
 
 #[derive(Clone)]
 pub struct RandomSubstring {
@@ -92,8 +54,8 @@ impl Generator for RandomSubstring {
         from..to
     }
 
-    fn reset(&mut self) {
-        self.rng = SmallRng::seed_from_u64(42);
+    fn sync(&mut self, seed: u64) {
+        self.rng = SmallRng::seed_from_u64(seed);
     }
 }
 

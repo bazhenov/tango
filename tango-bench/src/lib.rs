@@ -1,3 +1,5 @@
+#![doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../README.md"))]
+
 use num_traits::ToPrimitive;
 use std::{
     any::type_name,
@@ -15,10 +17,11 @@ use timer::{ActiveTimer, Timer};
 
 pub mod cli;
 pub mod dylib;
+pub mod generators;
 #[cfg(target_os = "linux")]
 pub mod linux;
 
-pub const NS_TO_MS: u64 = 1_000_000;
+const NS_TO_MS: usize = 1_000_000;
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -39,8 +42,23 @@ pub enum Error {
 }
 
 /// Registers benchmark in the system
+///
+/// Macros accepts a list of functions that produce any [`IntoBenchmarks`] type. All of the benchmarks
+/// created by those functions are registered in the harness.
+///
+/// ## Example
+/// ```rust
+/// use std::time::Instant;
+/// use tango_bench::{benchmark_fn, IntoBenchmarks, tango_benchmarks};
+///
+/// fn time_benchmarks() -> impl IntoBenchmarks {
+///     [benchmark_fn("current_time", || Instant::now())]
+/// }
+///
+/// tango_benchmarks!(time_benchmarks());
+/// ```
 #[macro_export]
-macro_rules! benchmarks {
+macro_rules! tango_benchmarks {
     ($($func_expr:expr),+) => {
         #[no_mangle]
         pub fn __tango_create_benchmarks() -> Vec<Box<dyn $crate::MeasureTarget>> {
@@ -48,6 +66,32 @@ macro_rules! benchmarks {
             $(benchmarks.extend($crate::IntoBenchmarks::into_benchmarks($func_expr));)*
             benchmarks
         }
+    };
+}
+
+/// Main entrypoint for benchmarks
+///
+/// This macro generate `main()` function for the benchmark harness. Can be used in a form with providing
+/// measurement settings:
+/// ```rust
+/// use tango_bench::{tango_main, MeasurementSettings};
+///
+/// tango_main!(MeasurementSettings {
+///     samples_per_haystack: 1000,
+///     min_iterations_per_sample: 10,
+///     max_iterations_per_sample: 10_000,
+///     ..Default::default()
+/// });
+/// ```
+#[macro_export]
+macro_rules! tango_main {
+    ($settings:expr) => {
+        fn main() -> $crate::cli::Result<std::process::ExitCode> {
+            $crate::cli::run($settings)
+        }
+    };
+    () => {
+        tango_main! {$crate::MeasurementSettings::default()}
     };
 }
 
@@ -59,34 +103,43 @@ pub fn benchmark_fn<O, F: Fn() -> O + 'static>(
     Box::new(SimpleFunc { name, func })
 }
 
-pub trait MeasureTarget: Named {
+pub trait MeasureTarget {
     /// Measures the performance if the function
     ///
-    /// Returns the cumulative (all iterations) execution time with nanoseconds precision,
-    /// but not necessarily accuracy.
+    /// Returns the cumulative execution time (all iterations) with nanoseconds precision,
+    /// but not necessarily accuracy. Usually this time is get by `clock_gettime()` call or some other
+    /// platform-specific system call.
     ///
     /// This method should use the same arguments for measuring the test function unless [`next_haystack()`]
     /// method is called. Only then new set of input arguments should be generated. Although it is allowed
     /// to call this method without first calling [`next_haystack()`]. In which case first haystack should be
     /// generated automatically.
+    ///
+    /// [`next_haystack()`]: Self::next_haystack()
     fn measure(&mut self, iterations: usize) -> u64;
 
-    /// Estimates the number of iterations achievable within given number of miliseconds
+    /// Estimates the number of iterations achievable within given time.
     ///
-    /// Estimate can be an approximation. If possible the same input arguments should be used when building the
-    /// estimate. If the single call to measured function is longer than provided timespan the implementation
-    /// can return 0.
+    /// Time span is given in milliseconds (`time_ms`). Estimate can be an approximation and it is important
+    /// for implementation to be fast (in the order of 10 ms).
+    /// If possible the same input arguments should be used when building the estimate.
+    /// If the single call of a function is longer than provided timespan the implementation should return 0.
     fn estimate_iterations(&mut self, time_ms: u32) -> usize;
 
     /// Generates next haystack for the measurement
     ///
     /// Calling this method should update internal haystack used for measurement. Returns `true` if update happend,
     /// `false` if implementation doesn't support haystack generation.
+    /// Haystack/Needle distinction is described in [`Generator`] trait.
     fn next_haystack(&mut self) -> bool;
-}
 
-pub trait Named {
-    /// The name of the test function
+    /// Synchronize RNG state
+    ///
+    /// If this implementation has linked generator with RNG state, this method should delegate to
+    /// [`Generator::sync()`]
+    fn sync(&mut self, seed: u64);
+
+    /// Name of the benchmark
     fn name(&self) -> &str;
 }
 
@@ -108,48 +161,55 @@ impl<O, F: Fn() -> O> MeasureTarget for SimpleFunc<F> {
     }
 
     fn estimate_iterations(&mut self, time_ms: u32) -> usize {
-        let median = median_execution_time(self, 10) as usize;
-        time_ms as usize * 1_000_000 / median
+        let median = median_execution_time(self, 11) as usize;
+        time_ms as usize * NS_TO_MS / median
     }
 
     fn next_haystack(&mut self) -> bool {
         false
     }
-}
 
-impl<F> Named for SimpleFunc<F> {
     fn name(&self) -> &str {
         self.name
     }
+
+    fn sync(&mut self, _: u64) {}
 }
 
-pub struct GenFunc<F, G, H> {
+/// Implementation of a [`MeasureTarget`] which uses [`Generator`] to generates a new payload for a function
+/// each new sample.
+pub struct GenFunc<F, G: Generator> {
     f: Rc<RefCell<F>>,
     g: Rc<RefCell<G>>,
-    haystack: Option<H>,
+    haystack: Option<G::Haystack>,
     name: String,
 }
 
-impl<F, H, N, O, G> GenFunc<F, G, H>
+impl<F, O, G> GenFunc<F, G>
 where
-    G: Generator<Haystack = H, Needle = N>,
-    F: Fn(&H, &N) -> O,
+    G: Generator,
+    F: Fn(&G::Haystack, &G::Needle) -> O,
 {
-    pub fn new(name: &str, f: Rc<RefCell<F>>, g: Rc<RefCell<G>>) -> Self {
-        let name = format!("{}/{}", name, g.borrow().name());
+    pub fn new(name: &str, f: F, g: G) -> Self {
+        let f = Rc::new(RefCell::new(f));
+        let g = Rc::new(RefCell::new(g));
+        Self::from_ref_cell(name, f, g)
+    }
+
+    fn from_ref_cell(name: &str, f: Rc<RefCell<F>>, g: Rc<RefCell<G>>) -> Self {
         Self {
+            name: format!("{}/{}", name, g.borrow().name()),
+            haystack: None,
             f,
             g,
-            name,
-            haystack: None,
         }
     }
 }
 
-impl<F, H, N, O, G> MeasureTarget for GenFunc<F, G, H>
+impl<F, O, G> MeasureTarget for GenFunc<F, G>
 where
-    G: Generator<Haystack = H, Needle = N>,
-    F: Fn(&H, &N) -> O,
+    G: Generator,
+    F: Fn(&G::Haystack, &G::Needle) -> O,
 {
     fn measure(&mut self, iterations: usize) -> u64 {
         let mut g = self.g.borrow_mut();
@@ -171,21 +231,42 @@ where
         // Here we relying on the fact that measure() is not generating a new haystack
         // without a call to next_haystack()
         let measurements = (0..11).map(|_| self.measure(1)).collect::<Vec<_>>();
-        (time_ms as usize * 1_000_000) / median(measurements) as usize
+        (time_ms as usize * NS_TO_MS) / median(measurements) as usize
     }
 
     fn next_haystack(&mut self) -> bool {
         self.haystack = Some(self.g.borrow_mut().next_haystack());
         true
     }
-}
 
-impl<F, H, N> Named for GenFunc<F, H, N> {
     fn name(&self) -> &str {
         &self.name
     }
+
+    fn sync(&mut self, seed: u64) {
+        self.g.borrow_mut().sync(seed)
+    }
 }
 
+/// Matrix of functions is used to perform benchmark with different generator strategies
+///
+/// It is a common task to benchmark function with different payload size and/or different structure of the payload.
+/// `BenchmarkMatrix` creates a new [`MeasureTarget`] for each unique combination of [`Generator`]
+/// and tested function.
+///
+/// # Example
+/// ```rust
+/// use tango_bench::{generators::RandomVec, BenchmarkMatrix, IntoBenchmarks};
+///
+/// fn sum_positive(haystack: &Vec<u32>, _: &()) -> u32 {
+///     haystack.iter().copied().filter(|v| *v > 0).sum()
+/// }
+///
+/// fn sorting_benchmarks() -> impl IntoBenchmarks {
+///     BenchmarkMatrix::with_params([100, 1_000, 10_000], RandomVec::new)
+///         .add_function("sum_positive", sum_positive)
+/// }
+/// ```
 pub struct BenchmarkMatrix<G> {
     generators: Vec<Rc<RefCell<G>>>,
     functions: Vec<Box<dyn MeasureTarget>>,
@@ -200,6 +281,7 @@ impl<G: Generator> BenchmarkMatrix<G> {
         }
     }
 
+    /// New matrix with generator created for a given set of parameters
     pub fn with_params<P>(params: impl IntoIterator<Item = P>, generator: impl Fn(P) -> G) -> Self {
         let generators: Vec<_> = params
             .into_iter()
@@ -236,7 +318,7 @@ impl<G: Generator> BenchmarkMatrix<G> {
         self.generators
             .iter()
             .map(Rc::clone)
-            .map(|g| GenFunc::new(name, Rc::clone(&f), g))
+            .map(|g| GenFunc::from_ref_cell(name, Rc::clone(&f), g))
             .map(Box::new)
             .for_each(|f| self.functions.push(f));
         self
@@ -245,6 +327,7 @@ impl<G: Generator> BenchmarkMatrix<G> {
 
 impl<G> IntoBenchmarks for BenchmarkMatrix<G> {
     fn into_benchmarks(self) -> Vec<Box<dyn MeasureTarget>> {
+        assert!(!self.functions.is_empty(), "No functions was given");
         self.functions
     }
 }
@@ -267,40 +350,65 @@ impl IntoBenchmarks for Vec<Box<dyn MeasureTarget>> {
 
 /// Generates the payload for the benchmarking functions
 ///
-/// Generator provides two type of values to the tested functions: *haystack* and *needle*.
+/// One of the most important parts of the benchmarking process is generating the payload to test the algorithm. This /// is what this trait is doing. Test function registered in the system can accepts two arguments:
+/// - *haystack* - usually the data structure we're testing the algorithm on
+/// - *needle* - the supplementary used to test the algorithm.
 ///
 /// ## Haystack
-/// Haystack is typically some sort of a collection that is used in benchmarking.
+/// Haystack is typically some sort of a collection that is used in benchmarking. It can be quite large and
+/// expensive to generate, because it is generated once per sample or less. The frequency of haystack generation
+/// is controlled by [`MeasurementSettings::samples_per_haystack`].
 ///
 /// ## Needle
-/// Needle is some type of query that is presented to the algorithm. In case of searching algorithm, usually it is the
-/// value we search in the collection.
+/// Needle is usually some type of query that is presented to the algorithm. In case of searching algorithm it
+/// can be value we search in the collection.
 ///
-/// It might be the case that algorithm being tested is not using both type of values. In this case corresponding value
-/// type should unit type  –`()`.
+/// Important distinction between haystack and needle is that haystack generation is not included in timing while
+/// needle generation is a part of measurement loop. Therefore needle generation should be relativley lightweight.
+///
+/// Sometimes haystack generation might be so expensive that it makes sense to leave haystack fixed and provide
+/// randomness by generating different needles. For example, instead of generating new random `Vec<T>` for each sample
+/// it might be more practical to generate a single `Vec` and a new `Range<usize>` as a haystack at each iteration.
+///
+/// It might be the case that the algorithm being tested is not using both type of values.
+/// In this case corresponding value type should unit type – `()`.
+/// Depending on the type of algorithm you might not need to generate both of them. Here are some examples:
+///
+/// | Algorithm | Haystack | Needle |
+/// |----------|----------|--------|
+/// | Searching in a string | String | substrung to search for and/or range to search over |
+/// | Searching in a collection | Collection | Value to search for and/or range to search over |
+/// | Soring | Collection | – |
+/// | Numerical computation: factorial, DP problems, etc. | – | Input parameters |
+///
+/// Tango orchestrates the generating of haystack and needle and guarantees that both benchmarking
+/// functions are called with the same input parameters. Therefore performance difference is predictable.
 pub trait Generator {
     type Haystack;
     type Needle;
 
     /// Generates next random haystack for the benchmark
     ///
-    /// The number of generated haystacks is controlled by [`MeasurementSettings::samples_per_haystack`]
+    /// All iterations within sample are using the same haystack. Haystack are changed only between samples
+    /// (see. [`MeasureTarget::next_haystack()`]).
     fn next_haystack(&mut self) -> Self::Haystack;
 
-    fn next_needles(
-        &mut self,
-        haystack: &Self::Haystack,
-        size: usize,
-        needles: &mut Vec<Self::Needle>,
-    ) {
-        for _ in 0..size {
-            needles.push(self.next_needle(haystack));
-        }
-    }
-
     /// Generates next random needle for the benchmark
+    ///
+    /// This method should be relatively lightweight, because the execution time of this method is included
+    /// in reported by the benchmark time. Implementation are given haystack generated by
+    /// [`Self::next_haystack()`] which will be used for benchmark execution.
     fn next_needle(&mut self, haystack: &Self::Haystack) -> Self::Needle;
 
+    /// Syncs internal RNG-state of this generator with given seed
+    ///
+    /// For benchmarks to be predictable the harness periodically synchronize the RNG state of all the generators.
+    /// If applicable, implementations should set internal RNG state with the value derived from given `seed`.
+    /// Implementation are free to transform seed value in any meaningfull way (like taking only lower 32 bits)
+    /// as long as this transformation is deterministic.
+    fn sync(&mut self, seed: u64);
+
+    /// Name of generator
     fn name(&self) -> &str {
         let name = type_name::<Self>();
         if let Some(idx) = name.rfind("::") {
@@ -310,8 +418,6 @@ pub trait Generator {
             name
         }
     }
-
-    fn reset(&mut self) {}
 }
 
 pub trait Reporter {
@@ -347,20 +453,22 @@ pub struct MeasurementSettings {
     pub max_iterations_per_sample: usize,
 }
 
+pub const DEFAULT_SETTINGS: MeasurementSettings = MeasurementSettings {
+    max_samples: 1_000_000,
+    max_duration: Duration::from_millis(100),
+    outlier_detection_enabled: true,
+    samples_per_haystack: 1,
+    min_iterations_per_sample: 1,
+    max_iterations_per_sample: 5000,
+};
+
 impl Default for MeasurementSettings {
     fn default() -> Self {
-        Self {
-            max_samples: 1_000_000,
-            max_duration: Duration::from_millis(100),
-            outlier_detection_enabled: true,
-            samples_per_haystack: 1,
-            min_iterations_per_sample: 1,
-            max_iterations_per_sample: 5000,
-        }
+        DEFAULT_SETTINGS
     }
 }
 
-pub fn calculate_run_result<N: Into<String>>(
+pub(crate) fn calculate_run_result<N: Into<String>>(
     name: N,
     mut baseline: Vec<u64>,
     mut candidate: Vec<u64>,
@@ -460,9 +568,7 @@ pub struct RunResult {
 /// Statistical summary for a given iterator of numbers.
 ///
 /// Calculates all the information using single pass over the data. Mean and variance are calculated using
-/// streaming algorithm described in [1].
-///
-/// [1]: Art of Computer Programming, Vol 2, page 232
+/// streaming algorithm described in _Art of Computer Programming, Vol 2, page 232_.
 #[derive(Clone, Copy)]
 pub struct Summary<T> {
     pub n: usize,
@@ -744,7 +850,7 @@ mod tests {
             thread::sleep(Duration::from_millis(expected_delay))
         });
 
-        let median = median_execution_time(target.as_mut(), 10) / NS_TO_MS;
+        let median = median_execution_time(target.as_mut(), 10) / NS_TO_MS as u64;
         assert!(median < expected_delay * 10);
     }
 

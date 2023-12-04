@@ -1,3 +1,5 @@
+//! Contains functionality of a `cargo bench` harness
+
 use self::reporting::{ConsoleReporter, VerboseReporter};
 use crate::{dylib::Spi, Error, MeasurementSettings, Reporter};
 use anyhow::Context;
@@ -5,6 +7,7 @@ use clap::Parser;
 use colorz::mode::{self, Mode};
 use core::fmt;
 use libloading::Library;
+use rand::{rngs::SmallRng, SeedableRng};
 use std::{
     env::args,
     fmt::Display,
@@ -131,15 +134,17 @@ pub fn run(settings: MeasurementSettings) -> Result<ExitCode> {
                 opts.outlier_detection_enabled = false;
             }
 
+            let mut rng = SmallRng::from_entropy();
             let filter = filter.as_deref().unwrap_or("");
             for func in spi_self.tests() {
                 if !func.name.contains(filter) || spi_lib.lookup(&func.name).is_none() {
                     continue;
                 }
-                let diff = commands::pairwise_compare(
+                let diff = commands::paired_compare(
                     &spi_lib,
                     &spi_self,
                     func.name.as_str(),
+                    &mut rng,
                     &opts,
                     reporter.as_mut(),
                     path_to_dump.as_ref(),
@@ -160,6 +165,8 @@ pub fn run(settings: MeasurementSettings) -> Result<ExitCode> {
 }
 
 mod commands {
+    use rand::RngCore;
+
     use crate::calculate_run_result;
     use std::{
         fs::File,
@@ -186,10 +193,11 @@ mod commands {
     ///
     /// Returns a percentage difference in performance of two functions if this change is
     /// statistically significant
-    pub(super) fn pairwise_compare(
+    pub(super) fn paired_compare(
         a: &Spi,
         b: &Spi,
         test_name: &str,
+        rng: &mut SmallRng,
         settings: &MeasurementSettings,
         reporter: &mut dyn Reporter,
         samples_dump_path: Option<impl AsRef<Path>>,
@@ -210,6 +218,10 @@ mod commands {
         let mut a_samples = vec![];
         let mut b_samples = vec![];
 
+        let seed = rng.next_u64();
+        a.sync(a_func, seed);
+        b.sync(b_func, seed);
+
         let deadline = Instant::now() + settings.max_duration;
 
         for i in 0..settings.max_samples {
@@ -221,8 +233,8 @@ mod commands {
             }
 
             if i % settings.samples_per_haystack == 0 {
-                a.next_haystack();
-                b.next_haystack();
+                a.next_haystack(a_func);
+                b.next_haystack(b_func);
             }
 
             // !!! IMPORTANT !!!

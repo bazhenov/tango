@@ -7,97 +7,100 @@
 
 It used to be that benchmarking required a significant amount of time and numerous iterations to arrive at meaningful results, which was particularly arduous when trying to detect subtle changes, such as those within the range of a few percentage points.
 
-Introducing Tango.rs, a novel benchmarking framework that employs pairwise benchmarking to assess code performance. This approach capitalizes on the fact that it's far more efficient to measure the performance difference between two simultaneously executing functions compared to two functions executed consecutively.
+Introducing Tango.rs, a novel benchmarking framework that employs paired benchmarking to assess code performance. This approach capitalizes on the fact that it's far more efficient to measure the performance difference between two simultaneously executing functions compared to two functions executed consecutively.
+
+Features:
+
+- very high sensitivity to changes which allows to converge on results quicker than traditional (pointwise) approach. Often the fraction of a second is enough;
+- ability to compare different versions of the same code from different VCS commits (A/B-benchmarking);
 
 ## 1 second, 1 percent, 1 error
 
-Compared to traditional pointwise benchmarking, pairwise benchmarking is significantly more sensitive to changes. This heightened sensitivity enables the early detection of statistically significant performance variations.
+Compared to traditional pointwise benchmarking, paired benchmarking is significantly more sensitive to changes. This heightened sensitivity enables the early detection of statistically significant performance variations.
 
 Tango is designed to have the capability to detect a 1% change in performance within just 1 second in at least 9 out of 10 test runs.
 
-## Getting Started
+## Prerequirements
 
-Add cargo dependency:
+1. Rust and Cargo toolchain installed
+2. [`cargo-export`](https://github.com/bazhenov/cargo-export) installed
 
-```toml
-[dev-dependencies]
-tango-bench = "^0.1"
+## Getting started
 
-[[bench]]
-name = "bench"
-harness = false
-```
+1. Add cargo dependency and create new benchmark:
 
-Add `benches/bench.rs` with the following content:
+   ```toml
+   [dev-dependencies]
+   tango-bench = "^0.2"
 
-```rust
-use std::hint::black_box;
-use tango_bench::{benchmark_fn, cli, Benchmark, MeasurementSettings, StaticValue};
+   [[bench]]
+   name = "factorial"
+   harness = false
+   ```
 
-pub fn factorial(mut n: usize) -> usize {
-  let mut result = 1usize;
-  while n > 0 {
-    result = result.wrapping_mul(black_box(n));
-    n -= 1;
-  }
-  result
-}
+1. Add build script (`build.rs`) which allows benchmarks to export symbols for dynamic linking
 
-fn main() {
-  let mut benchmark = Benchmark::default();
-  benchmark.add_generator(StaticValue((), ()));
+   ```rust,ignore
+   fn main() {
+       println!("cargo:rustc-link-arg-benches=-rdynamic");
+   }
+   ```
 
-  benchmark.add_pair(
-    benchmark_fn("factorial_500", |_, _| factorial(500)),
-    benchmark_fn("factorial_495", |_, _| factorial(495)),
-  );
+1. Add `benches/factorial.rs` with the following content:
 
-  let settings = MeasurementSettings::default();
-  cli::run(benchmark, settings)
-}
-```
+   ```rust,no_run
+   use std::hint::black_box;
+   use tango_bench::{benchmark_fn, tango_benchmarks, tango_main, IntoBenchmarks};
 
-Run benchmarks with the following command:
+   pub fn factorial(mut n: usize) -> usize {
+       let mut result = 1usize;
+       while n > 0 {
+           result = result.wrapping_mul(black_box(n));
+           n -= 1;
+       }
+       result
+   }
 
-```console
-$ cargo run -- pair
-```
+   fn factorial_benchmarks() -> impl IntoBenchmarks {
+       [
+           benchmark_fn("factorial", || factorial(500)),
+       ]
+   }
 
-You will get the following result:
+   tango_benchmarks!(factorial_benchmarks());
+   tango_main!();
+   ```
 
-```console
-StaticValue     factorial_500 / factorial_495    [   392 ns ...   390 ns ]      -0.87%
-```
+1. Build and export benchmark to `target/benchmarks` directory:
+
+   ```console
+   $ cargo export target/benchmarks -- bench --bench=factorial
+   ```
+
+1. Now lets try to modify `factorial.rs` and make factorial faster :)
+
+   ```rust,ignore
+   fn factorial_benchmarks() -> impl IntoBenchmarks {
+       [
+           benchmark_fn("factorial", || factorial(495)),
+       ]
+   }
+   ```
+
+1. Now we can compare new version with already built one:
+
+   ```console
+   $ cargo bench -q --bench=factorial -- compare target/benchmarks/factorial
+   factorial             [ 375.5 ns ... 369.0 ns ]      -1.58%*
+   ```
 
 The result shows that indeed there is indeed ~1% difference between `factorial(500)` and `factorial(495)`.
 
-### Generators
-
-One of the most important parts of the benchmarking process is generating the payload to test the algorithm. This is what `Generator` trait is doing. Each test function registered in the system accepts two arguments:
-
-- haystack - usually the data structure we're testing the algorithm on
-- needle - the supplementary used to test the algorithm.
-
-Depending on the type of algorithm you might not need to generate both of them. Here are some examples:
-
-| Algorithm | Haystack | Needle |
-|----------|----------|--------|
-| Searching | Collection | Value to search for |
-| Soring | Collection | – |
-| Numerical computation: factorial, DP problems, etc. | – | Input parameters |
-
-Tango orchestrates the generating of haystack and needle and guarantees that both benchmarking functions are called with the same input parameters. Therefore performance difference is predictable.
-
-### How should I choose the baseline function?
-
-When trying to make code faster even with pointwise benchmarking it's widespread practice to use one of the following strategies:
-
-- use old code as a baseline. Therefore, both new and old algorithms should be present in the codebase while you are experimenting with performance improvements.
-- use some widespread well-known algorithm (usually from a standard library) to test your new algorithm against.
+Additional examples are available in `examples` directory.
 
 ## Contributing
 
 The project is in its early stages so any help will be appreciated. Here are some ideas you might find interesting
 
-- find a way to provide a more user friendly API for registering tested function pairs in the system
-- if you're a library author trying out tango and providing feedback will be very useful
+- find a way to provide a more user friendly API for registering functions in the system
+- if you're a library author, trying out tango and providing feedback will be very useful
