@@ -350,7 +350,7 @@ pub trait Generator {
     ///
     /// For benchmarks to be predictable the harness periodically synchronize the RNG state of all the generators.
     /// If applicable, implementations should set internal RNG state with the value derived from given `seed`.
-    /// Implementation are free to transform seed value in any meaningfull way (like takeing only lower 32 bits)
+    /// Implementation are free to transform seed value in any meaningfull way (like taking only lower 32 bits)
     /// as long as this transformation is deterministic.
     fn reset(&mut self, seed: u64);
 
