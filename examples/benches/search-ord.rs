@@ -2,8 +2,7 @@
 
 use common::{search_benchmarks, FromSortedVec};
 use ordsearch::OrderedCollection;
-use std::process::ExitCode;
-use tango_bench::benchmarks;
+use tango_bench::{tango_benchmarks, tango_main};
 
 mod common;
 
@@ -20,13 +19,10 @@ fn search_ord<T: Copy + Ord>(haystack: &impl AsRef<OrderedCollection<T>>, needle
     haystack.as_ref().find_gte(*needle).copied()
 }
 
-benchmarks!(
+tango_benchmarks!(
     search_benchmarks(search_ord::<u8>),
     search_benchmarks(search_ord::<u16>),
     search_benchmarks(search_ord::<u32>),
     search_benchmarks(search_ord::<u64>)
 );
-
-pub fn main() -> tango_bench::cli::Result<ExitCode> {
-    common::main()
-}
+tango_main!(common::SETTINGS);

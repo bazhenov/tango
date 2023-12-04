@@ -43,7 +43,7 @@ pub enum Error {
 
 /// Registers benchmark in the system
 #[macro_export]
-macro_rules! benchmarks {
+macro_rules! tango_benchmarks {
     ($($func_expr:expr),+) => {
         #[no_mangle]
         pub fn __tango_create_benchmarks() -> Vec<Box<dyn $crate::MeasureTarget>> {
@@ -51,6 +51,19 @@ macro_rules! benchmarks {
             $(benchmarks.extend($crate::IntoBenchmarks::into_benchmarks($func_expr));)*
             benchmarks
         }
+    };
+}
+
+/// Main entrypoint for benchmarks
+#[macro_export]
+macro_rules! tango_main {
+    ($settings:expr) => {
+        fn main() -> $crate::cli::Result<std::process::ExitCode> {
+            $crate::cli::run($settings)
+        }
+    };
+    () => {
+        tango_main! {$crate::MeasurementSettings::default()}
     };
 }
 
@@ -399,16 +412,18 @@ pub struct MeasurementSettings {
     pub max_iterations_per_sample: usize,
 }
 
+pub const DEFAULT_SETTINGS: MeasurementSettings = MeasurementSettings {
+    max_samples: 1_000_000,
+    max_duration: Duration::from_millis(100),
+    outlier_detection_enabled: true,
+    samples_per_haystack: 1,
+    min_iterations_per_sample: 1,
+    max_iterations_per_sample: 5000,
+};
+
 impl Default for MeasurementSettings {
     fn default() -> Self {
-        Self {
-            max_samples: 1_000_000,
-            max_duration: Duration::from_millis(100),
-            outlier_detection_enabled: true,
-            samples_per_haystack: 1,
-            min_iterations_per_sample: 1,
-            max_iterations_per_sample: 5000,
-        }
+        DEFAULT_SETTINGS
     }
 }
 

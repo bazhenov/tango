@@ -2,8 +2,10 @@
 
 extern crate tango_bench;
 
-use std::{any::type_name, convert::TryFrom, iter, marker::PhantomData, process::ExitCode};
-use tango_bench::{cli, BenchmarkMatrix, Generator, IntoBenchmarks, MeasurementSettings};
+use std::{any::type_name, convert::TryFrom, iter, marker::PhantomData};
+use tango_bench::{
+    BenchmarkMatrix, Generator, IntoBenchmarks, MeasurementSettings, DEFAULT_SETTINGS,
+};
 
 const SIZES: [usize; 14] = [
     8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4069, 8192, 16384, 32768, 65536,
@@ -128,11 +130,7 @@ where
         .into_benchmarks()
 }
 
-pub fn main() -> tango_bench::cli::Result<ExitCode> {
-    let settings = MeasurementSettings {
-        samples_per_haystack: 1_000,
-        ..Default::default()
-    };
-
-    cli::run(settings)
-}
+pub const SETTINGS: MeasurementSettings = MeasurementSettings {
+    samples_per_haystack: 1_000,
+    ..DEFAULT_SETTINGS
+};

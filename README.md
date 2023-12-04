@@ -49,8 +49,8 @@ Tango is designed to have the capability to detect a 1% change in performance wi
 1. Add `benches/factorial.rs` with the following content:
 
    ```rust,no_run
-   use std::{hint::black_box, process::ExitCode};
-   use tango_bench::{benchmark_fn, benchmarks, cli, IntoBenchmarks, MeasurementSettings};
+   use std::hint::black_box;
+   use tango_bench::{benchmark_fn, tango_benchmarks, tango_main, IntoBenchmarks, MeasurementSettings};
 
    pub fn factorial(mut n: usize) -> usize {
        let mut result = 1usize;
@@ -67,11 +67,8 @@ Tango is designed to have the capability to detect a 1% change in performance wi
        ]
    }
 
-   benchmarks!(factorial_benchmarks());
-
-   fn main() -> cli::Result<ExitCode> {
-       cli::run(MeasurementSettings::default())
-   }
+   tango_benchmarks!(factorial_benchmarks());
+   tango_main!();
    ```
 
 1. Build and export benchmark to `target/benchmarks` directory:

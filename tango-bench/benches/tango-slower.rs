@@ -1,10 +1,7 @@
 #![cfg_attr(feature = "align", feature(fn_align))]
 
 use crate::test_funcs::{factorial, sum};
-use std::process::ExitCode;
-use tango_bench::{
-    benchmark_fn, benchmarks, cli, BenchmarkMatrix, IntoBenchmarks, MeasurementSettings,
-};
+use tango_bench::{benchmark_fn, tango_benchmarks, tango_main, BenchmarkMatrix, IntoBenchmarks};
 use test_funcs::{sort_stable, str_count_rev, str_take, RandomSubstring, RandomVec};
 
 mod test_funcs;
@@ -27,8 +24,5 @@ fn vec_benchmarks() -> impl IntoBenchmarks {
         .add_function("sort", sort_stable)
 }
 
-benchmarks!(str_benchmarks(), num_benchmarks(), vec_benchmarks());
-
-fn main() -> tango_bench::cli::Result<ExitCode> {
-    cli::run(MeasurementSettings::default())
-}
+tango_benchmarks!(str_benchmarks(), num_benchmarks(), vec_benchmarks());
+tango_main!();

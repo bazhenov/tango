@@ -12,7 +12,7 @@ mod test_funcs;
 /// module tango_bench::cli is not used.
 #[cfg(target_os = "linux")]
 mod linker_fix {
-    tango_bench::benchmarks!([]);
+    tango_bench::tango_benchmarks!([]);
 }
 
 fn sum_benchmark(c: &mut Criterion) {
