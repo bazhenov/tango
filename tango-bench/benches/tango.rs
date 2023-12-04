@@ -33,6 +33,8 @@ impl<H: Clone, N: Copy> Generator for StaticValue<H, N> {
     fn name(&self) -> &str {
         "StaticValue"
     }
+
+    fn reset(&mut self, _: u64) {}
 }
 
 #[cfg_attr(feature = "align", repr(align(32)))]

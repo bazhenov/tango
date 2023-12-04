@@ -40,7 +40,9 @@ where
         &self.3
     }
 
-    fn reset(&mut self) {}
+    fn reset(&mut self, seed: u64) {
+        self.0 = SmallRng::seed_from_u64(seed);
+    }
 }
 
 #[derive(Clone)]
@@ -92,8 +94,8 @@ impl Generator for RandomSubstring {
         from..to
     }
 
-    fn reset(&mut self) {
-        self.rng = SmallRng::seed_from_u64(42);
+    fn reset(&mut self, seed: u64) {
+        self.rng = SmallRng::seed_from_u64(seed);
     }
 }
 

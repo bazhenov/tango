@@ -73,7 +73,13 @@ impl<'l> Spi<'l> {
         self.vt.estimate_iterations(time_ms)
     }
 
-    pub(crate) fn next_haystack(&self) -> bool {
+    pub(crate) fn reset(&self, func: &NamedFunction, seed: u64) {
+        self.vt.select(func.idx);
+        self.vt.reset(seed)
+    }
+
+    pub(crate) fn next_haystack(&self, func: &NamedFunction) -> bool {
+        self.vt.select(func.idx);
         self.vt.next_haystack()
     }
 }
@@ -113,6 +119,7 @@ mod ffi {
     type RunFn = unsafe extern "C" fn(usize) -> u64;
     type EstimateIterationsFn = unsafe extern "C" fn(u32) -> usize;
     type NextHaystackFn = unsafe extern "C" fn() -> bool;
+    type ResetFn = unsafe extern "C" fn(u64);
     type FreeFn = unsafe extern "C" fn();
 
     /// This block of constants is checking that all exported tango functions are of valid type according to the API.
@@ -127,6 +134,7 @@ mod ffi {
         const TANGO_GET_TEST_NAME: GetTestNameFn = tango_get_test_name;
         const TANGO_RUN: RunFn = tango_run;
         const TANGO_ESTIMATE_ITERATIONS: EstimateIterationsFn = tango_estimate_iterations;
+        const TANGO_RESET: ResetFn = tango_reset;
         const TANGO_FREE: FreeFn = tango_free;
     }
 
@@ -200,6 +208,13 @@ mod ffi {
     }
 
     #[no_mangle]
+    unsafe extern "C" fn tango_reset(seed: u64) {
+        if let Some(s) = STATE.as_mut() {
+            s.selected_mut().reset(seed)
+        }
+    }
+
+    #[no_mangle]
     unsafe extern "C" fn tango_free() {
         STATE.take();
     }
@@ -212,6 +227,7 @@ mod ffi {
         fn run(&self, iterations: usize) -> u64;
         fn estimate_iterations(&self, time_ms: u32) -> usize;
         fn next_haystack(&self) -> bool;
+        fn reset(&self, seed: u64);
     }
 
     pub(super) static mut SELF_SPI: Option<SelfVTable> = Some(SelfVTable);
@@ -251,6 +267,10 @@ mod ffi {
         fn next_haystack(&self) -> bool {
             unsafe { tango_next_haystack() }
         }
+
+        fn reset(&self, seed: u64) {
+            unsafe { tango_reset(seed) }
+        }
     }
 
     impl Drop for SelfVTable {
@@ -269,7 +289,26 @@ mod ffi {
         run_fn: Symbol<'l, RunFn>,
         estimate_iterations_fn: Symbol<'l, EstimateIterationsFn>,
         next_haystack_fn: Symbol<'l, NextHaystackFn>,
+        reset_fn: Symbol<'l, ResetFn>,
         free_fn: Symbol<'l, FreeFn>,
+    }
+
+    impl<'l> LibraryVTable<'l> {
+        pub(super) fn new(library: &'l Library) -> Result<Self, Error> {
+            unsafe {
+                Ok(Self {
+                    init_fn: lookup_symbol(library, "tango_init")?,
+                    count_fn: lookup_symbol(library, "tango_count")?,
+                    select_fn: lookup_symbol(library, "tango_select")?,
+                    get_test_name_fn: lookup_symbol(library, "tango_get_test_name")?,
+                    run_fn: lookup_symbol(library, "tango_run")?,
+                    estimate_iterations_fn: lookup_symbol(library, "tango_estimate_iterations")?,
+                    next_haystack_fn: lookup_symbol(library, "tango_next_haystack")?,
+                    reset_fn: lookup_symbol(library, "tango_reset")?,
+                    free_fn: lookup_symbol(library, "tango_free")?,
+                })
+            }
+        }
     }
 
     impl<'l> VTable for LibraryVTable<'l> {
@@ -300,28 +339,15 @@ mod ffi {
         fn next_haystack(&self) -> bool {
             unsafe { (self.next_haystack_fn)() }
         }
+
+        fn reset(&self, seed: u64) {
+            unsafe { (self.reset_fn)(seed) }
+        }
     }
 
     impl<'l> Drop for LibraryVTable<'l> {
         fn drop(&mut self) {
             unsafe { (self.free_fn)() }
-        }
-    }
-
-    impl<'l> LibraryVTable<'l> {
-        pub(super) fn new(library: &'l Library) -> Result<Self, Error> {
-            unsafe {
-                Ok(Self {
-                    init_fn: lookup_symbol(library, "tango_init")?,
-                    count_fn: lookup_symbol(library, "tango_count")?,
-                    select_fn: lookup_symbol(library, "tango_select")?,
-                    get_test_name_fn: lookup_symbol(library, "tango_get_test_name")?,
-                    run_fn: lookup_symbol(library, "tango_run")?,
-                    estimate_iterations_fn: lookup_symbol(library, "tango_estimate_iterations")?,
-                    next_haystack_fn: lookup_symbol(library, "tango_next_haystack")?,
-                    free_fn: lookup_symbol(library, "tango_free")?,
-                })
-            }
         }
     }
 

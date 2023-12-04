@@ -16,7 +16,7 @@ Features:
 
 ## 1 second, 1 percent, 1 error
 
-Compared to traditional pointwise benchmarking, pairwise benchmarking is significantly more sensitive to changes. This heightened sensitivity enables the early detection of statistically significant performance variations.
+Compared to traditional pointwise benchmarking, paired benchmarking is significantly more sensitive to changes. This heightened sensitivity enables the early detection of statistically significant performance variations.
 
 Tango is designed to have the capability to detect a 1% change in performance within just 1 second in at least 9 out of 10 test runs.
 

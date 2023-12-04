@@ -73,8 +73,8 @@ where
         self.rng.next(sample.max_value + 1)
     }
 
-    fn reset(&mut self) {
-        self.rng = Lcg(0);
+    fn reset(&mut self, seed: u64) {
+        self.rng = Lcg(seed as usize);
     }
 }
 
