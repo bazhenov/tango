@@ -219,8 +219,8 @@ mod commands {
         let mut b_samples = vec![];
 
         let seed = rng.next_u64();
-        a.reset(a_func, seed);
-        b.reset(b_func, seed);
+        a.sync(a_func, seed);
+        b.sync(b_func, seed);
 
         let deadline = Instant::now() + settings.max_duration;
 

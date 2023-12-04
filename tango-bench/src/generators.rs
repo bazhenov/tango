@@ -29,7 +29,7 @@ impl Generator for RandomVec {
         todo!()
     }
 
-    fn reset(&mut self, seed: u64) {
+    fn sync(&mut self, seed: u64) {
         self.rng = SmallRng::seed_from_u64(seed)
     }
 }

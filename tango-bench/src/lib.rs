@@ -133,7 +133,11 @@ pub trait MeasureTarget {
     /// Haystack/Needle distinction is described in [`Generator`] trait.
     fn next_haystack(&mut self) -> bool;
 
-    fn reset(&mut self, seed: u64);
+    /// Synchronize RNG state
+    ///
+    /// If this implementation has linked generator with RNG state, this method should delegate to
+    /// [`Generator::sync()`]
+    fn sync(&mut self, seed: u64);
 
     /// Name of the benchmark
     fn name(&self) -> &str;
@@ -169,7 +173,7 @@ impl<O, F: Fn() -> O> MeasureTarget for SimpleFunc<F> {
         self.name
     }
 
-    fn reset(&mut self, _: u64) {}
+    fn sync(&mut self, _: u64) {}
 }
 
 /// Implementation of a [`MeasureTarget`] which uses [`Generator`] to generates a new payload for a function
@@ -239,8 +243,8 @@ where
         &self.name
     }
 
-    fn reset(&mut self, seed: u64) {
-        self.g.borrow_mut().reset(seed)
+    fn sync(&mut self, seed: u64) {
+        self.g.borrow_mut().sync(seed)
     }
 }
 
@@ -396,13 +400,13 @@ pub trait Generator {
     /// [`Self::next_haystack()`] which will be used for benchmark execution.
     fn next_needle(&mut self, haystack: &Self::Haystack) -> Self::Needle;
 
-    /// Resets internal RNG-state of this generator with given seed
+    /// Syncs internal RNG-state of this generator with given seed
     ///
     /// For benchmarks to be predictable the harness periodically synchronize the RNG state of all the generators.
     /// If applicable, implementations should set internal RNG state with the value derived from given `seed`.
     /// Implementation are free to transform seed value in any meaningfull way (like taking only lower 32 bits)
     /// as long as this transformation is deterministic.
-    fn reset(&mut self, seed: u64);
+    fn sync(&mut self, seed: u64);
 
     /// Name of generator
     fn name(&self) -> &str {
@@ -464,7 +468,7 @@ impl Default for MeasurementSettings {
     }
 }
 
-pub fn calculate_run_result<N: Into<String>>(
+pub(crate) fn calculate_run_result<N: Into<String>>(
     name: N,
     mut baseline: Vec<u64>,
     mut candidate: Vec<u64>,

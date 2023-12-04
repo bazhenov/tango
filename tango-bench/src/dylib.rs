@@ -73,9 +73,9 @@ impl<'l> Spi<'l> {
         self.vt.estimate_iterations(time_ms)
     }
 
-    pub(crate) fn reset(&self, func: &NamedFunction, seed: u64) {
+    pub(crate) fn sync(&self, func: &NamedFunction, seed: u64) {
         self.vt.select(func.idx);
-        self.vt.reset(seed)
+        self.vt.sync(seed)
     }
 
     pub(crate) fn next_haystack(&self, func: &NamedFunction) -> bool {
@@ -119,7 +119,7 @@ mod ffi {
     type RunFn = unsafe extern "C" fn(usize) -> u64;
     type EstimateIterationsFn = unsafe extern "C" fn(u32) -> usize;
     type NextHaystackFn = unsafe extern "C" fn() -> bool;
-    type ResetFn = unsafe extern "C" fn(u64);
+    type SyncFn = unsafe extern "C" fn(u64);
     type FreeFn = unsafe extern "C" fn();
 
     /// This block of constants is checking that all exported tango functions are of valid type according to the API.
@@ -134,7 +134,7 @@ mod ffi {
         const TANGO_GET_TEST_NAME: GetTestNameFn = tango_get_test_name;
         const TANGO_RUN: RunFn = tango_run;
         const TANGO_ESTIMATE_ITERATIONS: EstimateIterationsFn = tango_estimate_iterations;
-        const TANGO_RESET: ResetFn = tango_reset;
+        const TANGO_SYNC: SyncFn = tango_sync;
         const TANGO_FREE: FreeFn = tango_free;
     }
 
@@ -208,9 +208,9 @@ mod ffi {
     }
 
     #[no_mangle]
-    unsafe extern "C" fn tango_reset(seed: u64) {
+    unsafe extern "C" fn tango_sync(seed: u64) {
         if let Some(s) = STATE.as_mut() {
-            s.selected_mut().reset(seed)
+            s.selected_mut().sync(seed)
         }
     }
 
@@ -227,7 +227,7 @@ mod ffi {
         fn run(&self, iterations: usize) -> u64;
         fn estimate_iterations(&self, time_ms: u32) -> usize;
         fn next_haystack(&self) -> bool;
-        fn reset(&self, seed: u64);
+        fn sync(&self, seed: u64);
     }
 
     pub(super) static mut SELF_SPI: Option<SelfVTable> = Some(SelfVTable);
@@ -268,8 +268,8 @@ mod ffi {
             unsafe { tango_next_haystack() }
         }
 
-        fn reset(&self, seed: u64) {
-            unsafe { tango_reset(seed) }
+        fn sync(&self, seed: u64) {
+            unsafe { tango_sync(seed) }
         }
     }
 
@@ -289,7 +289,7 @@ mod ffi {
         run_fn: Symbol<'l, RunFn>,
         estimate_iterations_fn: Symbol<'l, EstimateIterationsFn>,
         next_haystack_fn: Symbol<'l, NextHaystackFn>,
-        reset_fn: Symbol<'l, ResetFn>,
+        sync_fn: Symbol<'l, SyncFn>,
         free_fn: Symbol<'l, FreeFn>,
     }
 
@@ -304,7 +304,7 @@ mod ffi {
                     run_fn: lookup_symbol(library, "tango_run")?,
                     estimate_iterations_fn: lookup_symbol(library, "tango_estimate_iterations")?,
                     next_haystack_fn: lookup_symbol(library, "tango_next_haystack")?,
-                    reset_fn: lookup_symbol(library, "tango_reset")?,
+                    sync_fn: lookup_symbol(library, "tango_sync")?,
                     free_fn: lookup_symbol(library, "tango_free")?,
                 })
             }
@@ -340,8 +340,8 @@ mod ffi {
             unsafe { (self.next_haystack_fn)() }
         }
 
-        fn reset(&self, seed: u64) {
-            unsafe { (self.reset_fn)(seed) }
+        fn sync(&self, seed: u64) {
+            unsafe { (self.sync_fn)(seed) }
         }
     }
 

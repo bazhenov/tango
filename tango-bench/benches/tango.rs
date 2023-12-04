@@ -34,7 +34,7 @@ impl<H: Clone, N: Copy> Generator for StaticValue<H, N> {
         "StaticValue"
     }
 
-    fn reset(&mut self, _: u64) {}
+    fn sync(&mut self, _: u64) {}
 }
 
 #[cfg_attr(feature = "align", repr(align(32)))]
