@@ -421,7 +421,7 @@ pub trait Generator {
 }
 
 pub trait Reporter {
-    fn on_complete(&mut self, _results: &RunResult) {}
+    fn on_complete(&mut self, results: &RunResult);
 }
 
 /// Describes basic settings for the benchmarking process

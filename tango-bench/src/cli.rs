@@ -50,6 +50,10 @@ enum BenchmarkMode {
         #[arg(short = 'f', long = "filter")]
         filter: Option<String>,
 
+        // report only statistically significant results
+        #[arg(short = 'g', long = "significant-only", default_value_t = false)]
+        significant_only: bool,
+
         /// disable outlier detection
         #[arg(short = 'o', long = "no-outliers")]
         skip_outlier_detection: bool,
@@ -105,6 +109,7 @@ pub fn run(settings: MeasurementSettings) -> Result<ExitCode> {
             path_to_dump,
             fail_threshold,
             bench_flags: _,
+            significant_only,
         } => {
             let mut reporter: Box<dyn Reporter> = if verbose {
                 Box::<VerboseReporter>::default()
@@ -138,25 +143,35 @@ pub fn run(settings: MeasurementSettings) -> Result<ExitCode> {
             let mut rng = SmallRng::from_entropy();
             let filter = filter.as_deref().unwrap_or("");
             for func in spi_self.tests() {
-                if !glob_match(filter, &func.name) || spi_lib.lookup(&func.name).is_none() {
+                if spi_lib.lookup(&func.name).is_none() {
                     continue;
                 }
-                let diff = commands::paired_compare(
+                if !filter.is_empty() && !glob_match(filter, &func.name) {
+                    continue;
+                }
+                let result = commands::paired_compare(
                     &spi_lib,
                     &spi_self,
                     func.name.as_str(),
                     &mut rng,
                     &opts,
-                    reporter.as_mut(),
                     path_to_dump.as_ref(),
                 )?;
-                if let Some((diff, threshold)) = diff.zip(fail_threshold) {
-                    if diff >= threshold {
-                        eprintln!(
-                            "[ERROR] Performance regressed {:+.1}% >= {:.1}%  -  test: {}",
-                            diff, threshold, func.name
-                        );
-                        return Ok(ExitCode::FAILURE);
+
+                if result.significant || !significant_only {
+                    reporter.on_complete(&result);
+                }
+
+                if result.significant {
+                    if let Some(threshold) = fail_threshold {
+                        let diff = result.diff.mean / result.baseline.mean * 100.;
+                        if diff >= threshold {
+                            eprintln!(
+                                "[ERROR] Performance regressed {:+.1}% >= {:.1}%  -  test: {}",
+                                diff, threshold, func.name
+                            );
+                            return Ok(ExitCode::FAILURE);
+                        }
                     }
                 }
             }
@@ -168,7 +183,7 @@ pub fn run(settings: MeasurementSettings) -> Result<ExitCode> {
 mod commands {
     use rand::RngCore;
 
-    use crate::calculate_run_result;
+    use crate::{calculate_run_result, RunResult};
     use std::{
         fs::File,
         io::{self, BufWriter, Write as _},
@@ -200,9 +215,8 @@ mod commands {
         test_name: &str,
         rng: &mut SmallRng,
         settings: &MeasurementSettings,
-        reporter: &mut dyn Reporter,
         samples_dump_path: Option<impl AsRef<Path>>,
-    ) -> Result<Option<f64>> {
+    ) -> Result<RunResult> {
         let a_func = a.lookup(test_name).expect("Invalid test name given");
         let b_func = b.lookup(test_name).expect("Invalid test name given");
 
@@ -274,21 +288,13 @@ mod commands {
                 .context("Unable to write raw measurements")?;
         }
 
-        let result = calculate_run_result(
+        Ok(calculate_run_result(
             test_name,
             a_samples,
             b_samples,
             iterations,
             settings.outlier_detection_enabled,
-        )?;
-
-        reporter.on_complete(&result);
-
-        if result.significant {
-            Ok(Some(result.diff.mean / result.baseline.mean * 100.))
-        } else {
-            Ok(None)
-        }
+        )?)
     }
 
     fn write_raw_measurements<T: Display>(
