@@ -7,7 +7,12 @@
 
 It used to be that benchmarking required a significant amount of time and numerous iterations to arrive at meaningful results, which was particularly arduous when trying to detect subtle changes, such as those within the range of a few percentage points.
 
-Introducing Tango.rs, a novel benchmarking framework that employs pairwise benchmarking to assess code performance. This approach capitalizes on the fact that it's far more efficient to measure the performance difference between two simultaneously executing functions compared to two functions executed consecutively.
+Introducing Tango.rs, a novel benchmarking framework that employs paired benchmarking to assess code performance. This approach capitalizes on the fact that it's far more efficient to measure the performance difference between two simultaneously executing functions compared to two functions executed consecutively.
+
+Features:
+
+- very high sensitivity to changes which allows to converge on results quicker than traditional (pointwise) approach. Often the fraction of a second is enough;
+- ability to test different versions of the same code from different VCS commits (A/B-benchmarking);
 
 ## 1 second, 1 percent, 1 error
 
@@ -17,18 +22,23 @@ Tango is designed to have the capability to detect a 1% change in performance wi
 
 ## Getting Started
 
-Add cargo dependency:
+### Prerequirements
+
+1. Rust and Cargo toolchain installed
+2. [`cargo-export`](https://github.com/bazhenov/cargo-export) installed
+
+Add cargo dependency and create new benchmark:
 
 ```toml
 [dev-dependencies]
-tango-bench = "^0.1"
+tango-bench = "^0.2"
 
 [[bench]]
-name = "bench"
+name = "factorial"
 harness = false
 ```
 
-Add `benches/bench.rs` with the following content:
+Add `benches/factorial.rs` with the following content:
 
 ```rust,no_run
 use std::{hint::black_box, process::ExitCode};
@@ -45,8 +55,7 @@ pub fn factorial(mut n: usize) -> usize {
 
 fn factorial_benchmarks() -> impl IntoBenchmarks {
     [
-        benchmark_fn("factorial_500", || factorial(500)),
-        benchmark_fn("factorial_495", || factorial(495)),
+        benchmark_fn("factorial", || factorial(500)),
     ]
 }
 
@@ -57,19 +66,32 @@ fn main() -> cli::Result<ExitCode> {
 }
 ```
 
-Run benchmarks with the following command:
+Build and export benchmark to `target/benchmarks` directory:
 
 ```console
-$ cargo run -- pair
+$ cargo export target/benchmarks -- bench --bench=factorial
 ```
 
-You will get the following result:
+Now lets try to modify `factorial.rs` and make factorial faster :)
+
+```rust,no_run
+fn factorial_benchmarks() -> impl IntoBenchmarks {
+    [
+        benchmark_fn("factorial", || factorial(495)),
+    ]
+}
+```
+
+Now we can compare new version with already built one:
 
 ```console
-StaticValue     factorial_500 / factorial_495    [   392 ns ...   390 ns ]      -0.87%
+$ cargo bench -q --bench=factorial -- compare target/benchmarks/factorial
+factorial             [ 375.5 ns ... 369.0 ns ]      -1.58%*
 ```
 
 The result shows that indeed there is indeed ~1% difference between `factorial(500)` and `factorial(495)`.
+
+Additional examples are available in `examples` directory.
 
 ### Generators
 
@@ -82,22 +104,17 @@ Depending on the type of algorithm you might not need to generate both of them. 
 
 | Algorithm | Haystack | Needle |
 |----------|----------|--------|
-| Searching | Collection | Value to search for |
+| Searching | Collection/String | Value to search for and/or range to search over |
 | Soring | Collection | – |
 | Numerical computation: factorial, DP problems, etc. | – | Input parameters |
 
+Important distinction between haystack and needle is that haystack generation is not included in timing while needle generation is part of measurement loop. Therefore needle generation should be relativley lightweight.
+
 Tango orchestrates the generating of haystack and needle and guarantees that both benchmarking functions are called with the same input parameters. Therefore performance difference is predictable.
-
-### How should I choose the baseline function?
-
-When trying to make code faster even with pointwise benchmarking it's widespread practice to use one of the following strategies:
-
-- use old code as a baseline. Therefore, both new and old algorithms should be present in the codebase while you are experimenting with performance improvements.
-- use some widespread well-known algorithm (usually from a standard library) to test your new algorithm against.
 
 ## Contributing
 
 The project is in its early stages so any help will be appreciated. Here are some ideas you might find interesting
 
-- find a way to provide a more user friendly API for registering tested function pairs in the system
-- if you're a library author trying out tango and providing feedback will be very useful
+- find a way to provide a more user friendly API for registering functions in the system
+- if you're a library author, trying out tango and providing feedback will be very useful
