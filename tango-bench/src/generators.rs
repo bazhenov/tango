@@ -1,35 +1,44 @@
+use std::{any::type_name, marker::PhantomData};
+
 use crate::Generator;
-use rand::{rngs::SmallRng, Rng, SeedableRng};
+use rand::{rngs::SmallRng, Fill, Rng, SeedableRng};
 
-pub struct RandomVec {
-    size: usize,
-    rng: SmallRng,
-}
+#[derive(Clone)]
+pub struct RandomVec<T>(SmallRng, usize, PhantomData<T>, String);
 
-impl RandomVec {
+impl<T> RandomVec<T> {
+    #[allow(unused)]
     pub fn new(size: usize) -> Self {
-        Self {
+        Self(
+            SmallRng::seed_from_u64(42),
             size,
-            rng: SmallRng::from_entropy(),
-        }
+            PhantomData,
+            format!("RandomVec<{}, {}>", type_name::<T>(), size),
+        )
     }
 }
 
-impl Generator for RandomVec {
-    type Haystack = Vec<u32>;
+impl<T: Default + Copy> Generator for RandomVec<T>
+where
+    [T]: Fill,
+{
+    type Haystack = Vec<T>;
     type Needle = ();
 
     fn next_haystack(&mut self) -> Self::Haystack {
-        let mut v = vec![0; self.size];
-        self.rng.fill(&mut v[..]);
+        let RandomVec(rng, size, _, _) = self;
+        let mut v = vec![T::default(); *size];
+        rng.fill(&mut v[..]);
         v
     }
 
-    fn next_needle(&mut self, _: &Self::Haystack) -> Self::Needle {
-        todo!()
+    fn next_needle(&mut self, _haystack: &Self::Haystack) -> Self::Needle {}
+
+    fn name(&self) -> &str {
+        &self.3
     }
 
     fn sync(&mut self, seed: u64) {
-        self.rng = SmallRng::seed_from_u64(seed)
+        self.0 = SmallRng::seed_from_u64(seed);
     }
 }

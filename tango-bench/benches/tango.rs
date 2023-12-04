@@ -3,12 +3,9 @@
 use num_traits::ToPrimitive;
 use std::{cell::RefCell, rc::Rc};
 use tango_bench::{
-    benchmark_fn, tango_benchmarks, tango_main, BenchmarkMatrix, GenFunc, Generator,
-    IntoBenchmarks, MeasureTarget, Summary,
+    benchmark_fn, generators::RandomVec, tango_benchmarks, tango_main, BenchmarkMatrix, GenFunc,
+    Generator, IntoBenchmarks, MeasureTarget, Summary,
 };
-use test_funcs::RandomVec;
-
-mod test_funcs;
 
 #[derive(Clone)]
 struct StaticValue<H, N>(
