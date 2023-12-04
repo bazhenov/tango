@@ -6,6 +6,7 @@ use anyhow::Context;
 use clap::Parser;
 use colorz::mode::{self, Mode};
 use core::fmt;
+use glob_match::glob_match;
 use libloading::Library;
 use rand::{rngs::SmallRng, SeedableRng};
 use std::{
@@ -137,7 +138,7 @@ pub fn run(settings: MeasurementSettings) -> Result<ExitCode> {
             let mut rng = SmallRng::from_entropy();
             let filter = filter.as_deref().unwrap_or("");
             for func in spi_self.tests() {
-                if !func.name.contains(filter) || spi_lib.lookup(&func.name).is_none() {
+                if !glob_match(filter, &func.name) || spi_lib.lookup(&func.name).is_none() {
                     continue;
                 }
                 let diff = commands::paired_compare(

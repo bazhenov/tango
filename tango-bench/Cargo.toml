@@ -15,6 +15,7 @@ keywords = ["benchmarks", "performance"]
 anyhow = "^1.0"
 clap = { version = "^4.4", features = ["derive"] }
 colorz = { version = "^1.1", features = ["supports-color"] }
+glob-match = "^0.2"
 libloading = "^0.8"
 num-traits = "^0.2"
 rand = { version = "^0.8", features = ["small_rng"] }

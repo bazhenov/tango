@@ -35,9 +35,9 @@ where
     pub fn new(size: usize, value_dup_factor: usize) -> Self {
         let type_name = type_name::<C::Item>();
         let name = if value_dup_factor > 1 {
-            format!("<{}, {}, dup-{}>", type_name, size, value_dup_factor)
+            format!("{}/{}/dup-{}", type_name, size, value_dup_factor)
         } else {
-            format!("<{}, {}>", type_name, size)
+            format!("{}/{}/nodup", type_name, size)
         };
 
         Self {

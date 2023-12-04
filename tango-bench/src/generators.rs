@@ -13,7 +13,7 @@ impl<T> RandomVec<T> {
             SmallRng::seed_from_u64(42),
             size,
             PhantomData,
-            format!("RandomVec<{}, {}>", type_name::<T>(), size),
+            format!("{}/{}", type_name::<T>(), size),
         )
     }
 }
