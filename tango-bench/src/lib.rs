@@ -62,7 +62,7 @@ pub fn benchmark_fn<O, F: Fn() -> O + 'static>(
     Box::new(SimpleFunc { name, func })
 }
 
-pub trait MeasureTarget: Named {
+pub trait MeasureTarget {
     /// Measures the performance if the function
     ///
     /// Returns the cumulative execution time (all iterations) with nanoseconds precision,
@@ -91,10 +91,7 @@ pub trait MeasureTarget: Named {
     /// `false` if implementation doesn't support haystack generation.
     /// Haystack/Needle distinction is described in [`Generator`] trait.
     fn next_haystack(&mut self) -> bool;
-}
 
-pub trait Named {
-    /// The name of the test function
     fn name(&self) -> &str;
 }
 
@@ -123,9 +120,7 @@ impl<O, F: Fn() -> O> MeasureTarget for SimpleFunc<F> {
     fn next_haystack(&mut self) -> bool {
         false
     }
-}
 
-impl<F> Named for SimpleFunc<F> {
     fn name(&self) -> &str {
         self.name
     }
@@ -186,9 +181,7 @@ where
         self.haystack = Some(self.g.borrow_mut().next_haystack());
         true
     }
-}
 
-impl<F, H, N> Named for GenFunc<F, H, N> {
     fn name(&self) -> &str {
         &self.name
     }
