@@ -441,7 +441,7 @@ pub trait Reporter {
 pub struct MeasurementSettings {
     pub max_samples: usize,
     pub max_duration: Duration,
-    pub outlier_detection_enabled: bool,
+    pub filter_outliers: bool,
 
     /// The number of samples per one generated haystack
     pub samples_per_haystack: usize,
@@ -456,7 +456,7 @@ pub struct MeasurementSettings {
 pub const DEFAULT_SETTINGS: MeasurementSettings = MeasurementSettings {
     max_samples: 1_000_000,
     max_duration: Duration::from_millis(100),
-    outlier_detection_enabled: true,
+    filter_outliers: false,
     samples_per_haystack: 1,
     min_iterations_per_sample: 1,
     max_iterations_per_sample: 5000,

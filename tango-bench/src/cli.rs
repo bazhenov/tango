@@ -55,8 +55,8 @@ enum BenchmarkMode {
         significant_only: bool,
 
         /// disable outlier detection
-        #[arg(short = 'o', long = "no-outliers")]
-        skip_outlier_detection: bool,
+        #[arg(short = 'o', long = "filter-outliers")]
+        filter_outliers: bool,
 
         #[arg(short = 'v', long = "verbose", default_value_t = false)]
         verbose: bool,
@@ -105,7 +105,7 @@ pub fn run(settings: MeasurementSettings) -> Result<ExitCode> {
             filter,
             samples,
             time,
-            skip_outlier_detection,
+            filter_outliers,
             path_to_dump,
             fail_threshold,
             bench_flags: _,
@@ -136,9 +136,7 @@ pub fn run(settings: MeasurementSettings) -> Result<ExitCode> {
             if let Some(millis) = time {
                 opts.max_duration = Duration::from_millis(millis.into());
             }
-            if skip_outlier_detection {
-                opts.outlier_detection_enabled = false;
-            }
+            opts.filter_outliers = filter_outliers;
 
             let mut rng = SmallRng::from_entropy();
             let filter = filter.as_deref().unwrap_or("");
@@ -293,7 +291,7 @@ mod commands {
             a_samples,
             b_samples,
             iterations,
-            settings.outlier_detection_enabled,
+            settings.filter_outliers,
         )?)
     }
 
