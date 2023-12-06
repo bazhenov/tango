@@ -2,7 +2,7 @@
 
 use self::reporting::{ConsoleReporter, VerboseReporter};
 use crate::{dylib::Spi, Error, MeasurementSettings, Reporter};
-use anyhow::Context;
+use anyhow::{bail, Context};
 use clap::Parser;
 use colorz::mode::{self, Mode};
 use core::fmt;
@@ -12,11 +12,11 @@ use rand::{rngs::SmallRng, SeedableRng};
 use std::{
     env::args,
     fmt::Display,
-    num::{NonZeroU64, NonZeroUsize},
+    num::NonZeroUsize,
     path::PathBuf,
     process::ExitCode,
     str::FromStr,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 pub type Result<T> = anyhow::Result<T>;
@@ -42,7 +42,7 @@ enum BenchmarkMode {
         samples: Option<NonZeroUsize>,
 
         #[arg(short = 't', long = "time")]
-        time: Option<NonZeroU64>,
+        time: Option<f64>,
 
         #[arg(long = "fail-threshold")]
         fail_threshold: Option<f64>,
@@ -129,14 +129,16 @@ pub fn run(settings: MeasurementSettings) -> Result<ExitCode> {
             let spi_lib = Spi::for_library(&lib)?;
             let spi_self = Spi::for_self().ok_or(Error::SpiSelfWasMoved)??;
 
-            let mut opts = settings;
-            if let Some(samples) = samples {
-                opts.max_samples = samples.into()
-            }
-            if let Some(millis) = time {
-                opts.max_duration = Duration::from_millis(millis.into());
-            }
-            opts.filter_outliers = filter_outliers;
+            let mut settings = settings;
+
+            let loop_mode = match (samples, time) {
+                (Some(samples), None) => LoopMode::Samples(samples.into()),
+                (None, Some(time)) => LoopMode::Time(Duration::from_millis((time * 1000.) as u64)),
+                (None, None) => LoopMode::Time(Duration::from_millis(100)),
+                (Some(_), Some(_)) => bail!("-t and -s are mutually exclusive"),
+            };
+
+            settings.filter_outliers = filter_outliers;
 
             let mut rng = SmallRng::from_entropy();
             let filter = filter.as_deref().unwrap_or("");
@@ -152,7 +154,8 @@ pub fn run(settings: MeasurementSettings) -> Result<ExitCode> {
                     &spi_self,
                     func.name.as_str(),
                     &mut rng,
-                    &opts,
+                    &settings,
+                    loop_mode,
                     path_to_dump.as_ref(),
                 )?;
 
@@ -174,6 +177,30 @@ pub fn run(settings: MeasurementSettings) -> Result<ExitCode> {
                 }
             }
             Ok(ExitCode::SUCCESS)
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum LoopMode {
+    Samples(usize),
+    Time(Duration),
+}
+
+impl LoopMode {
+    fn should_continue(&self, iter_no: usize, start_time: Instant) -> bool {
+        match self {
+            LoopMode::Samples(samples) => iter_no < *samples,
+            LoopMode::Time(duration) => {
+                // Trying not to stress benchmarking loop with to much of clock calls and check deadline
+                // approximately each 8 milliseconds based on the number of iterations already performed
+                // (we're assuming each iteration is approximately 1 ms)
+                if (iter_no & 0b111) == 0 {
+                    Instant::now() < (start_time + *duration)
+                } else {
+                    true
+                }
+            }
         }
     }
 }
@@ -213,6 +240,7 @@ mod commands {
         test_name: &str,
         rng: &mut SmallRng,
         settings: &MeasurementSettings,
+        loop_mode: LoopMode,
         samples_dump_path: Option<impl AsRef<Path>>,
     ) -> Result<RunResult> {
         let a_func = a.lookup(test_name).expect("Invalid test name given");
@@ -235,16 +263,11 @@ mod commands {
         a.sync(a_func, seed);
         b.sync(b_func, seed);
 
-        let deadline = Instant::now() + settings.max_duration;
+        let start_time = Instant::now();
 
-        for i in 0..settings.max_samples {
-            // Trying not to stress benchmarking loop with to much of clock calls and check deadline
-            // approximately each 8 milliseconds based on the number of iterations already performed
-            // (we're assuming each iteration is approximately 1 ms)
-            if (i & 0b111) == 0 && Instant::now() >= deadline {
-                break;
-            }
-
+        let mut i = 0;
+        while loop_mode.should_continue(i, start_time) {
+            i += 1;
             if i % settings.samples_per_haystack == 0 {
                 a.next_haystack(a_func);
                 b.next_haystack(b_func);

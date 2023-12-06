@@ -13,13 +13,13 @@ rm -f target/criterion.txt
 for i in {1..1000}; do
     # Tango benchmarks
     (
-    target/benchmarks/search_ord compare target/benchmarks/search_vec -f "*/u32/1024/nodup" -t 1000 \
+    target/benchmarks/search_ord compare target/benchmarks/search_vec -f "*/u32/1024/nodup" -t 1 \
         | awk -v OFS=';' -v FS=" {2,}" '{print "tango/u32/1024/1s", $NF}' | tr -d '%*'
-    target/benchmarks/search_ord compare target/benchmarks/search_vec -f "*/u32/1024/nodup" -t 500 \
+    target/benchmarks/search_ord compare target/benchmarks/search_vec -f "*/u32/1024/nodup" -t 0.5 \
         | awk -v OFS=';' -v FS=" {2,}" '{print "tango/u32/1024/0.5s", $NF}' | tr -d '%*'
-    target/benchmarks/search_ord compare target/benchmarks/search_vec -f "*/u32/1024/nodup" -t 300 \
+    target/benchmarks/search_ord compare target/benchmarks/search_vec -f "*/u32/1024/nodup" -t 0.3 \
         | awk -v OFS=';' -v FS=" {2,}" '{print "tango/u32/1024/0.3s", $NF}' | tr -d '%*'
-    target/benchmarks/search_ord compare target/benchmarks/search_vec -f "*/u32/1024/nodup" -t 100 \
+    target/benchmarks/search_ord compare target/benchmarks/search_vec -f "*/u32/1024/nodup" -t 0.1 \
         | awk -v OFS=';' -v FS=" {2,}" '{print "tango/u32/1024/0.1s", $NF}' | tr -d '%*'
     ) | tee -a target/tango.txt
 
