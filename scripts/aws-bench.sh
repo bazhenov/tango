@@ -28,7 +28,7 @@ do
 
     # Running tango benchmarks
     ./target/benchmarks/tango_faster compare ./target/benchmarks/tango_slower \
-        -t 2000 -f 'str_length_limit' | tee -a "${TANGO}"
+        -t 2 -f 'str_length_limit' | tee -a "${TANGO}"
     ./target/benchmarks/tango_faster compare ./target/benchmarks/tango_slower \
-        -t 2000 -o -f 'str_length_limit' | tee -a "${TANGO_FILTERED}"
+        -t 2 -o -f 'str_length_limit' | tee -a "${TANGO_FILTERED}"
 done

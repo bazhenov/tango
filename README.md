@@ -101,7 +101,7 @@ Additional examples are available in `examples` directory.
 
 There are several arguments you can pass to the `compare` command to change it behaviour
 
-  - `-t`, `--time` – how long to run each benchmark (in ms)
+  - `-t`, `--time` – how long to run each benchmark (in seconds)
   - `s`, `--samples` – how much samples to gather from each benchmark
   - `-f` – filter benchmarks by name. Glob patterns are supported (eg. `*/bench_name/{2,4,8}/**`)
   - `o`, `--filter-outliers` – adidtionaly filter outliers

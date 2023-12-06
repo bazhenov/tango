@@ -10,7 +10,6 @@ use std::{
     ops::{Add, Div, RangeInclusive},
     rc::Rc,
     str::Utf8Error,
-    time::Duration,
 };
 use thiserror::Error;
 use timer::{ActiveTimer, Timer};
@@ -433,14 +432,12 @@ pub trait Reporter {
 /// use tango_bench::MeasurementSettings;
 ///
 /// let settings = MeasurementSettings {
-///     max_samples: 10_000,
+///     min_iterations_per_sample: 1000,
 ///     ..Default::default()
 /// };
 /// ```
 #[derive(Clone, Copy, Debug)]
 pub struct MeasurementSettings {
-    pub max_samples: usize,
-    pub max_duration: Duration,
     pub filter_outliers: bool,
 
     /// The number of samples per one generated haystack
@@ -454,8 +451,6 @@ pub struct MeasurementSettings {
 }
 
 pub const DEFAULT_SETTINGS: MeasurementSettings = MeasurementSettings {
-    max_samples: 1_000_000,
-    max_duration: Duration::from_millis(100),
     filter_outliers: false,
     samples_per_haystack: 1,
     min_iterations_per_sample: 1,
@@ -765,7 +760,7 @@ fn median<T: Copy + Ord + Add<Output = T> + Div<Output = T>>(mut measures: Vec<T
 mod tests {
     use super::*;
     use rand::{rngs::SmallRng, RngCore, SeedableRng};
-    use std::{iter::Sum, thread};
+    use std::{iter::Sum, thread, time::Duration};
 
     #[test]
     fn check_summary_statistics() {

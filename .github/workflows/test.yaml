@@ -68,7 +68,7 @@ jobs:
           set -eo pipefail
 
           target/benchmarks/tango --color=never compare baseline-branch/target/benchmarks/tango \
-            -v -t 1000 --fail-threshold 10 | tee target/benchmark.txt
+            -v -t 1 --fail-threshold 10 | tee target/benchmark.txt
 
       - uses: actions/upload-artifact@v3
         with:
