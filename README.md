@@ -93,10 +93,19 @@ Tango is designed to have the capability to detect a 1% change in performance wi
    $ cargo bench -q --bench=factorial -- compare target/benchmarks/factorial
    factorial             [ 375.5 ns ... 369.0 ns ]      -1.58%*
    ```
-
 The result shows that indeed there is indeed ~1% difference between `factorial(500)` and `factorial(495)`.
 
 Additional examples are available in `examples` directory.
+
+## Runner arguments
+
+There are several arguments you can pass to the `compare` command to change it behaviour
+
+  - `-t`, `--time` – how long to run each benchmark (in ms)
+  - `s`, `--samples` – how much samples to gather from each benchmark
+  - `-f` – filter benchmarks by name. Glob patterns are supported (eg. `*/bench_name/{2,4,8}/**`)
+  - `o`, `--filter-outliers` – adidtionaly filter outliers
+  - `--fail-threshold` – do fail if new version is slower than baseline on a given percentage
 
 ## Contributing
 
