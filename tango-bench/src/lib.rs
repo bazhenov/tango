@@ -1,5 +1,3 @@
-#![doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../README.md"))]
-
 use num_traits::ToPrimitive;
 use std::{
     any::type_name,
