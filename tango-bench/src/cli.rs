@@ -298,7 +298,7 @@ mod commands {
         }
 
         if let Some(path) = samples_dump_path {
-            let file_name = format!("{}.csv", test_name);
+            let file_name = format!("{}.csv", test_name.replace("/", "-"));
             let file_path = path.as_ref().join(file_name);
             let values = a_samples
                 .iter()
