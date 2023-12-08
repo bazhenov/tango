@@ -656,7 +656,7 @@ where
 /// as described in original Tukey's paper.
 pub fn iqr_variance_thresholds(mut input: Vec<i64>) -> Option<RangeInclusive<i64>> {
     input.sort_unstable();
-    let (q1, q3) = (input.len() / 4, input.len() * 3 / 4);
+    let (q1, q3) = (input.len() / 4, input.len() * 3 / 4 - 1);
     if q1 >= q3 || q3 >= input.len() || input[q1] >= input[q3] {
         return None;
     }
@@ -683,7 +683,7 @@ pub fn iqr_variance_thresholds(mut input: Vec<i64>) -> Option<RangeInclusive<i64
     // Calculating the equal number of observations which should be removed from each "side" of observations
     let outliers_cnt = low_threshold_idx.min(input.len() - high_threshold_idx);
 
-    Some(input[outliers_cnt]..=(input[input.len() - outliers_cnt]))
+    Some(input[outliers_cnt]..=(input[input.len() - outliers_cnt - 1]))
 }
 
 mod timer {
@@ -757,8 +757,29 @@ fn median<T: Copy + Ord + Add<Output = T> + Div<Output = T>>(mut measures: Vec<T
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::{rngs::SmallRng, RngCore, SeedableRng};
+    use rand::{rngs::SmallRng, Rng, RngCore, SeedableRng};
     use std::{iter::Sum, thread, time::Duration};
+
+    #[test]
+    fn check_iqr_variance_thresholds() {
+        let mut rng = SmallRng::from_entropy();
+
+        // Generate 20 random values in range [-50, 50]
+        // and add 10 outliers in each of two ranges [-1000, -200] and [200, 1000]
+        // This way IQR is no more than 100 and thresholds should be withing [-50, 50] range
+        let mut values = vec![];
+        values.extend((0..20).map(|_| rng.gen_range(-50..=50)));
+        values.extend((0..10).map(|_| rng.gen_range(-1000..=-200)));
+        values.extend((0..10).map(|_| rng.gen_range(200..=1000)));
+
+        let thresholds = iqr_variance_thresholds(values).unwrap();
+
+        assert!(
+            -50 <= *thresholds.start() && *thresholds.end() <= 50,
+            "Invalid range: {:?}",
+            thresholds
+        );
+    }
 
     #[test]
     fn check_summary_statistics() {
