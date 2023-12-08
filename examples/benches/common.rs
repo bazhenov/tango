@@ -117,6 +117,7 @@ impl<T> FromSortedVec for Vec<T> {
     }
 }
 
+/// Generate benchmarks for searching in a collection.
 pub fn search_benchmarks<C, F>(f: F) -> impl IntoBenchmarks
 where
     C: FromSortedVec + 'static,

@@ -245,7 +245,7 @@ where
     }
 }
 
-/// Matrix of functions is used to perform benchmark with different generator strategies
+/// Matrix of functions is used to perform benchmark with different generator strategies.
 ///
 /// It is a common task to benchmark function with different payload size and/or different structure of the payload.
 /// `BenchmarkMatrix` creates a new [`MeasureTarget`] for each unique combination of [`Generator`]
@@ -259,7 +259,7 @@ where
 ///     haystack.iter().copied().filter(|v| *v > 0).sum()
 /// }
 ///
-/// fn sorting_benchmarks() -> impl IntoBenchmarks {
+/// fn sum_benchmarks() -> impl IntoBenchmarks {
 ///     BenchmarkMatrix::with_params([100, 1_000, 10_000], RandomVec::new)
 ///         .add_function("sum_positive", sum_positive)
 /// }
@@ -292,6 +292,7 @@ impl<G: Generator> BenchmarkMatrix<G> {
         }
     }
 
+    /// Add a new generator to the matrix for each parameter in the given iterator.
     pub fn add_generators_with_params<P>(
         mut self,
         params: impl IntoIterator<Item = P>,
