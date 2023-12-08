@@ -32,10 +32,13 @@ jobs:
         run: |
           set -eo pipefail
 
+          mkdir -p target/dumps
           target/benchmarks/search_ord --color=never compare target/benchmarks/search_ord \
-            -t 1 --fail-threshold 10 | tee target/benchmark.txt
+            -t 1 --fail-threshold 10 -d target/dumps --dump-only-significant | tee target/benchmark.txt
 
       - uses: actions/upload-artifact@v3
         with:
           name: benchmark.txt
-          path: target/benchmark.txt
+          path: |
+            target/benchmark.txt
+            target/dumps/*.csv
