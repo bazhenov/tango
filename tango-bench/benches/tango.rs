@@ -3,8 +3,8 @@
 use num_traits::ToPrimitive;
 use std::{cell::RefCell, rc::Rc};
 use tango_bench::{
-    benchmark_fn, generators::RandomVec, tango_benchmarks, tango_main, BenchmarkMatrix, GenFunc,
-    Generator, IntoBenchmarks, MeasureTarget, Summary,
+    benchmark_fn, generators::RandomVec, iqr_variance_thresholds, tango_benchmarks, tango_main,
+    BenchmarkMatrix, GenFunc, Generator, IntoBenchmarks, MeasureTarget, Summary,
 };
 
 #[derive(Clone)]
@@ -48,6 +48,11 @@ fn summary_benchmarks() -> impl IntoBenchmarks {
     BenchmarkMatrix::new(generator).add_function("summary", create_summary)
 }
 
+fn iqr_interquartile_range_benchmarks() -> impl IntoBenchmarks {
+    let generator = RandomVec::<i64>::new(1_000);
+    BenchmarkMatrix::new(generator).add_function("iqr", |c, _| iqr_variance_thresholds(c.clone()))
+}
+
 fn empty_benchmarks() -> impl IntoBenchmarks {
     [benchmark_fn("measure_empty_function", || {
         benchmark_fn("_", || 42).measure(1)
@@ -68,6 +73,7 @@ fn generator_empty_benchmarks() -> impl IntoBenchmarks {
 tango_benchmarks!(
     empty_benchmarks(),
     generator_empty_benchmarks(),
-    summary_benchmarks()
+    summary_benchmarks(),
+    iqr_interquartile_range_benchmarks()
 );
 tango_main!();

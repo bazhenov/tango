@@ -654,8 +654,8 @@ where
 ///
 /// Observations that are 1.5 IQR away from the corresponding quartile are consideted as outliers
 /// as described in original Tukey's paper.
-fn iqr_variance_thresholds(mut input: Vec<i64>) -> Option<RangeInclusive<i64>> {
-    input.sort();
+pub fn iqr_variance_thresholds(mut input: Vec<i64>) -> Option<RangeInclusive<i64>> {
+    input.sort_unstable();
     let (q1, q3) = (input.len() / 4, input.len() * 3 / 4);
     if q1 >= q3 || q3 >= input.len() || input[q1] >= input[q3] {
         return None;
