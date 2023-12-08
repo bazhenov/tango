@@ -750,7 +750,7 @@ fn median_execution_time(target: &mut dyn MeasureTarget, iterations: u32) -> u64
 
 fn median<T: Copy + Ord + Add<Output = T> + Div<Output = T>>(mut measures: Vec<T>) -> T {
     assert!(!measures.is_empty(), "Vec is empty");
-    measures.sort();
+    measures.sort_unstable();
     measures[measures.len() / 2]
 }
 
