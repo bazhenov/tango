@@ -10,8 +10,8 @@ jobs:
 
       - name: Prepare Environment
         run: |
-          rustup update stable
-          rustup default stable
+          rustup update nightly
+          rustup default nightly
           cargo install cargo-export --version 0.2.0
 
       - uses: actions/cache@v3
