@@ -652,10 +652,9 @@ where
 
 /// Outlier detection algorithm based on interquartile range
 ///
-/// Outliers are observations are 5 IQR away from the corresponding quartile.
+/// Observations that are 1.5 IQR away from the corresponding quartile are consideted as outliers
+/// as described in original Tukey's paper.
 fn iqr_variance_thresholds(mut input: Vec<i64>) -> Option<RangeInclusive<i64>> {
-    const FACTOR: i64 = 5;
-
     input.sort();
     let (q1, q3) = (input.len() / 4, input.len() * 3 / 4);
     if q1 >= q3 || q3 >= input.len() || input[q1] >= input[q3] {
@@ -663,8 +662,8 @@ fn iqr_variance_thresholds(mut input: Vec<i64>) -> Option<RangeInclusive<i64>> {
     }
     let iqr = input[q3] - input[q1];
 
-    let low_threshold = input[q1] - iqr * FACTOR;
-    let high_threshold = input[q3] + iqr * FACTOR;
+    let low_threshold = input[q1] - iqr * 3 / 2;
+    let high_threshold = input[q3] + iqr * 3 / 2;
 
     // Calculating the indicies of the thresholds in an dataset
     let low_threshold_idx = match input[0..q1].binary_search(&low_threshold) {
