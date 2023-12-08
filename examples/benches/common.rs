@@ -132,6 +132,7 @@ where
 }
 
 pub const SETTINGS: MeasurementSettings = MeasurementSettings {
-    samples_per_haystack: 1_000,
+    samples_per_haystack: 1_000_000,
+    max_iterations_per_sample: 10_000,
     ..DEFAULT_SETTINGS
 };
