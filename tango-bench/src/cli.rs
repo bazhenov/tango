@@ -67,7 +67,7 @@ enum BenchmarkMode {
 #[command(author, version, about, long_about = None)]
 struct Opts {
     #[command(subcommand)]
-    subcommand: BenchmarkMode,
+    subcommand: Option<BenchmarkMode>,
 
     #[command(flatten)]
     bench_flags: CargoBenchFlags,
@@ -91,7 +91,11 @@ pub fn run(settings: MeasurementSettings) -> Result<ExitCode> {
         Err(_) => eprintln!("[WARN] Invalid coloring mode: {}", opts.coloring_mode),
     }
 
-    match opts.subcommand {
+    let subcommand = opts.subcommand.unwrap_or(BenchmarkMode::List {
+        bench_flags: opts.bench_flags,
+    });
+
+    match subcommand {
         BenchmarkMode::List { bench_flags: _ } => {
             let spi = Spi::for_self().ok_or(Error::SpiSelfWasMoved)??;
             for func in spi.tests() {
