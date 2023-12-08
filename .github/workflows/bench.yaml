@@ -3,37 +3,39 @@ name: Benchmarks
 on: workflow_dispatch
 
 jobs:
-  build:
+  bench:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v3
 
-      - name: Install Rust
-        run: rustup update stable && rustup default stable
-      - name: Install Cargo Export
-        run: cargo install cargo-export
+      - name: Prepare Environment
+        run: |
+          rustup update stable
+          rustup default stable
+          cargo install cargo-export --version 0.2.0
 
-      - name: Restore ./target
-        uses: actions/cache@v3
+      - uses: actions/cache@v3
         with:
           path: |
             ~/.cargo/bin/
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-            target/
-          key: Cargo/${{ runner.os }}
+            ./target/
+            ./baseline-branch/target/
+          key: Bench/${{ runner.os }}
 
-      - name: Run Tango Benchmarks
-        run: ./scripts/tango.sh
+      - name: Building Benchmarks
+        run: cargo export target/benchmarks -- bench --bench='search-*'
 
-      - name: Run Criterion Benchmarks
-        run: ./scripts/criterion.sh
+      - name: Run Benchmarks
+        run: |
+          set -eo pipefail
 
-      - name: Archive Benchmarks Results
-        uses: actions/upload-artifact@v3
+          target/benchmarks/search_ord --color=never compare target/benchmarks/search_ord \
+            -v -t 1 --fail-threshold 10 | tee target/benchmark.txt
+
+      - uses: actions/upload-artifact@v3
         with:
-          name: benchmarks.zip
-          path: |
-            target/tango.txt
-            target/criterion.txt
+          name: benchmark.txt
+          path: target/benchmark.txt
