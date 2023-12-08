@@ -33,7 +33,7 @@ jobs:
           set -eo pipefail
 
           target/benchmarks/search_ord --color=never compare target/benchmarks/search_ord \
-            -v -t 1 --fail-threshold 10 | tee target/benchmark.txt
+            -t 1 --fail-threshold 10 | tee target/benchmark.txt
 
       - uses: actions/upload-artifact@v3
         with:
