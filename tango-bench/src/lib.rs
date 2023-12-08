@@ -462,14 +462,20 @@ impl Default for MeasurementSettings {
     }
 }
 
+/// Calculates the result of the benchmarking run
+///
+/// Return None if no measurements were made
 pub(crate) fn calculate_run_result<N: Into<String>>(
     name: N,
-    mut baseline: Vec<u64>,
-    mut candidate: Vec<u64>,
+    baseline: &[u64],
+    candidate: &[u64],
     iterations_per_sample: usize,
     filter_outliers: bool,
-) -> Result<RunResult, Error> {
+) -> Option<RunResult> {
     assert!(baseline.len() == candidate.len());
+
+    let mut baseline = baseline.to_vec();
+    let mut candidate = candidate.to_vec();
 
     let mut diff = candidate
         .iter()
@@ -517,15 +523,15 @@ pub(crate) fn calculate_run_result<N: Into<String>>(
         }
     };
 
-    let diff = Summary::from(&diff).ok_or(Error::NoMeasurements)?;
-    let baseline = Summary::from(&baseline).ok_or(Error::NoMeasurements)?;
-    let candidate = Summary::from(&candidate).ok_or(Error::NoMeasurements)?;
+    let diff = Summary::from(&diff)?;
+    let baseline = Summary::from(&baseline)?;
+    let candidate = Summary::from(&candidate)?;
 
     let std_dev = diff.variance.sqrt();
     let std_err = std_dev / (diff.n as f64).sqrt();
     let z_score = diff.mean / std_err;
 
-    Ok(RunResult {
+    Some(RunResult {
         baseline,
         candidate,
         diff,

@@ -38,6 +38,9 @@ enum BenchmarkMode {
         #[arg(short = 'd', long = "dump")]
         path_to_dump: Option<PathBuf>,
 
+        #[arg(long = "dump-only-significant", default_value_t = false)]
+        dump_only_significant: bool,
+
         #[arg(short = 's', long = "samples")]
         samples: Option<NonZeroUsize>,
 
@@ -104,6 +107,7 @@ pub fn run(settings: MeasurementSettings) -> Result<ExitCode> {
             Ok(ExitCode::SUCCESS)
         }
         BenchmarkMode::Compare {
+            bench_flags: _,
             path,
             verbose,
             filter,
@@ -112,8 +116,8 @@ pub fn run(settings: MeasurementSettings) -> Result<ExitCode> {
             filter_outliers,
             path_to_dump,
             fail_threshold,
-            bench_flags: _,
             significant_only,
+            dump_only_significant,
         } => {
             let mut reporter: Box<dyn Reporter> = if verbose {
                 Box::<VerboseReporter>::default()
@@ -161,6 +165,7 @@ pub fn run(settings: MeasurementSettings) -> Result<ExitCode> {
                     &settings,
                     loop_mode,
                     path_to_dump.as_ref(),
+                    dump_only_significant,
                 )?;
 
                 if result.significant || !significant_only {
@@ -246,6 +251,7 @@ mod commands {
         settings: &MeasurementSettings,
         loop_mode: LoopMode,
         samples_dump_path: Option<impl AsRef<Path>>,
+        dump_only_significant: bool,
     ) -> Result<RunResult> {
         let a_func = a.lookup(test_name).expect("Invalid test name given");
         let b_func = b.lookup(test_name).expect("Invalid test name given");
@@ -301,25 +307,30 @@ mod commands {
             b_samples.push(b_time);
         }
 
-        if let Some(path) = samples_dump_path {
-            let file_name = format!("{}.csv", test_name.replace("/", "-"));
-            let file_path = path.as_ref().join(file_name);
-            let values = a_samples
-                .iter()
-                .copied()
-                .zip(b_samples.iter().copied())
-                .map(|(a, b)| (a / iterations as u64, b / iterations as u64));
-            write_raw_measurements(file_path, values)
-                .context("Unable to write raw measurements")?;
-        }
-
-        Ok(calculate_run_result(
+        let run_result = calculate_run_result(
             test_name,
-            a_samples,
-            b_samples,
+            &a_samples,
+            &b_samples,
             iterations,
             settings.filter_outliers,
-        )?)
+        )
+        .ok_or(Error::NoMeasurements)?;
+
+        if run_result.significant || !dump_only_significant {
+            if let Some(path) = samples_dump_path {
+                let file_name = format!("{}.csv", test_name.replace('/', "-"));
+                let file_path = path.as_ref().join(file_name);
+                let values = a_samples
+                    .iter()
+                    .copied()
+                    .zip(b_samples.iter().copied())
+                    .map(|(a, b)| (a / iterations as u64, b / iterations as u64));
+                write_raw_measurements(file_path, values)
+                    .context("Unable to write raw measurements")?;
+            }
+        }
+
+        Ok(run_result)
     }
 
     fn write_raw_measurements<T: Display>(
