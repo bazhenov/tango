@@ -6,12 +6,9 @@ use test_funcs::{factorial, str_take, sum, RandomSubstring};
 
 mod test_funcs;
 
-/// Because benchmarks are builded with linker flag -rdynamic there should be
-/// library entry point defined in all benchmarks.
-/// On macOS linker is able to strip all tango_*() FFI functions, because the corresponding
-/// module tango_bench::cli is not used.
-#[cfg(target_os = "linux")]
-mod linker_fix {
+/// Because benchmarks are builded with linker flag -rdynamic there should be dummy library entrypoint defined
+/// in all benchmarks. This is only needed when two benchmarks harnesses are used in a single crate.
+mod dummy_entrypoint {
     tango_bench::tango_benchmarks!([]);
 }
 
