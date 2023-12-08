@@ -26,7 +26,7 @@ jobs:
           key: Bench/${{ runner.os }}
 
       - name: Building Benchmarks
-        run: cargo export target/benchmarks -- bench --bench='search-*'
+        run: cargo export target/benchmarks -- bench --bench='search-*' --features=hw_timer
 
       - name: Run Benchmarks
         run: |
@@ -38,7 +38,7 @@ jobs:
 
       - uses: actions/upload-artifact@v3
         with:
-          name: benchmark.txt
+          name: benchmark-results
           path: |
             target/benchmark.txt
             target/dumps/*.csv
