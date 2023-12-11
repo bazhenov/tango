@@ -157,7 +157,7 @@ pub fn run(settings: MeasurementSettings) -> Result<ExitCode> {
                 if !filter.is_empty() && !glob_match(filter, &func.name) {
                     continue;
                 }
-                loop {
+                for _ in 0..10 {
                     let result = commands::paired_compare(
                         &spi_lib,
                         &spi_self,
