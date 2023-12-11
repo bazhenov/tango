@@ -138,6 +138,9 @@ pub fn run(settings: MeasurementSettings) -> Result<ExitCode> {
             let path = crate::linux::patch_pie_binary_if_needed(&path)?.unwrap_or(path);
 
             let spi_self = Spi::for_self().ok_or(Error::SpiSelfWasMoved)??;
+            let lib = unsafe { Library::new(&path) }
+                .with_context(|| format!("Unable to open library: {}", path.display()))?;
+            let spi_lib = Spi::for_library(&lib)?;
 
             let mut settings = settings;
 
@@ -160,47 +163,36 @@ pub fn run(settings: MeasurementSettings) -> Result<ExitCode> {
                     continue;
                 }
 
-                for _ in 0..10 {
-                    let lib = unsafe { Library::new(&path) }
-                        .with_context(|| format!("Unable to open library: {}", path.display()))?;
-                    let spi_lib = Spi::for_library(&lib)?;
-                    if spi_lib.lookup(&func.name).is_none() {
-                        continue;
-                    }
+                if spi_lib.lookup(&func.name).is_none() {
+                    continue;
+                }
 
-                    let result = commands::paired_compare(
-                        &spi_lib,
-                        &spi_self,
-                        func.name.as_str(),
-                        &mut rng,
-                        &settings,
-                        loop_mode,
-                        path_to_dump.as_ref(),
-                        dump_only_significant,
-                    )?;
+                let result = commands::paired_compare(
+                    &spi_lib,
+                    &spi_self,
+                    func.name.as_str(),
+                    &mut rng,
+                    &settings,
+                    loop_mode,
+                    path_to_dump.as_ref(),
+                    dump_only_significant,
+                )?;
 
-                    if result.significant || !significant_only {
-                        reporter.on_complete(&result);
-                    }
+                if result.significant || !significant_only {
+                    reporter.on_complete(&result);
+                }
 
-                    let speedup = result.diff.mean / result.baseline.mean * 100.;
-                    if speedup.abs() > 2. {
-                        continue;
-                    }
-
-                    if result.significant {
-                        if let Some(threshold) = fail_threshold {
-                            let diff = result.diff.mean / result.baseline.mean * 100.;
-                            if diff >= threshold {
-                                eprintln!(
-                                    "[ERROR] Performance regressed {:+.1}% >= {:.1}%  -  test: {}",
-                                    diff, threshold, func.name
-                                );
-                                return Ok(ExitCode::FAILURE);
-                            }
+                if result.significant {
+                    if let Some(threshold) = fail_threshold {
+                        let diff = result.diff.mean / result.baseline.mean * 100.;
+                        if diff >= threshold {
+                            eprintln!(
+                                "[ERROR] Performance regressed {:+.1}% >= {:.1}%  -  test: {}",
+                                diff, threshold, func.name
+                            );
+                            return Ok(ExitCode::FAILURE);
                         }
                     }
-                    break;
                 }
             }
             Ok(ExitCode::SUCCESS)
@@ -238,8 +230,8 @@ mod commands {
     use crate::{calculate_run_result, RunResult};
     use std::{
         fs::File,
-        hint::black_box,
         io::{self, BufWriter, Write as _},
+        mem,
         path::Path,
         time::Instant,
     };
