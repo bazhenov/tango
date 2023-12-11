@@ -41,6 +41,10 @@ enum BenchmarkMode {
         #[arg(long = "dump-only-significant", default_value_t = false)]
         dump_only_significant: bool,
 
+        /// seed for the random number generator or omit to use a random seed
+        #[arg(long = "seed")]
+        seed: Option<u64>,
+
         #[arg(short = 's', long = "samples")]
         samples: Option<NonZeroUsize>,
 
@@ -117,6 +121,7 @@ pub fn run(settings: MeasurementSettings) -> Result<ExitCode> {
             path_to_dump,
             fail_threshold,
             significant_only,
+            seed,
             dump_only_significant,
         } => {
             let mut reporter: Box<dyn Reporter> = if verbose {
@@ -132,10 +137,10 @@ pub fn run(settings: MeasurementSettings) -> Result<ExitCode> {
             #[cfg(target_os = "linux")]
             let path = crate::linux::patch_pie_binary_if_needed(&path)?.unwrap_or(path);
 
+            let spi_self = Spi::for_self().ok_or(Error::SpiSelfWasMoved)??;
             let lib = unsafe { Library::new(&path) }
                 .with_context(|| format!("Unable to open library: {}", path.display()))?;
             let spi_lib = Spi::for_library(&lib)?;
-            let spi_self = Spi::for_self().ok_or(Error::SpiSelfWasMoved)??;
 
             let mut settings = settings;
 
@@ -148,15 +153,20 @@ pub fn run(settings: MeasurementSettings) -> Result<ExitCode> {
 
             settings.filter_outliers = filter_outliers;
 
-            let mut rng = SmallRng::from_entropy();
+            let mut rng = seed
+                .map(SmallRng::seed_from_u64)
+                .unwrap_or_else(SmallRng::from_entropy);
+
             let filter = filter.as_deref().unwrap_or("");
             for func in spi_self.tests() {
-                if spi_lib.lookup(&func.name).is_none() {
-                    continue;
-                }
                 if !filter.is_empty() && !glob_match(filter, &func.name) {
                     continue;
                 }
+
+                if spi_lib.lookup(&func.name).is_none() {
+                    continue;
+                }
+
                 let result = commands::paired_compare(
                     &spi_lib,
                     &spi_self,
@@ -221,6 +231,7 @@ mod commands {
     use std::{
         fs::File,
         io::{self, BufWriter, Write as _},
+        mem,
         path::Path,
         time::Instant,
     };
@@ -253,13 +264,17 @@ mod commands {
         samples_dump_path: Option<impl AsRef<Path>>,
         dump_only_significant: bool,
     ) -> Result<RunResult> {
-        let a_func = a.lookup(test_name).expect("Invalid test name given");
-        let b_func = b.lookup(test_name).expect("Invalid test name given");
+        let mut a = &a;
+        let mut b = &b;
+        let mut a_func = a.lookup(test_name).expect("Invalid test name given");
+        let mut b_func = b.lookup(test_name).expect("Invalid test name given");
 
-        // Number of iterations estimated based on the performance of A algorithm only. We assuming
-        // both algorithms performs approximatley the same. We need to divide estimation by 2 to compensate
-        // for the fact that 2 algorithms will be executed concurrently.
-        let estimate = a.estimate_iterations(a_func, 1) / 2;
+        let seed = rng.next_u64();
+        a.sync(a_func, seed);
+        b.sync(b_func, seed);
+
+        // Estimating the number of iterations achievable in 1 ms
+        let estimate = b.estimate_iterations(b_func, 1) / 2 + a.estimate_iterations(a_func, 1) / 2;
         let iterations_per_ms = estimate.clamp(
             settings.min_iterations_per_sample.max(1),
             settings.max_iterations_per_sample,
@@ -269,13 +284,10 @@ mod commands {
         let mut a_samples = vec![];
         let mut b_samples = vec![];
 
-        let seed = rng.next_u64();
-        a.sync(a_func, seed);
-        b.sync(b_func, seed);
+        let mut i = 0;
+        let mut switch_counter = 0;
 
         let start_time = Instant::now();
-
-        let mut i = 0;
         while loop_mode.should_continue(i, start_time) {
             i += 1;
             if i % settings.samples_per_haystack == 0 {
@@ -284,27 +296,30 @@ mod commands {
             }
 
             // !!! IMPORTANT !!!
-            // Algorithms should be called in different order in those two branches.
+            // Algorithms should be called in different order on each new iteration.
             // This equalize the probability of facing unfortunate circumstances like cache misses or page faults
             // for both functions. Although both algorithms are from distinct shared objects and therefore
-            // must be fully selfcontained in terms of virtual address space (each shared object has its own
+            // must be fully self-contained in terms of virtual address space (each shared object has its own
             // generator instances, static variables, memory mappings, etc.) it might be the case that
             // on the level of physical memory both of them rely on the same memory-mapped test data, for example.
             // In that case first function will experience the larger amount of major page faults.
-            let (a_time, b_time) = if i % 2 == 0 {
-                let a_time = a.run(a_func, iterations);
-                let b_time = b.run(b_func, iterations);
+            {
+                mem::swap(&mut a, &mut b);
+                mem::swap(&mut a_samples, &mut b_samples);
+                mem::swap(&mut a_func, &mut b_func);
+                switch_counter += 1;
+            }
 
-                (a_time, b_time)
-            } else {
-                let b_time = b.run(b_func, iterations);
-                let a_time = a.run(a_func, iterations);
+            a_samples.push(a.run(a_func, iterations));
+            b_samples.push(b.run(b_func, iterations));
+        }
 
-                (a_time, b_time)
-            };
-
-            a_samples.push(a_time);
-            b_samples.push(b_time);
+        // If we switched functions odd number of times then we need to swap them back so that
+        // the first function is always the baseline.
+        if switch_counter % 2 != 0 {
+            mem::swap(&mut a, &mut b);
+            mem::swap(&mut a_samples, &mut b_samples);
+            mem::swap(&mut a_func, &mut b_func);
         }
 
         let run_result = calculate_run_result(
