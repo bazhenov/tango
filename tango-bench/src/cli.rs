@@ -132,9 +132,6 @@ pub fn run(settings: MeasurementSettings) -> Result<ExitCode> {
             #[cfg(target_os = "linux")]
             let path = crate::linux::patch_pie_binary_if_needed(&path)?.unwrap_or(path);
 
-            let lib = unsafe { Library::new(&path) }
-                .with_context(|| format!("Unable to open library: {}", path.display()))?;
-            let spi_lib = Spi::for_library(&lib)?;
             let spi_self = Spi::for_self().ok_or(Error::SpiSelfWasMoved)??;
 
             let mut settings = settings;
@@ -151,6 +148,10 @@ pub fn run(settings: MeasurementSettings) -> Result<ExitCode> {
             let mut rng = SmallRng::from_entropy();
             let filter = filter.as_deref().unwrap_or("");
             for func in spi_self.tests() {
+                let lib = unsafe { Library::new(&path) }
+                    .with_context(|| format!("Unable to open library: {}", path.display()))?;
+                let spi_lib = Spi::for_library(&lib)?;
+
                 if spi_lib.lookup(&func.name).is_none() {
                     continue;
                 }
