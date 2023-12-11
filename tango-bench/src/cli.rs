@@ -41,6 +41,10 @@ enum BenchmarkMode {
         #[arg(long = "dump-only-significant", default_value_t = false)]
         dump_only_significant: bool,
 
+        /// seed for the random number generator or omit to use a random seed
+        #[arg(long = "seed")]
+        seed: Option<u64>,
+
         #[arg(short = 's', long = "samples")]
         samples: Option<NonZeroUsize>,
 
@@ -117,6 +121,7 @@ pub fn run(settings: MeasurementSettings) -> Result<ExitCode> {
             path_to_dump,
             fail_threshold,
             significant_only,
+            seed,
             dump_only_significant,
         } => {
             let mut reporter: Box<dyn Reporter> = if verbose {
@@ -145,7 +150,10 @@ pub fn run(settings: MeasurementSettings) -> Result<ExitCode> {
 
             settings.filter_outliers = filter_outliers;
 
-            let mut rng = SmallRng::from_entropy();
+            let mut rng = seed
+                .map(SmallRng::seed_from_u64)
+                .unwrap_or_else(SmallRng::from_entropy);
+
             let filter = filter.as_deref().unwrap_or("");
             for func in spi_self.tests() {
                 if !filter.is_empty() && !glob_match(filter, &func.name) {
