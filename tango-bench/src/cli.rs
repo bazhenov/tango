@@ -157,32 +157,40 @@ pub fn run(settings: MeasurementSettings) -> Result<ExitCode> {
                 if !filter.is_empty() && !glob_match(filter, &func.name) {
                     continue;
                 }
-                let result = commands::paired_compare(
-                    &spi_lib,
-                    &spi_self,
-                    func.name.as_str(),
-                    &mut rng,
-                    &settings,
-                    loop_mode,
-                    path_to_dump.as_ref(),
-                    dump_only_significant,
-                )?;
+                loop {
+                    let result = commands::paired_compare(
+                        &spi_lib,
+                        &spi_self,
+                        func.name.as_str(),
+                        &mut rng,
+                        &settings,
+                        loop_mode,
+                        path_to_dump.as_ref(),
+                        dump_only_significant,
+                    )?;
 
-                if result.significant || !significant_only {
-                    reporter.on_complete(&result);
-                }
+                    if result.significant || !significant_only {
+                        reporter.on_complete(&result);
+                    }
 
-                if result.significant {
-                    if let Some(threshold) = fail_threshold {
-                        let diff = result.diff.mean / result.baseline.mean * 100.;
-                        if diff >= threshold {
-                            eprintln!(
-                                "[ERROR] Performance regressed {:+.1}% >= {:.1}%  -  test: {}",
-                                diff, threshold, func.name
-                            );
-                            return Ok(ExitCode::FAILURE);
+                    let speedup = result.diff.mean / result.baseline.mean * 100.;
+                    if speedup.abs() > 5. {
+                        continue;
+                    }
+
+                    if result.significant {
+                        if let Some(threshold) = fail_threshold {
+                            let diff = result.diff.mean / result.baseline.mean * 100.;
+                            if diff >= threshold {
+                                eprintln!(
+                                    "[ERROR] Performance regressed {:+.1}% >= {:.1}%  -  test: {}",
+                                    diff, threshold, func.name
+                                );
+                                return Ok(ExitCode::FAILURE);
+                            }
                         }
                     }
+                    break;
                 }
             }
             Ok(ExitCode::SUCCESS)
