@@ -228,6 +228,7 @@ mod commands {
     use crate::{calculate_run_result, RunResult};
     use std::{
         fs::File,
+        hint::black_box,
         io::{self, BufWriter, Write as _},
         path::Path,
         time::Instant,
@@ -284,11 +285,13 @@ mod commands {
         let start_time = Instant::now();
 
         let mut i = 0;
+        let mut cache_firewall = vec![0u8; 1024 * 1024];
         while loop_mode.should_continue(i, start_time) {
             i += 1;
             if i % settings.samples_per_haystack == 0 {
                 a.next_haystack(a_func);
                 b.next_haystack(b_func);
+                rng.fill_bytes(black_box(&mut cache_firewall));
             }
 
             // !!! IMPORTANT !!!
@@ -338,6 +341,7 @@ mod commands {
             }
         }
 
+        drop(cache_firewall);
         Ok(run_result)
     }
 
