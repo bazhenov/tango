@@ -148,17 +148,18 @@ pub fn run(settings: MeasurementSettings) -> Result<ExitCode> {
             let mut rng = SmallRng::from_entropy();
             let filter = filter.as_deref().unwrap_or("");
             for func in spi_self.tests() {
-                let lib = unsafe { Library::new(&path) }
-                    .with_context(|| format!("Unable to open library: {}", path.display()))?;
-                let spi_lib = Spi::for_library(&lib)?;
-
-                if spi_lib.lookup(&func.name).is_none() {
-                    continue;
-                }
                 if !filter.is_empty() && !glob_match(filter, &func.name) {
                     continue;
                 }
+
                 for _ in 0..10 {
+                    let lib = unsafe { Library::new(&path) }
+                        .with_context(|| format!("Unable to open library: {}", path.display()))?;
+                    let spi_lib = Spi::for_library(&lib)?;
+                    if spi_lib.lookup(&func.name).is_none() {
+                        continue;
+                    }
+
                     let result = commands::paired_compare(
                         &spi_lib,
                         &spi_self,
