@@ -2,7 +2,7 @@
 
 extern crate tango_bench;
 
-use std::{any::type_name, convert::TryFrom, iter, marker::PhantomData};
+use std::{any::type_name, convert::TryFrom, fmt::Debug, iter, marker::PhantomData};
 use tango_bench::{
     BenchmarkMatrix, Generator, IntoBenchmarks, MeasurementSettings, DEFAULT_SETTINGS,
 };
@@ -52,7 +52,7 @@ where
 
 impl<C: FromSortedVec> Generator for RandomCollection<C>
 where
-    C::Item: Ord + Copy + TryFrom<usize>,
+    C::Item: Ord + Copy + TryFrom<usize> + Debug,
     usize: TryFrom<C::Item>,
 {
     type Haystack = Sample<C>;
@@ -122,7 +122,7 @@ pub fn search_benchmarks<C, F>(f: F) -> impl IntoBenchmarks
 where
     C: FromSortedVec + 'static,
     F: Fn(&Sample<C>, &C::Item) -> Option<C::Item> + Copy + 'static,
-    C::Item: Copy + Ord + TryFrom<usize>,
+    C::Item: Copy + Ord + TryFrom<usize> + Debug,
     usize: TryFrom<C::Item>,
 {
     BenchmarkMatrix::with_params(SIZES, |size| RandomCollection::<C>::new(size, 1))
