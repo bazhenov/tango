@@ -26,7 +26,7 @@ jobs:
           key: Bench/${{ runner.os }}
 
       - name: Building Benchmarks
-        run: cargo export target/benchmarks -- bench --bench='search-*' --features=align
+        run: cargo export target/benchmarks -- bench --bench='search-*'
 
       - name: Run Benchmarks
         run: |
@@ -34,9 +34,7 @@ jobs:
 
           mkdir -p target/dumps
           target/benchmarks/search_ord --color=never compare target/benchmarks/search_ord \
-            -t 0.5 -d target/dumps | tee target/benchmark.txt
-          target/benchmarks/search_ord --color=never compare target/benchmarks/search_ord \
-            -t 0.5 -d target/dumps | tee -a target/benchmark.txt
+            -t 1 -d target/dumps | tee target/benchmark.txt
 
       - uses: actions/upload-artifact@v3
         with:
