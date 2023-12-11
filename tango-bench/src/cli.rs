@@ -174,7 +174,7 @@ pub fn run(settings: MeasurementSettings) -> Result<ExitCode> {
                     }
 
                     let speedup = result.diff.mean / result.baseline.mean * 100.;
-                    if speedup.abs() > 5. {
+                    if speedup.abs() > 2. {
                         continue;
                     }
 
