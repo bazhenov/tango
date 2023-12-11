@@ -34,7 +34,7 @@ jobs:
 
           mkdir -p target/dumps
           target/benchmarks/search_ord --color=never compare target/benchmarks/search_ord \
-            -t 1 -d target/dumps | tee target/benchmark.txt
+            -t 1 -o -d target/dumps | tee target/benchmark.txt
 
       - uses: actions/upload-artifact@v3
         with:
