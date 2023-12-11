@@ -661,12 +661,17 @@ where
 /// Observations that are 1.5 IQR away from the corresponding quartile are consideted as outliers
 /// as described in original Tukey's paper.
 pub fn iqr_variance_thresholds(mut input: Vec<i64>) -> Option<RangeInclusive<i64>> {
+    // In case q1 and q3 are equal, we need to make sure that IQR is not 0
+    // Now we take value close to system timer precision. In the future it would be nice to measure
+    // system timer accuracy empirically.
+    const MINIMUM_IQR: i64 = 10;
+
     input.sort_unstable();
     let (q1, q3) = (input.len() / 4, input.len() * 3 / 4 - 1);
-    if q1 >= q3 || q3 >= input.len() || input[q1] >= input[q3] {
+    if q1 >= q3 || q3 >= input.len() {
         return None;
     }
-    let iqr = input[q3] - input[q1];
+    let iqr = (input[q3] - input[q1]).max(MINIMUM_IQR);
 
     let low_threshold = input[q1] - iqr * 3 / 2;
     let high_threshold = input[q3] + iqr * 3 / 2;
@@ -782,6 +787,25 @@ mod tests {
 
         assert!(
             -50 <= *thresholds.start() && *thresholds.end() <= 50,
+            "Invalid range: {:?}",
+            thresholds
+        );
+    }
+
+    /// This tests checks that the algorithm is stable in case of zero difference between 25 and 75 percentiles
+    #[test]
+    fn check_outliers_zero_iqr() {
+        let mut rng = SmallRng::from_entropy();
+
+        let mut values = vec![];
+        values.extend(std::iter::repeat(0).take(20));
+        values.extend((0..10).map(|_| rng.gen_range(-1000..=-200)));
+        values.extend((0..10).map(|_| rng.gen_range(200..=1000)));
+
+        let thresholds = iqr_variance_thresholds(values).unwrap();
+
+        assert!(
+            0 <= *thresholds.start() && *thresholds.end() <= 0,
             "Invalid range: {:?}",
             thresholds
         );
