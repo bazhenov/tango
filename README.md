@@ -109,12 +109,12 @@ Additional examples are available in `examples` directory.
 
 ## Runner arguments
 
-There are several arguments you can pass to the `compare` command to change it behaviour
+There are several arguments you can pass to the `compare` command to change it behavior
 
   - `-t`, `--time` – how long to run each benchmark (in seconds)
   - `s`, `--samples` – how much samples to gather from each benchmark
   - `-f` – filter benchmarks by name. Glob patterns are supported (eg. `*/bench_name/{2,4,8}/**`)
-  - `o`, `--filter-outliers` – adidtionaly filter outliers
+  - `o`, `--filter-outliers` – additionally filter outliers
   - `--fail-threshold` – do fail if new version is slower than baseline on a given percentage
 
 ## Contributing
