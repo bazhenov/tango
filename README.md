@@ -13,6 +13,7 @@ Features:
 
 - very high sensitivity to changes which allows to converge on results quicker than traditional (pointwise) approach. Often the fraction of a second is enough;
 - ability to compare different versions of the same code from different VCS commits (A/B-benchmarking);
+- macOS, Linux and Windows support;
 
 ## 1 second, 1 percent, 1 error
 
@@ -22,9 +23,8 @@ Tango is designed to have the capability to detect a 1% change in performance wi
 
 ## Prerequirements
 
-1. Rust and Cargo toolchain installed (Rust stable is supported)
-1. macOS or Linux (Windows support is planned)
-1. [`cargo-export`](https://github.com/bazhenov/cargo-export) installed
+1. Rust and Cargo toolchain installed (Rust stable is supported on Linux/macOS, nightly is required for Windows)
+1. (_Optional_) [`cargo-export`](https://github.com/bazhenov/cargo-export) installed
 
 ## Getting started
 
@@ -39,13 +39,22 @@ Tango is designed to have the capability to detect a 1% change in performance wi
    harness = false
    ```
 
-1. Add build script (`build.rs`) which allows benchmarks to export symbols for dynamic linking
+1. allows rustc to export symbols for dynamic linking from benchmarks
 
-   ```rust,ignore
-   fn main() {
-       println!("cargo:rustc-link-arg-benches=-rdynamic");
-   }
-   ```
+   - **(Linux/macOS)** Add build script (`build.rs`) with following content
+
+      ```rust,ignore
+      fn main() {
+          println!("cargo:rustc-link-arg-benches=-rdynamic");
+      }
+      ```
+
+    - **(Windows, nightly required)** Add following code to cargo config (`.cargo/config`)
+
+       ```toml
+       [build]
+       rustflags = ["-Zexport-executable-symbols"]
+       ```
 
 1. Add `benches/factorial.rs` with the following content:
 
