@@ -227,7 +227,8 @@ impl LoopMode {
 mod commands {
     use rand::RngCore;
 
-    use crate::{calculate_run_result, RunResult};
+    use super::*;
+    use crate::{calculate_run_result, dylib::NamedFunction, RunResult};
     use std::{
         fs::File,
         io::{self, BufWriter, Write as _},
@@ -236,7 +237,30 @@ mod commands {
         time::Instant,
     };
 
-    use super::*;
+    struct TestedFunction<'a> {
+        spi: &'a Spi<'a>,
+        func: &'a NamedFunction,
+        samples: Vec<u64>,
+    }
+
+    impl<'a> TestedFunction<'a> {
+        fn new(spi: &'a Spi<'a>, func: &'a NamedFunction) -> Self {
+            TestedFunction {
+                spi,
+                func,
+                samples: Vec::new(),
+            }
+        }
+
+        fn run(&mut self, iterations: usize) {
+            let sample = self.spi.run(self.func, iterations);
+            self.samples.push(sample);
+        }
+
+        fn next_haystack(&mut self) {
+            self.spi.next_haystack(self.func);
+        }
+    }
 
     /// Measure the difference in performance of two functions
     ///
@@ -264,10 +288,8 @@ mod commands {
         samples_dump_path: Option<impl AsRef<Path>>,
         dump_only_significant: bool,
     ) -> Result<RunResult> {
-        let mut a = &a;
-        let mut b = &b;
-        let mut a_func = a.lookup(test_name).expect("Invalid test name given");
-        let mut b_func = b.lookup(test_name).expect("Invalid test name given");
+        let a_func = a.lookup(test_name).expect("Invalid test name given");
+        let b_func = b.lookup(test_name).expect("Invalid test name given");
 
         let seed = rng.next_u64();
         a.sync(a_func, seed);
@@ -281,18 +303,18 @@ mod commands {
         );
         let iterations = iterations_per_ms;
 
-        let mut a_samples = vec![];
-        let mut b_samples = vec![];
-
         let mut i = 0;
         let mut switch_counter = 0;
+
+        let mut a_func = TestedFunction::new(a, a_func);
+        let mut b_func = TestedFunction::new(b, b_func);
 
         let start_time = Instant::now();
         while loop_mode.should_continue(i, start_time) {
             i += 1;
             if i % settings.samples_per_haystack == 0 {
-                a.next_haystack(a_func);
-                b.next_haystack(b_func);
+                a_func.next_haystack();
+                b_func.next_haystack();
             }
 
             // !!! IMPORTANT !!!
@@ -304,28 +326,24 @@ mod commands {
             // on the level of physical memory both of them rely on the same memory-mapped test data, for example.
             // In that case first function will experience the larger amount of major page faults.
             {
-                mem::swap(&mut a, &mut b);
-                mem::swap(&mut a_samples, &mut b_samples);
                 mem::swap(&mut a_func, &mut b_func);
                 switch_counter += 1;
             }
 
-            a_samples.push(a.run(a_func, iterations));
-            b_samples.push(b.run(b_func, iterations));
+            a_func.run(iterations);
+            b_func.run(iterations);
         }
 
         // If we switched functions odd number of times then we need to swap them back so that
         // the first function is always the baseline.
         if switch_counter % 2 != 0 {
-            mem::swap(&mut a, &mut b);
-            mem::swap(&mut a_samples, &mut b_samples);
             mem::swap(&mut a_func, &mut b_func);
         }
 
         let run_result = calculate_run_result(
             test_name,
-            &a_samples,
-            &b_samples,
+            &a_func.samples,
+            &b_func.samples,
             iterations,
             settings.filter_outliers,
         )
@@ -335,10 +353,11 @@ mod commands {
             if let Some(path) = samples_dump_path {
                 let file_name = format!("{}.csv", test_name.replace('/', "-"));
                 let file_path = path.as_ref().join(file_name);
-                let values = a_samples
+                let values = a_func
+                    .samples
                     .iter()
                     .copied()
-                    .zip(b_samples.iter().copied())
+                    .zip(b_func.samples.iter().copied())
                     .map(|(a, b)| (a / iterations as u64, b / iterations as u64));
                 write_raw_measurements(file_path, values)
                     .context("Unable to write raw measurements")?;
