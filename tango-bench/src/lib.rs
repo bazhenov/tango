@@ -418,7 +418,7 @@ pub trait Generator {
     }
 }
 
-pub trait Reporter {
+pub(crate) trait Reporter {
     fn on_complete(&mut self, results: &RunResult);
 }
 
@@ -469,7 +469,7 @@ pub(crate) fn calculate_run_result<N: Into<String>>(
     name: N,
     baseline: &[u64],
     candidate: &[u64],
-    iterations_per_sample: Vec<usize>,
+    iterations_per_sample: &[usize],
     filter_outliers: bool,
 ) -> Option<RunResult> {
     assert!(baseline.len() == candidate.len());
@@ -528,42 +528,72 @@ pub(crate) fn calculate_run_result<N: Into<String>>(
     let baseline = Summary::from(&baseline)?;
     let candidate = Summary::from(&candidate)?;
 
-    let std_dev = diff.variance.sqrt();
-    let std_err = std_dev / (diff.n as f64).sqrt();
-    let z_score = diff.mean / std_err;
-
+    let diff_estimate = DiffEstimate::build_from_flat_sampling(&baseline, &candidate, &diff);
     Some(RunResult {
         baseline,
         candidate,
         diff,
         name: name.into(),
-        // significant result is far away from 0 and have more than 0.5%
-        // base/candidate difference
-        // z_score = 2.6 corresponds to 99% significance level
-        significant: z_score.abs() >= 2.6 && (diff.mean / candidate.mean).abs() > 0.005,
+        diff_estimate,
         outliers: n - diff.n,
     })
 }
 
+/// Contains the estimation of how much faster or slower is candidate function compared to baseline
+pub(crate) struct DiffEstimate {
+    // Percentage of difference between candidate and baseline
+    //
+    // Negative value means that candidate is faster than baseline, positive - slower.
+    pct: f64,
+
+    // Is the difference statistically significant
+    significant: bool,
+}
+
+impl DiffEstimate {
+    /// Builds [`DiffEstimate`] from flat sampling
+    ///
+    /// Flat sampling is a sampling where each measurement is normalized by the number of iterations.
+    /// This is needed to make measurements comparable between each other. Linear sampling is more
+    /// robust to outliers, but it is requiring more iterations.
+    ///
+    /// It is assumed that baseline and candidate are already normalized by iterations count.
+    fn build_from_flat_sampling(
+        baseline: &Summary<u64>,
+        candidate: &Summary<u64>,
+        diff: &Summary<i64>,
+    ) -> Self {
+        let std_dev = diff.variance.sqrt();
+        let std_err = std_dev / (diff.n as f64).sqrt();
+        let z_score = diff.mean / std_err;
+
+        // significant result is far away from 0 and have more than 0.5% base/candidate difference
+        // z_score = 2.6 corresponds to 99% significance level
+        let significant = z_score.abs() >= 2.6 && (diff.mean / candidate.mean).abs() > 0.005;
+        let pct = diff.mean / baseline.mean * 100.0;
+
+        Self { pct, significant }
+    }
+}
+
 /// Describes the results of a single benchmark run
-pub struct RunResult {
+pub(crate) struct RunResult {
     /// name of a test
-    pub name: String,
+    name: String,
 
     /// statistical summary of baseline function measurements
-    pub baseline: Summary<u64>,
+    baseline: Summary<u64>,
 
     /// statistical summary of candidate function measurements
-    pub candidate: Summary<u64>,
+    candidate: Summary<u64>,
 
     /// individual measurements of a benchmark (candidate - baseline)
-    pub diff: Summary<i64>,
+    diff: Summary<i64>,
 
-    /// Is difference is statistically significant
-    pub significant: bool,
+    diff_estimate: DiffEstimate,
 
     /// Numbers of detected and filtered outliers
-    pub outliers: usize,
+    outliers: usize,
 }
 
 /// Statistical summary for a given iterator of numbers.

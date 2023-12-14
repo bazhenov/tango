@@ -178,11 +178,11 @@ pub fn run(settings: MeasurementSettings) -> Result<ExitCode> {
                     dump_only_significant,
                 )?;
 
-                if result.significant || !significant_only {
+                if result.diff_estimate.significant || !significant_only {
                     reporter.on_complete(&result);
                 }
 
-                if result.significant {
+                if result.diff_estimate.significant {
                     if let Some(threshold) = fail_threshold {
                         let diff = result.diff.mean / result.baseline.mean * 100.;
                         if diff >= threshold {
@@ -331,9 +331,9 @@ mod commands {
                 switch_counter += 1;
             }
 
-            a_func.run(iterations);
-            b_func.run(iterations);
-            sample_iterations.push(iterations);
+            a_func.run(i);
+            b_func.run(i);
+            sample_iterations.push(i);
         }
 
         // If we switched functions odd number of times then we need to swap them back so that
@@ -346,12 +346,12 @@ mod commands {
             test_name,
             &a_func.samples,
             &b_func.samples,
-            sample_iterations,
+            &sample_iterations,
             settings.filter_outliers,
         )
         .ok_or(Error::NoMeasurements)?;
 
-        if run_result.significant || !dump_only_significant {
+        if run_result.diff_estimate.significant || !dump_only_significant {
             if let Some(path) = samples_dump_path {
                 let file_name = format!("{}.csv", test_name.replace('/', "-"));
                 let file_path = path.as_ref().join(file_name);
@@ -360,7 +360,8 @@ mod commands {
                     .iter()
                     .copied()
                     .zip(b_func.samples.iter().copied())
-                    .map(|(a, b)| (a / iterations as u64, b / iterations as u64));
+                    .zip(sample_iterations.iter().copied())
+                    .map(|((a, b), c)| (a, b, c));
                 write_raw_measurements(file_path, values)
                     .context("Unable to write raw measurements")?;
             }
@@ -369,14 +370,14 @@ mod commands {
         Ok(run_result)
     }
 
-    fn write_raw_measurements<T: Display>(
+    fn write_raw_measurements<U: Display, V: Display, X: Display>(
         path: impl AsRef<Path>,
-        values: impl IntoIterator<Item = (T, T)>,
+        values: impl IntoIterator<Item = (U, V, X)>,
     ) -> io::Result<()> {
         let mut file = BufWriter::new(File::create(path)?);
 
-        for (a, b) in values {
-            writeln!(&mut file, "{},{}", a, b)?;
+        for (a, b, c) in values {
+            writeln!(&mut file, "{},{},{}", a, b, c)?;
         }
         Ok(())
     }
@@ -395,7 +396,7 @@ pub mod reporting {
             let base = results.baseline;
             let candidate = results.candidate;
 
-            let significant = results.significant;
+            let significant = results.diff_estimate.significant;
 
             println!(
                 "{}  (n: {}, outliers: {})",
@@ -426,7 +427,7 @@ pub mod reporting {
                     results.diff.mean < 0.
                 ),
                 colorize(
-                    results.diff.mean / base.mean * 100.,
+                    results.diff_estimate.pct,
                     significant,
                     results.diff.mean < 0.
                 ),
@@ -467,9 +468,9 @@ pub mod reporting {
             let candidate = results.candidate;
             let diff = results.diff;
 
-            let significant = results.significant;
+            let significant = results.diff_estimate.significant;
 
-            let speedup = diff.mean / base.mean * 100.;
+            let speedup = results.diff_estimate.pct;
             let candidate_faster = diff.mean < 0.;
             println!(
                 "{:50} [ {:>8} ... {:>8} ]    {:>+7.2}{}{}",
