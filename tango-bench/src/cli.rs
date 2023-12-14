@@ -308,6 +308,7 @@ mod commands {
 
         let mut a_func = TestedFunction::new(a, a_func);
         let mut b_func = TestedFunction::new(b, b_func);
+        let mut sample_iterations = vec![];
 
         let start_time = Instant::now();
         while loop_mode.should_continue(i, start_time) {
@@ -332,6 +333,7 @@ mod commands {
 
             a_func.run(iterations);
             b_func.run(iterations);
+            sample_iterations.push(iterations);
         }
 
         // If we switched functions odd number of times then we need to swap them back so that
@@ -344,7 +346,7 @@ mod commands {
             test_name,
             &a_func.samples,
             &b_func.samples,
-            iterations,
+            sample_iterations,
             settings.filter_outliers,
         )
         .ok_or(Error::NoMeasurements)?;

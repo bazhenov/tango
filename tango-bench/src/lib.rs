@@ -469,10 +469,11 @@ pub(crate) fn calculate_run_result<N: Into<String>>(
     name: N,
     baseline: &[u64],
     candidate: &[u64],
-    iterations_per_sample: usize,
+    iterations_per_sample: Vec<usize>,
     filter_outliers: bool,
 ) -> Option<RunResult> {
     assert!(baseline.len() == candidate.len());
+    assert!(baseline.len() == iterations_per_sample.len());
 
     let mut baseline = baseline.to_vec();
     let mut candidate = candidate.to_vec();
@@ -481,19 +482,19 @@ pub(crate) fn calculate_run_result<N: Into<String>>(
         .iter()
         .copied()
         .zip(baseline.iter().copied())
+        .zip(iterations_per_sample.iter().copied())
         // need to convert both of measurement to i64 because difference can be negative
-        .map(|(c, b)| (c as i64, b as i64))
-        .map(|(c, b)| (c - b) / iterations_per_sample as i64)
+        .map(|((c, b), iters)| (c as i64 - b as i64) / iters as i64)
         .collect::<Vec<i64>>();
 
     let n = diff.len();
 
     // Normalizing measurements
-    for v in baseline.iter_mut() {
-        *v /= iterations_per_sample as u64;
+    for (v, iters) in baseline.iter_mut().zip(iterations_per_sample.iter()) {
+        *v /= *iters as u64;
     }
-    for v in candidate.iter_mut() {
-        *v /= iterations_per_sample as u64;
+    for (v, iters) in candidate.iter_mut().zip(iterations_per_sample.iter()) {
+        *v /= *iters as u64;
     }
 
     // Calculating measurements range. All measurements outside this interval concidered outliers
