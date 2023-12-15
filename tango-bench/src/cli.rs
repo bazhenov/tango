@@ -1,6 +1,9 @@
 //! Contains functionality of a `cargo bench` harness
 
-use self::reporting::{ConsoleReporter, VerboseReporter};
+use self::{
+    commands::PairedTest,
+    reporting::{ConsoleReporter, VerboseReporter},
+};
 use crate::{dylib::Spi, Error, MeasurementSettings, Reporter, SamplerType};
 use anyhow::{bail, Context};
 use clap::Parser;
@@ -155,24 +158,18 @@ pub fn run(mut settings: MeasurementSettings) -> Result<ExitCode> {
                 .with_context(|| format!("Unable to open library: {}", path.display()))?;
             let spi_lib = Spi::for_library(&lib)?;
 
-            let loop_mode = match (samples, time) {
-                (Some(samples), None) => LoopMode::Samples(samples.into()),
-                (None, Some(time)) => LoopMode::Time(Duration::from_millis((time * 1000.) as u64)),
-                (None, None) => LoopMode::Time(Duration::from_millis(100)),
-                (Some(_), Some(_)) => bail!("-t and -s are mutually exclusive"),
-            };
-
             settings.filter_outliers = filter_outliers;
 
             if let Some(sampler) = sampler {
                 settings.sampler_type = sampler;
             }
 
-            let mut rng = seed
-                .map(SmallRng::seed_from_u64)
-                .unwrap_or_else(SmallRng::from_entropy);
-
             let filter = filter.as_deref().unwrap_or("");
+
+            let loop_mode = create_loop_mode(samples, time)?;
+            let paired_test =
+                PairedTest::new(&spi_lib, &spi_self, settings, seed, loop_mode, path_to_dump);
+
             for func in spi_self.tests() {
                 if !filter.is_empty() && !glob_match(filter, &func.name) {
                     continue;
@@ -182,15 +179,7 @@ pub fn run(mut settings: MeasurementSettings) -> Result<ExitCode> {
                     continue;
                 }
 
-                let result = commands::paired_compare(
-                    &spi_lib,
-                    &spi_self,
-                    func.name.as_str(),
-                    &mut rng,
-                    &settings,
-                    loop_mode,
-                    path_to_dump.as_ref(),
-                )?;
+                let result = paired_test.run(&func.name)?;
 
                 if result.diff_estimate.significant || !significant_only {
                     reporter.on_complete(&result);
@@ -198,11 +187,10 @@ pub fn run(mut settings: MeasurementSettings) -> Result<ExitCode> {
 
                 if result.diff_estimate.significant {
                     if let Some(threshold) = fail_threshold {
-                        let diff = result.diff.mean / result.baseline.mean * 100.;
-                        if diff >= threshold {
+                        if result.diff_estimate.pct >= threshold {
                             eprintln!(
                                 "[ERROR] Performance regressed {:+.1}% >= {:.1}%  -  test: {}",
-                                diff, threshold, func.name
+                                result.diff_estimate.pct, threshold, func.name
                             );
                             return Ok(ExitCode::FAILURE);
                         }
@@ -212,6 +200,16 @@ pub fn run(mut settings: MeasurementSettings) -> Result<ExitCode> {
             Ok(ExitCode::SUCCESS)
         }
     }
+}
+
+fn create_loop_mode(samples: Option<NonZeroUsize>, time: Option<f64>) -> Result<LoopMode> {
+    let loop_mode = match (samples, time) {
+        (Some(samples), None) => LoopMode::Samples(samples.into()),
+        (None, Some(time)) => LoopMode::Time(Duration::from_millis((time * 1000.) as u64)),
+        (None, None) => LoopMode::Time(Duration::from_millis(100)),
+        (Some(_), Some(_)) => bail!("-t and -s are mutually exclusive"),
+    };
+    Ok(loop_mode)
 }
 
 #[derive(Clone, Copy)]
@@ -299,91 +297,122 @@ mod commands {
     ///
     /// Returns a percentage difference in performance of two functions if this change is
     /// statistically significant
-    pub(super) fn paired_compare(
-        a: &Spi,
-        b: &Spi,
-        test_name: &str,
-        rng: &mut SmallRng,
-        settings: &MeasurementSettings,
+    pub(crate) struct PairedTest<'a> {
+        baseline: &'a Spi<'a>,
+        candidate: &'a Spi<'a>,
+        seed: u64,
+        settings: MeasurementSettings,
         loop_mode: LoopMode,
-        samples_dump_path: Option<impl AsRef<Path>>,
-    ) -> Result<RunResult> {
-        let a_func = a.lookup(test_name).expect("Invalid test name given");
-        let b_func = b.lookup(test_name).expect("Invalid test name given");
+        samples_dump_path: Option<PathBuf>,
+    }
 
-        let seed = rng.next_u64();
-        a.sync(a_func, seed);
-        b.sync(b_func, seed);
+    impl<'a> PairedTest<'a> {
+        pub fn new(
+            baseline: &'a Spi<'a>,
+            candidate: &'a Spi<'a>,
+            settings: MeasurementSettings,
+            seed: Option<u64>,
+            loop_mode: LoopMode,
+            samples_dump_path: Option<PathBuf>,
+        ) -> Self {
+            let seed = seed.unwrap_or_else(rand::random);
+            Self {
+                baseline,
+                candidate,
+                seed,
+                settings,
+                loop_mode,
+                samples_dump_path,
+            }
+        }
 
-        let mut a_func = TestedFunction::new(a, a_func);
-        let mut b_func = TestedFunction::new(b, b_func);
+        pub fn run(&self, test_name: &str) -> Result<RunResult> {
+            let a_func = self
+                .baseline
+                .lookup(test_name)
+                .expect("Invalid test name given");
+            let b_func = self
+                .candidate
+                .lookup(test_name)
+                .expect("Invalid test name given");
 
-        // Estimating the number of iterations achievable in 1 ms
-        let estimate_1ms = b_func.estimate_iterations(1) / 2 + a_func.estimate_iterations(1) / 2;
-        let mut sampler = create_sampler(settings, estimate_1ms);
+            let mut rng = SmallRng::seed_from_u64(self.seed);
 
-        let mut i = 0;
-        let mut switch_counter = 0;
+            let seed = rng.next_u64();
+            self.baseline.sync(a_func, seed);
+            self.candidate.sync(b_func, seed);
 
-        let mut sample_iterations = vec![];
+            let mut a_func = TestedFunction::new(self.baseline, a_func);
+            let mut b_func = TestedFunction::new(self.candidate, b_func);
 
-        let start_time = Instant::now();
-        while loop_mode.should_continue(i, start_time) {
-            let iterations = sampler.next_sample_iterations(i);
-            i += 1;
-            if i % settings.samples_per_haystack == 0 {
-                a_func.next_haystack();
-                b_func.next_haystack();
+            // Estimating the number of iterations achievable in 1 ms
+            let iterations_per_1ms =
+                a_func.estimate_iterations(1) / 2 + b_func.estimate_iterations(1) / 2;
+            let mut sampler = create_sampler(&self.settings, iterations_per_1ms);
+
+            let mut i = 0;
+            let mut switch_counter = 0;
+
+            let mut sample_iterations = vec![];
+
+            let start_time = Instant::now();
+            while self.loop_mode.should_continue(i, start_time) {
+                let iterations = sampler.next_sample_iterations(i);
+                i += 1;
+                if i % self.settings.samples_per_haystack == 0 {
+                    a_func.next_haystack();
+                    b_func.next_haystack();
+                }
+
+                // !!! IMPORTANT !!!
+                // Algorithms should be called in different order on each new iteration.
+                // This equalize the probability of facing unfortunate circumstances like cache misses or page faults
+                // for both functions. Although both algorithms are from distinct shared objects and therefore
+                // must be fully self-contained in terms of virtual address space (each shared object has its own
+                // generator instances, static variables, memory mappings, etc.) it might be the case that
+                // on the level of physical memory both of them rely on the same memory-mapped test data, for example.
+                // In that case first function will experience the larger amount of major page faults.
+                {
+                    mem::swap(&mut a_func, &mut b_func);
+                    switch_counter += 1;
+                }
+
+                a_func.run(iterations);
+                b_func.run(iterations);
+                sample_iterations.push(iterations);
             }
 
-            // !!! IMPORTANT !!!
-            // Algorithms should be called in different order on each new iteration.
-            // This equalize the probability of facing unfortunate circumstances like cache misses or page faults
-            // for both functions. Although both algorithms are from distinct shared objects and therefore
-            // must be fully self-contained in terms of virtual address space (each shared object has its own
-            // generator instances, static variables, memory mappings, etc.) it might be the case that
-            // on the level of physical memory both of them rely on the same memory-mapped test data, for example.
-            // In that case first function will experience the larger amount of major page faults.
-            {
+            // If we switched functions odd number of times then we need to swap them back so that
+            // the first function is always the baseline.
+            if switch_counter % 2 != 0 {
                 mem::swap(&mut a_func, &mut b_func);
-                switch_counter += 1;
             }
 
-            a_func.run(iterations);
-            b_func.run(iterations);
-            sample_iterations.push(iterations);
+            let run_result = calculate_run_result(
+                test_name,
+                &a_func.samples,
+                &b_func.samples,
+                &sample_iterations,
+                self.settings.filter_outliers,
+            )
+            .ok_or(Error::NoMeasurements)?;
+
+            if let Some(path) = &self.samples_dump_path {
+                let file_name = format!("{}.csv", test_name.replace('/', "-"));
+                let file_path = path.join(file_name);
+                let values = a_func
+                    .samples
+                    .iter()
+                    .copied()
+                    .zip(b_func.samples.iter().copied())
+                    .zip(sample_iterations.iter().copied())
+                    .map(|((a, b), c)| (a, b, c));
+                write_raw_measurements(file_path, values)
+                    .context("Unable to write raw measurements")?;
+            }
+
+            Ok(run_result)
         }
-
-        // If we switched functions odd number of times then we need to swap them back so that
-        // the first function is always the baseline.
-        if switch_counter % 2 != 0 {
-            mem::swap(&mut a_func, &mut b_func);
-        }
-
-        let run_result = calculate_run_result(
-            test_name,
-            &a_func.samples,
-            &b_func.samples,
-            &sample_iterations,
-            settings.filter_outliers,
-        )
-        .ok_or(Error::NoMeasurements)?;
-
-        if let Some(path) = samples_dump_path {
-            let file_name = format!("{}.csv", test_name.replace('/', "-"));
-            let file_path = path.as_ref().join(file_name);
-            let values = a_func
-                .samples
-                .iter()
-                .copied()
-                .zip(b_func.samples.iter().copied())
-                .zip(sample_iterations.iter().copied())
-                .map(|((a, b), c)| (a, b, c));
-            write_raw_measurements(file_path, values)
-                .context("Unable to write raw measurements")?;
-        }
-
-        Ok(run_result)
     }
 
     fn create_sampler(settings: &MeasurementSettings, estimate_1ms: usize) -> Box<dyn Sampler> {
@@ -393,9 +422,9 @@ mod commands {
         }
     }
 
-    fn write_raw_measurements<U: Display, V: Display, X: Display>(
+    fn write_raw_measurements<A: Display, B: Display, C: Display>(
         path: impl AsRef<Path>,
-        values: impl IntoIterator<Item = (U, V, X)>,
+        values: impl IntoIterator<Item = (A, B, C)>,
     ) -> io::Result<()> {
         let mut file = BufWriter::new(File::create(path)?);
 
