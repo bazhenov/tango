@@ -475,16 +475,24 @@ pub(crate) fn calculate_run_result<N: Into<String>>(
     assert!(baseline.len() == candidate.len());
     assert!(baseline.len() == iterations_per_sample.len());
 
+    let mut iterations_per_sample = iterations_per_sample.to_vec();
+
     let mut baseline = baseline.to_vec();
     let mut candidate = candidate.to_vec();
 
-    let mut diff = candidate
+    let mut diff_not_normalized = candidate
         .iter()
         .copied()
         .zip(baseline.iter().copied())
-        .zip(iterations_per_sample.iter().copied())
         // need to convert both of measurement to i64 because difference can be negative
-        .map(|((c, b), iters)| (c as i64 - b as i64) / iters as i64)
+        .map(|(c, b)| (c as i64 - b as i64))
+        .collect::<Vec<_>>();
+
+    let mut diff = diff_not_normalized
+        .iter()
+        .copied()
+        .zip(iterations_per_sample.iter().copied())
+        .map(|(d, iters)| d / iters as i64)
         .collect::<Vec<i64>>();
 
     let n = diff.len();
@@ -518,24 +526,37 @@ pub(crate) fn calculate_run_result<N: Into<String>>(
                 i += 1;
             } else {
                 diff.swap_remove(i);
+                diff_not_normalized.swap_remove(i);
+                iterations_per_sample.swap_remove(i);
                 baseline.swap_remove(i);
                 candidate.swap_remove(i);
             }
         }
     };
 
-    let diff = Summary::from(&diff)?;
-    let baseline = Summary::from(&baseline)?;
-    let candidate = Summary::from(&candidate)?;
+    let diff_summary = Summary::from(&diff)?;
+    let baseline_summary = Summary::from(&baseline)?;
+    let candidate_summary = Summary::from(&candidate)?;
 
-    let diff_estimate = DiffEstimate::build_from_flat_sampling(&baseline, &candidate, &diff);
+    let diff_estimate_flat =
+        DiffEstimate::build_from_flat_sampling(&baseline_summary, &diff_summary);
+    let diff_estimate_linear = DiffEstimate::build_from_linear_sampling(
+        &baseline_summary,
+        &diff_summary,
+        &diff_not_normalized,
+        &iterations_per_sample,
+    );
+
+    println!("Flat sampling diff: {}", diff_estimate_flat.pct);
+    println!("Linear sampling diff: {}", diff_estimate_linear.pct);
+
     Some(RunResult {
-        baseline,
-        candidate,
-        diff,
+        baseline: baseline_summary,
+        candidate: candidate_summary,
+        diff: diff_summary,
         name: name.into(),
-        diff_estimate,
-        outliers: n - diff.n,
+        diff_estimate: diff_estimate_flat,
+        outliers: n - diff_summary.n,
     })
 }
 
@@ -558,19 +579,57 @@ impl DiffEstimate {
     /// robust to outliers, but it is requiring more iterations.
     ///
     /// It is assumed that baseline and candidate are already normalized by iterations count.
-    fn build_from_flat_sampling(
-        baseline: &Summary<u64>,
-        candidate: &Summary<u64>,
-        diff: &Summary<i64>,
-    ) -> Self {
+    fn build_from_flat_sampling(baseline: &Summary<u64>, diff: &Summary<i64>) -> Self {
         let std_dev = diff.variance.sqrt();
         let std_err = std_dev / (diff.n as f64).sqrt();
         let z_score = diff.mean / std_err;
 
         // significant result is far away from 0 and have more than 0.5% base/candidate difference
         // z_score = 2.6 corresponds to 99% significance level
-        let significant = z_score.abs() >= 2.6 && (diff.mean / candidate.mean).abs() > 0.005;
+        let significant = z_score.abs() >= 2.6 && (diff.mean / baseline.mean).abs() > 0.005;
         let pct = diff.mean / baseline.mean * 100.0;
+
+        Self { pct, significant }
+    }
+
+    /// Estimates the slope of the line y = k * x using least squares method.
+    ///
+    /// `diff_samples` is the vector of y values, and `iterations_per_sample` is the vector of x values.
+    /// It returns the estimated slope `k` of the line.
+    fn build_from_linear_sampling(
+        baseline: &Summary<u64>,
+        diff: &Summary<i64>,
+        diff_samples: &[i64],
+        iterations_per_sample: &[usize],
+    ) -> Self {
+        assert_eq!(
+            diff_samples.len(),
+            iterations_per_sample.len(),
+            "The number of samples and iterations must be equal"
+        );
+
+        // Calculate the numerator and denominator for the slope of the line
+        let numerator: f64 = iterations_per_sample
+            .iter()
+            .zip(diff_samples.iter())
+            .map(|(&x, &y)| x as i64 * y)
+            .sum::<i64>() as f64;
+
+        let denominator: f64 = iterations_per_sample
+            .iter()
+            .map(|&x| x.pow(2))
+            .sum::<usize>() as f64;
+
+        // the slope of the line (k) estimates the difference time between baseline and candidate
+        let k = numerator / denominator;
+
+        let std_dev = diff.variance.sqrt();
+        let std_err = std_dev / (diff.n as f64).sqrt();
+        let z_score = diff.mean / std_err;
+
+        let significant = z_score.abs() >= 2.6 && (diff.mean / baseline.mean).abs() > 0.005;
+
+        let pct = k / baseline.mean * 100.0;
 
         Self { pct, significant }
     }
