@@ -20,6 +20,7 @@ use std::{
 };
 
 pub type Result<T> = anyhow::Result<T>;
+pub type StdResult<T, E> = std::result::Result<T, E>;
 
 #[derive(Parser, Debug)]
 enum BenchmarkMode {
@@ -81,6 +82,18 @@ struct Opts {
 
     #[arg(long = "color", default_value = "detect")]
     coloring_mode: String,
+}
+
+impl FromStr for SamplerType {
+    type Err = Error;
+
+    fn from_str(s: &str) -> StdResult<Self, Self::Err> {
+        match s {
+            "flat" => Ok(SamplerType::Flat),
+            "linear" => Ok(SamplerType::Linear),
+            _ => Err(Error::UnknownSamplerType),
+        }
+    }
 }
 
 /// Definition of the flags required to comply with `cargo bench` calling conventions.

@@ -7,7 +7,7 @@ use std::{
     io,
     ops::{Add, Div, RangeInclusive},
     rc::Rc,
-    str::{FromStr, Utf8Error},
+    str::Utf8Error,
 };
 use thiserror::Error;
 use timer::{ActiveTimer, Timer};
@@ -458,18 +458,6 @@ pub struct MeasurementSettings {
 pub enum SamplerType {
     Flat,
     Linear,
-}
-
-impl FromStr for SamplerType {
-    type Err = Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "flat" => Ok(SamplerType::Flat),
-            "linear" => Ok(SamplerType::Linear),
-            _ => Err(Error::UnknownSamplerType),
-        }
-    }
 }
 
 pub const DEFAULT_SETTINGS: MeasurementSettings = MeasurementSettings {
