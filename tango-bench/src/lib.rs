@@ -486,6 +486,66 @@ impl Default for MeasurementSettings {
     }
 }
 
+/// Sampler is responsible for determining the number of iterations to run for each sample
+///
+/// Different sampler strategies can influence the results heavily. For example, if function is dependent heavily
+/// on a memory subsystem, then it should be tested with different number of iterations to be representative
+/// for different memory access patterns and cache states.
+trait Sampler {
+    /// Returns the number of iterations to run for the next sample
+    ///
+    /// Accepts the number of iteration being run starting from 0.
+    fn next_sample_iterations(&mut self, iteration_no: usize) -> usize;
+}
+
+/// Runs the same number of iterations for each sample
+///
+/// Estimates the number of iterations based on the number of iterations achieved in 1 ms and uses
+/// this number as a base for the number of iterations for each sample. This is the default sampler which is
+/// suitable for most cases.
+struct FlatSampler {
+    iterations: usize,
+}
+
+impl FlatSampler {
+    /// Creates a new sampler
+    ///
+    /// estimate_1ms is the number of iterations to run to estimate the number of iterations to run in 1 ms
+    fn new(settings: &MeasurementSettings, estimate_1ms: usize) -> Self {
+        let iterations = estimate_1ms.clamp(
+            settings.min_iterations_per_sample.max(1),
+            settings.max_iterations_per_sample,
+        );
+        FlatSampler { iterations }
+    }
+}
+
+impl Sampler for FlatSampler {
+    fn next_sample_iterations(&mut self, _iteration_no: usize) -> usize {
+        self.iterations
+    }
+}
+
+struct LinearSampler {
+    max_iterations: usize,
+}
+
+impl LinearSampler {
+    fn new(settings: &MeasurementSettings, estimate_1ms: usize) -> Self {
+        let max_iterations = estimate_1ms.clamp(
+            settings.min_iterations_per_sample.max(1),
+            settings.max_iterations_per_sample,
+        );
+        LinearSampler { max_iterations }
+    }
+}
+
+impl Sampler for LinearSampler {
+    fn next_sample_iterations(&mut self, iteration_no: usize) -> usize {
+        (iteration_no % self.max_iterations) + 1
+    }
+}
+
 /// Calculates the result of the benchmarking run
 ///
 /// Return None if no measurements were made
@@ -719,9 +779,6 @@ where
 /// Observations that are 1.5 IQR away from the corresponding quartile are consideted as outliers
 /// as described in original Tukey's paper.
 pub fn iqr_variance_thresholds(mut input: Vec<f64>) -> Option<RangeInclusive<f64>> {
-    // In case q1 and q3 are equal, we need to make sure that IQR is not 0
-    // Now we take value close to system timer precision. In the future it would be nice to measure
-    // system timer accuracy empirically.
     const MINIMUM_IQR: f64 = 10.;
 
     input.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal));
@@ -729,6 +786,9 @@ pub fn iqr_variance_thresholds(mut input: Vec<f64>) -> Option<RangeInclusive<f64
     if q1 >= q3 || q3 >= input.len() {
         return None;
     }
+    // In case q1 and q3 are equal, we need to make sure that IQR is not 0
+    // Now we take value close to system timer precision. In the future it would be nice to measure
+    // system timer precision empirically.
     let iqr = (input[q3] - input[q1]).max(MINIMUM_IQR);
 
     let low_threshold = input[q1] - iqr * 1.5;
