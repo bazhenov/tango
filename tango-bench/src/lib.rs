@@ -7,7 +7,7 @@ use std::{
     io,
     ops::{Add, Div, RangeInclusive},
     rc::Rc,
-    str::Utf8Error,
+    str::{FromStr, Utf8Error},
 };
 use thiserror::Error;
 use timer::{ActiveTimer, Timer};
@@ -33,6 +33,9 @@ pub enum Error {
 
     #[error("Unable to load library symbol")]
     UnableToLoadSymbol(#[source] libloading::Error),
+
+    #[error("Unknown sampler type: {0}")]
+    UnknownSamplerType(String),
 
     #[error("IO Error")]
     IOError(#[from] io::Error),
@@ -447,6 +450,26 @@ pub struct MeasurementSettings {
 
     /// The number of iterations in a sample for each of 2 tested functions
     pub max_iterations_per_sample: usize,
+
+    pub sampler_type: SamplerType,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum SamplerType {
+    Flat,
+    Linear,
+}
+
+impl FromStr for SamplerType {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "flat" => Ok(SamplerType::Flat),
+            "linear" => Ok(SamplerType::Linear),
+            _ => Err(Error::UnknownSamplerType(s.to_string())),
+        }
+    }
 }
 
 pub const DEFAULT_SETTINGS: MeasurementSettings = MeasurementSettings {
@@ -454,6 +477,7 @@ pub const DEFAULT_SETTINGS: MeasurementSettings = MeasurementSettings {
     samples_per_haystack: 1,
     min_iterations_per_sample: 1,
     max_iterations_per_sample: 5000,
+    sampler_type: SamplerType::Flat,
 };
 
 impl Default for MeasurementSettings {

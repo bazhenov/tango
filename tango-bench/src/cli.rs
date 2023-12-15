@@ -1,7 +1,7 @@
 //! Contains functionality of a `cargo bench` harness
 
 use self::reporting::{ConsoleReporter, VerboseReporter};
-use crate::{dylib::Spi, Error, MeasurementSettings, Reporter};
+use crate::{dylib::Spi, Error, MeasurementSettings, Reporter, SamplerType};
 use anyhow::{bail, Context};
 use clap::Parser;
 use colorz::mode::{self, Mode};
@@ -48,6 +48,9 @@ enum BenchmarkMode {
         #[arg(short = 's', long = "samples")]
         samples: Option<NonZeroUsize>,
 
+        #[arg(long = "sampler")]
+        sampler: Option<SamplerType>,
+
         #[arg(short = 't', long = "time")]
         time: Option<f64>,
 
@@ -90,7 +93,7 @@ struct CargoBenchFlags {
     bench: bool,
 }
 
-pub fn run(settings: MeasurementSettings) -> Result<ExitCode> {
+pub fn run(mut settings: MeasurementSettings) -> Result<ExitCode> {
     let opts = Opts::parse();
 
     match Mode::from_str(&opts.coloring_mode) {
@@ -123,6 +126,7 @@ pub fn run(settings: MeasurementSettings) -> Result<ExitCode> {
             significant_only,
             seed,
             dump_only_significant,
+            sampler,
         } => {
             let mut reporter: Box<dyn Reporter> = if verbose {
                 Box::<VerboseReporter>::default()
@@ -142,8 +146,6 @@ pub fn run(settings: MeasurementSettings) -> Result<ExitCode> {
                 .with_context(|| format!("Unable to open library: {}", path.display()))?;
             let spi_lib = Spi::for_library(&lib)?;
 
-            let mut settings = settings;
-
             let loop_mode = match (samples, time) {
                 (Some(samples), None) => LoopMode::Samples(samples.into()),
                 (None, Some(time)) => LoopMode::Time(Duration::from_millis((time * 1000.) as u64)),
@@ -152,6 +154,10 @@ pub fn run(settings: MeasurementSettings) -> Result<ExitCode> {
             };
 
             settings.filter_outliers = filter_outliers;
+
+            if let Some(sampler) = sampler {
+                settings.sampler_type = sampler;
+            }
 
             let mut rng = seed
                 .map(SmallRng::seed_from_u64)
@@ -228,7 +234,7 @@ mod commands {
     use rand::RngCore;
 
     use super::*;
-    use crate::{calculate_run_result, dylib::NamedFunction, RunResult};
+    use crate::{calculate_run_result, dylib::NamedFunction, RunResult, SamplerType};
     use std::{
         fs::File,
         io::{self, BufWriter, Write as _},
@@ -288,14 +294,11 @@ mod commands {
     }
 
     impl FlatSampler {
-        fn new(
-            settings: &MeasurementSettings,
-            a: &mut TestedFunction,
-            b: &mut TestedFunction,
-        ) -> Self {
-            // Estimating the number of iterations achievable in 1 ms
-            let estimate = b.estimate_iterations(1) / 2 + a.estimate_iterations(1) / 2;
-            let iterations = estimate.clamp(
+        /// Creates a new sampler
+        ///
+        /// estimate_1ms is the number of iterations to run to estimate the number of iterations to run in 1 ms
+        fn new(settings: &MeasurementSettings, estimate_1ms: usize) -> Self {
+            let iterations = estimate_1ms.clamp(
                 settings.min_iterations_per_sample.max(1),
                 settings.max_iterations_per_sample,
             );
@@ -306,6 +309,26 @@ mod commands {
     impl Sampler for FlatSampler {
         fn next_sample_iterations(&mut self, _iteration_no: usize) -> usize {
             self.iterations
+        }
+    }
+
+    struct LinearSampler {
+        max_iterations: usize,
+    }
+
+    impl LinearSampler {
+        fn new(settings: &MeasurementSettings, estimate_1ms: usize) -> Self {
+            let max_iterations = estimate_1ms.clamp(
+                settings.min_iterations_per_sample.max(1),
+                settings.max_iterations_per_sample,
+            );
+            LinearSampler { max_iterations }
+        }
+    }
+
+    impl Sampler for LinearSampler {
+        fn next_sample_iterations(&mut self, iteration_no: usize) -> usize {
+            (iteration_no % self.max_iterations) + 1
         }
     }
 
@@ -344,7 +367,10 @@ mod commands {
 
         let mut a_func = TestedFunction::new(a, a_func);
         let mut b_func = TestedFunction::new(b, b_func);
-        let mut sampler = FlatSampler::new(settings, &mut a_func, &mut b_func);
+
+        // Estimating the number of iterations achievable in 1 ms
+        let estimate_1ms = b_func.estimate_iterations(1) / 2 + a_func.estimate_iterations(1) / 2;
+        let mut sampler = create_sampler(settings, estimate_1ms);
 
         let mut i = 0;
         let mut switch_counter = 0;
@@ -410,6 +436,13 @@ mod commands {
         }
 
         Ok(run_result)
+    }
+
+    fn create_sampler(settings: &MeasurementSettings, estimate_1ms: usize) -> Box<dyn Sampler> {
+        match settings.sampler_type {
+            SamplerType::Flat => Box::new(FlatSampler::new(settings, estimate_1ms)),
+            SamplerType::Linear => Box::new(LinearSampler::new(settings, estimate_1ms)),
+        }
     }
 
     fn write_raw_measurements<U: Display, V: Display, X: Display>(
