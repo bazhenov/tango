@@ -477,33 +477,30 @@ pub(crate) fn calculate_run_result<N: Into<String>>(
 
     let mut iterations_per_sample = iterations_per_sample.to_vec();
 
-    let mut baseline = baseline.to_vec();
-    let mut candidate = candidate.to_vec();
-
-    let mut diff_not_normalized = candidate
+    let mut diff = candidate
         .iter()
-        .copied()
-        .zip(baseline.iter().copied())
-        // need to convert both of measurement to i64 because difference can be negative
-        .map(|(c, b)| (c as i64 - b as i64))
+        .zip(baseline.iter())
+        // Calculating difference between candidate and baseline
+        .map(|(&c, &b)| (c as f64 - b as f64))
+        .zip(iterations_per_sample.iter())
+        // Normalizing difference to iterations count
+        .map(|(diff, &iters)| diff / iters as f64)
         .collect::<Vec<_>>();
 
-    let mut diff = diff_not_normalized
-        .iter()
-        .copied()
-        .zip(iterations_per_sample.iter().copied())
-        .map(|(d, iters)| d / iters as i64)
-        .collect::<Vec<i64>>();
-
+    // need to save number of original samples to calculate number of outliers correctly
     let n = diff.len();
 
-    // Normalizing measurements
-    for (v, iters) in baseline.iter_mut().zip(iterations_per_sample.iter()) {
-        *v /= *iters as u64;
-    }
-    for (v, iters) in candidate.iter_mut().zip(iterations_per_sample.iter()) {
-        *v /= *iters as u64;
-    }
+    // Normalizing measurements to iterations count
+    let mut baseline = baseline
+        .iter()
+        .zip(iterations_per_sample.iter())
+        .map(|(&v, &iters)| (v as f64) / (iters as f64))
+        .collect::<Vec<_>>();
+    let mut candidate = candidate
+        .iter()
+        .zip(iterations_per_sample.iter())
+        .map(|(&v, &iters)| (v as f64) / (iters as f64))
+        .collect::<Vec<_>>();
 
     // Calculating measurements range. All measurements outside this interval concidered outliers
     let range = if filter_outliers {
@@ -526,7 +523,6 @@ pub(crate) fn calculate_run_result<N: Into<String>>(
                 i += 1;
             } else {
                 diff.swap_remove(i);
-                diff_not_normalized.swap_remove(i);
                 iterations_per_sample.swap_remove(i);
                 baseline.swap_remove(i);
                 candidate.swap_remove(i);
@@ -538,24 +534,14 @@ pub(crate) fn calculate_run_result<N: Into<String>>(
     let baseline_summary = Summary::from(&baseline)?;
     let candidate_summary = Summary::from(&candidate)?;
 
-    let diff_estimate_flat =
-        DiffEstimate::build_from_flat_sampling(&baseline_summary, &diff_summary);
-    let diff_estimate_linear = DiffEstimate::build_from_linear_sampling(
-        &baseline_summary,
-        &diff_summary,
-        &diff_not_normalized,
-        &iterations_per_sample,
-    );
-
-    println!("Flat sampling diff: {}", diff_estimate_flat.pct);
-    println!("Linear sampling diff: {}", diff_estimate_linear.pct);
+    let diff_estimate = DiffEstimate::build(&baseline_summary, &diff_summary);
 
     Some(RunResult {
         baseline: baseline_summary,
         candidate: candidate_summary,
         diff: diff_summary,
         name: name.into(),
-        diff_estimate: diff_estimate_flat,
+        diff_estimate,
         outliers: n - diff_summary.n,
     })
 }
@@ -579,7 +565,7 @@ impl DiffEstimate {
     /// robust to outliers, but it is requiring more iterations.
     ///
     /// It is assumed that baseline and candidate are already normalized by iterations count.
-    fn build_from_flat_sampling(baseline: &Summary<u64>, diff: &Summary<i64>) -> Self {
+    fn build(baseline: &Summary<f64>, diff: &Summary<f64>) -> Self {
         let std_dev = diff.variance.sqrt();
         let std_err = std_dev / (diff.n as f64).sqrt();
         let z_score = diff.mean / std_err;
@@ -591,48 +577,6 @@ impl DiffEstimate {
 
         Self { pct, significant }
     }
-
-    /// Estimates the slope of the line y = k * x using least squares method.
-    ///
-    /// `diff_samples` is the vector of y values, and `iterations_per_sample` is the vector of x values.
-    /// It returns the estimated slope `k` of the line.
-    fn build_from_linear_sampling(
-        baseline: &Summary<u64>,
-        diff: &Summary<i64>,
-        diff_samples: &[i64],
-        iterations_per_sample: &[usize],
-    ) -> Self {
-        assert_eq!(
-            diff_samples.len(),
-            iterations_per_sample.len(),
-            "The number of samples and iterations must be equal"
-        );
-
-        // Calculate the numerator and denominator for the slope of the line
-        let numerator: f64 = iterations_per_sample
-            .iter()
-            .zip(diff_samples.iter())
-            .map(|(&x, &y)| x as i64 * y)
-            .sum::<i64>() as f64;
-
-        let denominator: f64 = iterations_per_sample
-            .iter()
-            .map(|&x| x.pow(2))
-            .sum::<usize>() as f64;
-
-        // the slope of the line (k) estimates the difference time between baseline and candidate
-        let k = numerator / denominator;
-
-        let std_dev = diff.variance.sqrt();
-        let std_err = std_dev / (diff.n as f64).sqrt();
-        let z_score = diff.mean / std_err;
-
-        let significant = z_score.abs() >= 2.6 && (diff.mean / baseline.mean).abs() > 0.005;
-
-        let pct = k / baseline.mean * 100.0;
-
-        Self { pct, significant }
-    }
 }
 
 /// Describes the results of a single benchmark run
@@ -641,13 +585,13 @@ pub(crate) struct RunResult {
     name: String,
 
     /// statistical summary of baseline function measurements
-    baseline: Summary<u64>,
+    baseline: Summary<f64>,
 
     /// statistical summary of candidate function measurements
-    candidate: Summary<u64>,
+    candidate: Summary<f64>,
 
     /// individual measurements of a benchmark (candidate - baseline)
-    diff: Summary<i64>,
+    diff: Summary<f64>,
 
     diff_estimate: DiffEstimate,
 
@@ -750,32 +694,34 @@ where
 ///
 /// Observations that are 1.5 IQR away from the corresponding quartile are consideted as outliers
 /// as described in original Tukey's paper.
-pub fn iqr_variance_thresholds(mut input: Vec<i64>) -> Option<RangeInclusive<i64>> {
+pub fn iqr_variance_thresholds(mut input: Vec<f64>) -> Option<RangeInclusive<f64>> {
     // In case q1 and q3 are equal, we need to make sure that IQR is not 0
     // Now we take value close to system timer precision. In the future it would be nice to measure
     // system timer accuracy empirically.
-    const MINIMUM_IQR: i64 = 10;
+    const MINIMUM_IQR: f64 = 10.;
 
-    input.sort_unstable();
+    input.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal));
     let (q1, q3) = (input.len() / 4, input.len() * 3 / 4 - 1);
     if q1 >= q3 || q3 >= input.len() {
         return None;
     }
     let iqr = (input[q3] - input[q1]).max(MINIMUM_IQR);
 
-    let low_threshold = input[q1] - iqr * 3 / 2;
-    let high_threshold = input[q3] + iqr * 3 / 2;
+    let low_threshold = input[q1] - iqr * 1.5;
+    let high_threshold = input[q3] + iqr * 1.5;
 
     // Calculating the indicies of the thresholds in an dataset
-    let low_threshold_idx = match input[0..q1].binary_search(&low_threshold) {
-        Ok(idx) => idx,
-        Err(idx) => idx,
-    };
+    let low_threshold_idx =
+        match input[0..q1].binary_search_by(|probe| probe.total_cmp(&low_threshold)) {
+            Ok(idx) => idx,
+            Err(idx) => idx,
+        };
 
-    let high_threshold_idx = match input[q3..].binary_search(&high_threshold) {
-        Ok(idx) => idx,
-        Err(idx) => idx,
-    };
+    let high_threshold_idx =
+        match input[q3..].binary_search_by(|probe| probe.total_cmp(&high_threshold)) {
+            Ok(idx) => idx,
+            Err(idx) => idx,
+        };
 
     if low_threshold_idx == 0 || high_threshold_idx >= input.len() {
         return None;
@@ -869,14 +815,14 @@ mod tests {
         // and add 10 outliers in each of two ranges [-1000, -200] and [200, 1000]
         // This way IQR is no more than 100 and thresholds should be withing [-50, 50] range
         let mut values = vec![];
-        values.extend((0..20).map(|_| rng.gen_range(-50..=50)));
-        values.extend((0..10).map(|_| rng.gen_range(-1000..=-200)));
-        values.extend((0..10).map(|_| rng.gen_range(200..=1000)));
+        values.extend((0..20).map(|_| rng.gen_range(-50.0..=50.)));
+        values.extend((0..10).map(|_| rng.gen_range(-1000.0..=-200.0)));
+        values.extend((0..10).map(|_| rng.gen_range(200.0..=1000.0)));
 
         let thresholds = iqr_variance_thresholds(values).unwrap();
 
         assert!(
-            -50 <= *thresholds.start() && *thresholds.end() <= 50,
+            -50. <= *thresholds.start() && *thresholds.end() <= 50.,
             "Invalid range: {:?}",
             thresholds
         );
@@ -888,14 +834,14 @@ mod tests {
         let mut rng = SmallRng::from_entropy();
 
         let mut values = vec![];
-        values.extend(std::iter::repeat(0).take(20));
-        values.extend((0..10).map(|_| rng.gen_range(-1000..=-200)));
-        values.extend((0..10).map(|_| rng.gen_range(200..=1000)));
+        values.extend(std::iter::repeat(0.).take(20));
+        values.extend((0..10).map(|_| rng.gen_range(-1000.0..=-200.0)));
+        values.extend((0..10).map(|_| rng.gen_range(200.0..=1000.0)));
 
         let thresholds = iqr_variance_thresholds(values).unwrap();
 
         assert!(
-            0 <= *thresholds.start() && *thresholds.end() <= 0,
+            0. <= *thresholds.start() && *thresholds.end() <= 0.,
             "Invalid range: {:?}",
             thresholds
         );

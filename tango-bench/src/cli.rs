@@ -260,6 +260,53 @@ mod commands {
         fn next_haystack(&mut self) {
             self.spi.next_haystack(self.func);
         }
+
+        fn estimate_iterations(&mut self, iterations: u32) -> usize {
+            self.spi.estimate_iterations(self.func, iterations)
+        }
+    }
+
+    /// Sampler is responsible for determining the number of iterations to run for each sample
+    ///
+    /// Different sampler strategies can influence the results heavily. For example, if function is dependent heavily
+    /// on a memory subsystem, then it should be tested with different number of iterations to be representative
+    /// for different memory access patterns and cache states.
+    trait Sampler {
+        /// Returns the number of iterations to run for the next sample
+        ///
+        /// Accepts the number of iteration being run starting from 0.
+        fn next_sample_iterations(&mut self, iteration_no: usize) -> usize;
+    }
+
+    /// Runs the same number of iterations for each sample
+    ///
+    /// Estimates the number of iterations based on the number of iterations achieved in 1 ms and uses
+    /// this number as a base for the number of iterations for each sample. This is the default sampler which is
+    /// suitable for most cases.
+    struct FlatSampler {
+        iterations: usize,
+    }
+
+    impl FlatSampler {
+        fn new(
+            settings: &MeasurementSettings,
+            a: &mut TestedFunction,
+            b: &mut TestedFunction,
+        ) -> Self {
+            // Estimating the number of iterations achievable in 1 ms
+            let estimate = b.estimate_iterations(1) / 2 + a.estimate_iterations(1) / 2;
+            let iterations = estimate.clamp(
+                settings.min_iterations_per_sample.max(1),
+                settings.max_iterations_per_sample,
+            );
+            FlatSampler { iterations }
+        }
+    }
+
+    impl Sampler for FlatSampler {
+        fn next_sample_iterations(&mut self, _iteration_no: usize) -> usize {
+            self.iterations
+        }
     }
 
     /// Measure the difference in performance of two functions
@@ -295,23 +342,18 @@ mod commands {
         a.sync(a_func, seed);
         b.sync(b_func, seed);
 
-        // Estimating the number of iterations achievable in 1 ms
-        let estimate = b.estimate_iterations(b_func, 1) / 2 + a.estimate_iterations(a_func, 1) / 2;
-        let iterations_per_ms = estimate.clamp(
-            settings.min_iterations_per_sample.max(1),
-            settings.max_iterations_per_sample,
-        );
-        let iterations = iterations_per_ms;
+        let mut a_func = TestedFunction::new(a, a_func);
+        let mut b_func = TestedFunction::new(b, b_func);
+        let mut sampler = FlatSampler::new(settings, &mut a_func, &mut b_func);
 
         let mut i = 0;
         let mut switch_counter = 0;
 
-        let mut a_func = TestedFunction::new(a, a_func);
-        let mut b_func = TestedFunction::new(b, b_func);
         let mut sample_iterations = vec![];
 
         let start_time = Instant::now();
         while loop_mode.should_continue(i, start_time) {
+            let iterations = sampler.next_sample_iterations(i);
             i += 1;
             if i % settings.samples_per_haystack == 0 {
                 a_func.next_haystack();
@@ -331,9 +373,9 @@ mod commands {
                 switch_counter += 1;
             }
 
-            a_func.run(i);
-            b_func.run(i);
-            sample_iterations.push(i);
+            a_func.run(iterations);
+            b_func.run(iterations);
+            sample_iterations.push(iterations);
         }
 
         // If we switched functions odd number of times then we need to swap them back so that
@@ -437,16 +479,16 @@ pub mod reporting {
             println!(
                 "    {:12} │ {:>15} {:>15} {:>15}",
                 "min",
-                HumanTime(base.min as f64),
-                HumanTime(candidate.min as f64),
-                HumanTime(candidate.min as f64 - base.min as f64)
+                HumanTime(base.min),
+                HumanTime(candidate.min),
+                HumanTime(candidate.min - base.min)
             );
             println!(
                 "    {:12} │ {:>15} {:>15} {:>15}",
                 "max",
-                HumanTime(base.max as f64),
-                HumanTime(candidate.max as f64),
-                HumanTime(candidate.max as f64 - base.max as f64),
+                HumanTime(base.max),
+                HumanTime(candidate.max),
+                HumanTime(candidate.max - base.max),
             );
             println!(
                 "    {:12} │ {:>15} {:>15} {:>15}",

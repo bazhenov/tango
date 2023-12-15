@@ -49,7 +49,7 @@ fn summary_benchmarks() -> impl IntoBenchmarks {
 }
 
 fn iqr_interquartile_range_benchmarks() -> impl IntoBenchmarks {
-    let generator = RandomVec::<i64>::new(1_000);
+    let generator = RandomVec::<f64>::new(1_000);
     BenchmarkMatrix::new(generator).add_function("iqr", |c, _| iqr_variance_thresholds(c.clone()))
 }
 
