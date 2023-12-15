@@ -34,8 +34,8 @@ pub enum Error {
     #[error("Unable to load library symbol")]
     UnableToLoadSymbol(#[source] libloading::Error),
 
-    #[error("Unknown sampler type: {0}")]
-    UnknownSamplerType(String),
+    #[error("Unknown sampler type. Available options are: flat and linear")]
+    UnknownSamplerType,
 
     #[error("IO Error")]
     IOError(#[from] io::Error),
@@ -467,7 +467,7 @@ impl FromStr for SamplerType {
         match s {
             "flat" => Ok(SamplerType::Flat),
             "linear" => Ok(SamplerType::Linear),
-            _ => Err(Error::UnknownSamplerType(s.to_string())),
+            _ => Err(Error::UnknownSamplerType),
         }
     }
 }
