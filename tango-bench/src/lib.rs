@@ -1,4 +1,5 @@
 use num_traits::ToPrimitive;
+use rand::{rngs::SmallRng, Rng, SeedableRng};
 use std::{
     any::type_name,
     cell::RefCell,
@@ -458,6 +459,7 @@ pub struct MeasurementSettings {
 pub enum SamplerType {
     Flat,
     Linear,
+    Random,
 }
 
 pub const DEFAULT_SETTINGS: MeasurementSettings = MeasurementSettings {
@@ -500,11 +502,12 @@ impl FlatSampler {
     ///
     /// estimate_1ms is the number of iterations to run to estimate the number of iterations to run in 1 ms
     fn new(settings: &MeasurementSettings, estimate_1ms: usize) -> Self {
-        let iterations = estimate_1ms.clamp(
-            settings.min_iterations_per_sample.max(1),
-            settings.max_iterations_per_sample,
-        );
-        FlatSampler { iterations }
+        FlatSampler {
+            iterations: estimate_1ms.clamp(
+                settings.min_iterations_per_sample.max(1),
+                settings.max_iterations_per_sample,
+            ),
+        }
     }
 }
 
@@ -520,17 +523,44 @@ struct LinearSampler {
 
 impl LinearSampler {
     fn new(settings: &MeasurementSettings, estimate_1ms: usize) -> Self {
-        let max_iterations = estimate_1ms.clamp(
-            settings.min_iterations_per_sample.max(1),
-            settings.max_iterations_per_sample,
-        );
-        LinearSampler { max_iterations }
+        Self {
+            max_iterations: estimate_1ms.clamp(
+                settings.min_iterations_per_sample.max(1),
+                settings.max_iterations_per_sample,
+            ),
+        }
     }
 }
 
 impl Sampler for LinearSampler {
     fn next_sample_iterations(&mut self, iteration_no: usize) -> usize {
         (iteration_no % self.max_iterations) + 1
+    }
+}
+
+/// Sampler that randomly determines the number of iterations to run for each sample
+///
+/// This sampler uses a random number generator to decide the number of iterations for each sample.
+struct RandomSampler {
+    rng: SmallRng,
+    max_iterations: usize,
+}
+
+impl RandomSampler {
+    pub fn new(settings: &MeasurementSettings, estimate_1ms: usize, seed: u64) -> Self {
+        Self {
+            rng: SmallRng::seed_from_u64(seed),
+            max_iterations: estimate_1ms.clamp(
+                settings.min_iterations_per_sample.max(1),
+                settings.max_iterations_per_sample,
+            ),
+        }
+    }
+}
+
+impl Sampler for RandomSampler {
+    fn next_sample_iterations(&mut self, _iteration_no: usize) -> usize {
+        self.rng.gen_range(1..=self.max_iterations)
     }
 }
 
@@ -767,7 +797,7 @@ where
 /// Observations that are 1.5 IQR away from the corresponding quartile are consideted as outliers
 /// as described in original Tukey's paper.
 pub fn iqr_variance_thresholds(mut input: Vec<f64>) -> Option<RangeInclusive<f64>> {
-    const MINIMUM_IQR: f64 = 10.;
+    const MINIMUM_IQR: f64 = 1.;
 
     input.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal));
     let (q1, q3) = (input.len() / 4, input.len() * 3 / 4 - 1);
@@ -775,8 +805,7 @@ pub fn iqr_variance_thresholds(mut input: Vec<f64>) -> Option<RangeInclusive<f64
         return None;
     }
     // In case q1 and q3 are equal, we need to make sure that IQR is not 0
-    // Now we take value close to system timer precision. In the future it would be nice to measure
-    // system timer precision empirically.
+    // In the future it would be nice to measure system timer precision empirically.
     let iqr = (input[q3] - input[q1]).max(MINIMUM_IQR);
 
     let low_threshold = input[q1] - iqr * 1.5;
