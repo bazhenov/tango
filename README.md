@@ -46,6 +46,7 @@ Tango is designed to have the capability to detect a 1% change in performance wi
       ```rust,ignore
       fn main() {
           println!("cargo:rustc-link-arg-benches=-rdynamic");
+          println!("cargo:rerun-if-changed=build.rs");
       }
       ```
 
