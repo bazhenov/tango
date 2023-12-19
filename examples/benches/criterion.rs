@@ -6,12 +6,6 @@ use test_funcs::{factorial, str_take, sum, RandomSubstring};
 
 mod test_funcs;
 
-/// Because benchmarks are builded with linker flag -rdynamic there should be dummy library entrypoint defined
-/// in all benchmarks. This is only needed when two benchmarks harnesses are used in a single crate.
-mod dummy_entrypoint {
-    tango_bench::tango_benchmarks!([]);
-}
-
 fn sum_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("arithmetic");
 
