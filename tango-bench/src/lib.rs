@@ -483,7 +483,7 @@ pub const DEFAULT_SETTINGS: MeasurementSettings = MeasurementSettings {
     samples_per_haystack: 1,
     min_iterations_per_sample: 1,
     max_iterations_per_sample: 5000,
-    sampler_type: SamplerType::Flat,
+    sampler_type: SamplerType::Linear,
 };
 
 impl Default for MeasurementSettings {
