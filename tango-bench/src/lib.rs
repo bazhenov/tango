@@ -86,7 +86,10 @@ macro_rules! tango_benchmarks {
 /// This macro generate `main()` function for the benchmark harness. Can be used in a form with providing
 /// measurement settings:
 /// ```rust
-/// use tango_bench::{tango_main, MeasurementSettings};
+/// use tango_bench::{tango_main, tango_benchmarks, MeasurementSettings};
+///
+/// // Register benchmarks
+/// tango_benchmarks!([]);
 ///
 /// tango_main!(MeasurementSettings {
 ///     samples_per_haystack: 1000,
