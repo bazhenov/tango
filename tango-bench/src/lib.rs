@@ -61,23 +61,17 @@ pub enum Error {
 #[macro_export]
 macro_rules! tango_benchmarks {
     ($($func_expr:expr),+) => {
-
         /// Type checking tango_init() function
         const TANGO_INIT: $crate::dylib::ffi::InitFn = tango_init;
 
         /// Exported function for initializing the benchmark harness
         #[no_mangle]
         unsafe extern "C" fn tango_init() {
-            use $crate::dylib::{ffi::STATE, State};
-            if STATE.is_none() {
-                let mut benchmarks = vec![];
-                $(benchmarks.extend($crate::IntoBenchmarks::into_benchmarks($func_expr));)*
-                STATE = Some(State {
-                    benchmarks,
-                    selected_function: 0,
-                });
-            }
+            let mut benchmarks = vec![];
+            $(benchmarks.extend($crate::IntoBenchmarks::into_benchmarks($func_expr));)*
+            $crate::dylib::__tango_init(benchmarks)
         }
+
     };
 }
 
