@@ -11,7 +11,7 @@ rm -f target/tango.txt
 rm -f target/criterion.txt
 
 # Patching PIE executable if needed
-target/benchmarks/search_ord compare target/benchmarks/search_vec -f "*/u32/32768/nodup" -t 0.1 > /dev/null
+target/benchmarks/search_ord compare target/benchmarks/search_vec -f "*/u32/1024/nodup" -t 0.1 > /dev/null
 if [ -f target/benchmarks/search_vec.patched ]; then
     mv target/benchmarks/search_vec.patched target/benchmarks/search_vec
     chmod +x target/benchmarks/search_vec
@@ -20,9 +20,9 @@ fi
 for i in {1..1000}; do
     # Tango benchmarks
     (
-    for time in 0.1 0.3 0.5 1; do
-        target/benchmarks/search_ord compare target/benchmarks/search_vec -f "*/u32/32768/nodup" -t "$time" -o \
-            | awk -v OFS=';' -v FS=" {2,}" -v time="$time" '{print "tango/u32/32768/" time "s", $NF}' | tr -d '%*'
+    for time in 0.1 0.3 0.5 1.0; do
+        target/benchmarks/search_ord compare target/benchmarks/search_vec -f "*/u32/1024/nodup" -t "$time" -o \
+            | awk -v OFS=';' -v FS="  " -v time="$time" '{print "tango/u32/1024/" time "s", $NF}' | tr -d '%*'
     done
     ) | tee -a target/tango.txt
 
