@@ -86,9 +86,9 @@ impl<'l> Spi<'l> {
 
 /// State which holds the information about list of benchmarks and which one is selected.
 /// Used in FFI API (`tango_*` functions).
-struct State {
-    benchmarks: Vec<Box<dyn MeasureTarget>>,
-    selected_function: usize,
+pub struct State {
+    pub benchmarks: Vec<Box<dyn MeasureTarget>>,
+    pub selected_function: usize,
 }
 
 impl State {
@@ -107,12 +107,12 @@ impl State {
 /// Tango execution model implies simultaneous exectution of the code from two binaries. To achive that
 /// Tango benchmark is compiled in a way that executable is also a shared library (.dll, .so, .dylib). This
 /// way two executables can coexist in the single process at the same time.
-mod ffi {
+pub mod ffi {
     use super::*;
     use std::{os::raw::c_char, ptr::null, usize};
 
     /// Signature types of all FFI API functions
-    type InitFn = unsafe extern "C" fn();
+    pub type InitFn = unsafe extern "C" fn();
     type CountFn = unsafe extern "C" fn() -> usize;
     type GetTestNameFn = unsafe extern "C" fn(*mut *const c_char, *mut usize);
     type SelectFn = unsafe extern "C" fn(usize);
@@ -128,7 +128,6 @@ mod ffi {
     mod type_check {
         use super::*;
 
-        const TANGO_INIT: InitFn = tango_init;
         const TANGO_COUNT: CountFn = tango_count;
         const TANGO_SELECT: SelectFn = tango_select;
         const TANGO_GET_TEST_NAME: GetTestNameFn = tango_get_test_name;
@@ -138,23 +137,8 @@ mod ffi {
         const TANGO_FREE: FreeFn = tango_free;
     }
 
-    extern "Rust" {
-        /// Each benchmark executable should define this function for the harness to load all benchmarks
-        fn __tango_create_benchmarks() -> Vec<Box<dyn MeasureTarget>>;
-    }
-
     /// Global state of the benchmarking library
-    static mut STATE: Option<State> = None;
-
-    #[no_mangle]
-    unsafe extern "C" fn tango_init() {
-        if STATE.is_none() {
-            STATE = Some(State {
-                benchmarks: __tango_create_benchmarks(),
-                selected_function: 0,
-            });
-        }
-    }
+    pub static mut STATE: Option<State> = None;
 
     #[no_mangle]
     unsafe extern "C" fn tango_count() -> usize {
@@ -241,7 +225,7 @@ mod ffi {
 
     impl VTable for SelfVTable {
         fn init(&self) {
-            unsafe { tango_init() }
+            // In executable mode `tango_init` is already called by the main function
         }
 
         fn count(&self) -> usize {

@@ -61,11 +61,22 @@ pub enum Error {
 #[macro_export]
 macro_rules! tango_benchmarks {
     ($($func_expr:expr),+) => {
+
+        /// Type checking tango_init() function
+        const TANGO_INIT: $crate::dylib::ffi::InitFn = tango_init;
+
+        /// Exported function for initializing the benchmark harness
         #[no_mangle]
-        pub fn __tango_create_benchmarks() -> Vec<Box<dyn $crate::MeasureTarget>> {
-            let mut benchmarks = vec![];
-            $(benchmarks.extend($crate::IntoBenchmarks::into_benchmarks($func_expr));)*
-            benchmarks
+        unsafe extern "C" fn tango_init() {
+            use $crate::dylib::{ffi::STATE, State};
+            if STATE.is_none() {
+                let mut benchmarks = vec![];
+                $(benchmarks.extend($crate::IntoBenchmarks::into_benchmarks($func_expr));)*
+                STATE = Some(State {
+                    benchmarks,
+                    selected_function: 0,
+                });
+            }
         }
     };
 }
@@ -88,6 +99,8 @@ macro_rules! tango_benchmarks {
 macro_rules! tango_main {
     ($settings:expr) => {
         fn main() -> $crate::cli::Result<std::process::ExitCode> {
+            // Initialize Tango for SelfVTable usage
+            unsafe { tango_init() };
             $crate::cli::run($settings)
         }
     };
