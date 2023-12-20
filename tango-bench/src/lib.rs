@@ -847,10 +847,10 @@ pub fn iqr_variance_thresholds(mut input: Vec<f64>) -> Option<RangeInclusive<f64
 mod timer {
     use std::time::Instant;
 
-    #[cfg(all(feature = "hw_timer", target_arch = "x86_64"))]
+    #[cfg(all(feature = "hw-timer", target_arch = "x86_64"))]
     pub(super) type ActiveTimer = x86::RdtscpTimer;
 
-    #[cfg(not(feature = "hw_timer"))]
+    #[cfg(not(feature = "hw-timer"))]
     pub(super) type ActiveTimer = PlatformTimer;
 
     pub(super) trait Timer<T> {
@@ -872,7 +872,7 @@ mod timer {
         }
     }
 
-    #[cfg(all(feature = "hw_timer", target_arch = "x86_64"))]
+    #[cfg(all(feature = "hw-timer", target_arch = "x86_64"))]
     pub(super) mod x86 {
         use super::Timer;
         use std::arch::x86_64::{__rdtscp, _mm_mfence};

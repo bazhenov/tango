@@ -29,7 +29,7 @@ tempfile = "3.8"
 
 [features]
 align = []
-hw_timer = []
+hw-timer = []
 
 [[bench]]
 name = "tango"
