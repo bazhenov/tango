@@ -30,6 +30,7 @@ tempfile = "3.8"
 [features]
 align = []
 hw-timer = []
+cache-firewall = []
 
 [[bench]]
 name = "tango"
