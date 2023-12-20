@@ -282,6 +282,18 @@ mod commands {
         }
     }
 
+    /// Spoiling the CPU cache with random data
+    ///
+    /// This functions tries to spoil the CPU cache with random data right after new haystack is generated,
+    /// so that both functions are tested on the same cache state.
+    #[cfg(feature = "cache-firewall")]
+    fn cpu_cache_firewall() {
+        use std::hint::black_box;
+        let mut buf = black_box(vec![0u8; 1024 * 512]);
+        rand::thread_rng().fill_bytes(&mut buf);
+        let _sum = buf.iter().fold(0u32, |a, b| a.wrapping_add(*b as u32));
+    }
+
     /// Measure the difference in performance of two functions
     ///
     /// Provides a way to save a raw dump of measurements into directory
@@ -377,6 +389,8 @@ mod commands {
                 if i % self.settings.samples_per_haystack == 0 {
                     a_func.next_haystack();
                     b_func.next_haystack();
+                    #[cfg(feature = "cache-firewall")]
+                    cpu_cache_firewall();
                 }
 
                 a_func.run(iterations);
