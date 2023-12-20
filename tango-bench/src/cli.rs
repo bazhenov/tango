@@ -360,10 +360,6 @@ mod commands {
             while self.loop_mode.should_continue(i, start_time) {
                 let iterations = sampler.next_sample_iterations(i);
                 i += 1;
-                if i % self.settings.samples_per_haystack == 0 {
-                    a_func.next_haystack();
-                    b_func.next_haystack();
-                }
 
                 // !!! IMPORTANT !!!
                 // Algorithms should be called in different order on each new iteration.
@@ -376,6 +372,11 @@ mod commands {
                 {
                     mem::swap(&mut a_func, &mut b_func);
                     switch_counter += 1;
+                }
+
+                if i % self.settings.samples_per_haystack == 0 {
+                    a_func.next_haystack();
+                    b_func.next_haystack();
                 }
 
                 a_func.run(iterations);
