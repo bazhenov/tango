@@ -477,7 +477,7 @@ pub const DEFAULT_SETTINGS: MeasurementSettings = MeasurementSettings {
     samples_per_haystack: 1,
     min_iterations_per_sample: 1,
     max_iterations_per_sample: 5000,
-    sampler_type: SamplerType::Linear,
+    sampler_type: SamplerType::Random,
 };
 
 impl Default for MeasurementSettings {
@@ -511,9 +511,9 @@ impl FlatSampler {
     /// Creates a new sampler
     ///
     /// estimate_1ms is the number of iterations to run to estimate the number of iterations to run in 1 ms
-    fn new(settings: &MeasurementSettings, estimate_1ms: usize) -> Self {
+    fn new(settings: &MeasurementSettings, estimate: usize) -> Self {
         FlatSampler {
-            iterations: estimate_1ms.clamp(
+            iterations: estimate.clamp(
                 settings.min_iterations_per_sample.max(1),
                 settings.max_iterations_per_sample,
             ),
@@ -532,9 +532,9 @@ struct LinearSampler {
 }
 
 impl LinearSampler {
-    fn new(settings: &MeasurementSettings, estimate_1ms: usize) -> Self {
+    fn new(settings: &MeasurementSettings, estimate: usize) -> Self {
         Self {
-            max_iterations: estimate_1ms.clamp(
+            max_iterations: estimate.clamp(
                 settings.min_iterations_per_sample.max(1),
                 settings.max_iterations_per_sample,
             ),
@@ -557,10 +557,10 @@ struct RandomSampler {
 }
 
 impl RandomSampler {
-    pub fn new(settings: &MeasurementSettings, estimate_1ms: usize, seed: u64) -> Self {
+    pub fn new(settings: &MeasurementSettings, estimate: usize, seed: u64) -> Self {
         Self {
             rng: SmallRng::seed_from_u64(seed),
-            max_iterations: estimate_1ms.clamp(
+            max_iterations: estimate.clamp(
                 settings.min_iterations_per_sample.max(1),
                 settings.max_iterations_per_sample,
             ),

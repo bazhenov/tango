@@ -347,9 +347,9 @@ mod commands {
             let mut b_func = TestedFunction::new(self.candidate, b_func);
 
             // Estimating the number of iterations achievable in 1 ms
-            let iterations_per_1ms =
-                a_func.estimate_iterations(1) / 2 + b_func.estimate_iterations(1) / 2;
-            let mut sampler = create_sampler(&self.settings, iterations_per_1ms, seed);
+            let iterations_per_sample =
+                b_func.estimate_iterations(50) / 2 + a_func.estimate_iterations(50) / 2;
+            let mut sampler = create_sampler(&self.settings, iterations_per_sample, seed);
 
             let mut i = 0;
             let mut switch_counter = 0;
@@ -418,13 +418,13 @@ mod commands {
 
     fn create_sampler(
         settings: &MeasurementSettings,
-        estimate_1ms: usize,
+        estimate: usize,
         seed: u64,
     ) -> Box<dyn Sampler> {
         match settings.sampler_type {
-            SamplerType::Flat => Box::new(FlatSampler::new(settings, estimate_1ms)),
-            SamplerType::Linear => Box::new(LinearSampler::new(settings, estimate_1ms)),
-            SamplerType::Random => Box::new(RandomSampler::new(settings, estimate_1ms, seed)),
+            SamplerType::Flat => Box::new(FlatSampler::new(settings, estimate)),
+            SamplerType::Linear => Box::new(LinearSampler::new(settings, estimate)),
+            SamplerType::Random => Box::new(RandomSampler::new(settings, estimate, seed)),
         }
     }
 
