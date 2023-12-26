@@ -1,3 +1,4 @@
+use core::ptr;
 use num_traits::ToPrimitive;
 use rand::{rngs::SmallRng, Rng, SeedableRng};
 use std::{
@@ -6,6 +7,7 @@ use std::{
     cmp::Ordering,
     hint::black_box,
     io,
+    mem::size_of,
     ops::{Add, Div, RangeInclusive},
     rc::Rc,
     str::Utf8Error,
@@ -463,6 +465,8 @@ pub struct MeasurementSettings {
     pub max_iterations_per_sample: usize,
 
     pub sampler_type: SamplerType,
+
+    pub cache_firewall: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -472,12 +476,43 @@ pub enum SamplerType {
     Random,
 }
 
+struct CacheFirewall {
+    cache_lines: Vec<CacheLine>,
+}
+
+impl CacheFirewall {
+    fn new(bytes: usize) -> Self {
+        let mut cache_lines = Vec::new();
+        for _ in 0..bytes / size_of::<CacheLine>() {
+            cache_lines.push(CacheLine::new());
+        }
+        Self { cache_lines }
+    }
+
+    fn issue_read(&self) {
+        for line in &self.cache_lines {
+            unsafe { ptr::read_volatile(&line.0[0]) };
+        }
+    }
+}
+
+#[repr(C)]
+#[repr(align(64))]
+struct CacheLine([u32; 8]);
+
+impl CacheLine {
+    fn new() -> Self {
+        Self([0; 8])
+    }
+}
+
 pub const DEFAULT_SETTINGS: MeasurementSettings = MeasurementSettings {
     filter_outliers: false,
     samples_per_haystack: 1,
     min_iterations_per_sample: 1,
     max_iterations_per_sample: 5000,
     sampler_type: SamplerType::Random,
+    cache_firewall: false,
 };
 
 impl Default for MeasurementSettings {

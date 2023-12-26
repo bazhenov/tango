@@ -58,6 +58,9 @@ enum BenchmarkMode {
         #[arg(long = "fail-threshold")]
         fail_threshold: Option<f64>,
 
+        #[arg(long = "cache-firewall", default_value_t = false)]
+        cache_firewall: bool,
+
         #[arg(short = 'f', long = "filter")]
         filter: Option<String>,
 
@@ -140,6 +143,7 @@ pub fn run(mut settings: MeasurementSettings) -> Result<ExitCode> {
             significant_only,
             seed,
             sampler,
+            cache_firewall,
         } => {
             let mut reporter: Box<dyn Reporter> = if verbose {
                 Box::<VerboseReporter>::default()
@@ -160,6 +164,7 @@ pub fn run(mut settings: MeasurementSettings) -> Result<ExitCode> {
             let spi_lib = Spi::for_library(&lib)?;
 
             settings.filter_outliers = filter_outliers;
+            settings.cache_firewall = cache_firewall;
 
             if let Some(sampler) = sampler {
                 settings.sampler_type = sampler;
@@ -242,8 +247,8 @@ mod commands {
 
     use super::*;
     use crate::{
-        calculate_run_result, dylib::NamedFunction, FlatSampler, LinearSampler, RandomSampler,
-        RunResult, Sampler, SamplerType,
+        calculate_run_result, dylib::NamedFunction, CacheFirewall, FlatSampler, LinearSampler,
+        RandomSampler, RunResult, Sampler, SamplerType,
     };
     use std::{
         fs::File,
@@ -282,18 +287,6 @@ mod commands {
         }
     }
 
-    /// Spoiling the CPU cache with random data
-    ///
-    /// This functions tries to spoil the CPU cache with random data right after new haystack is generated,
-    /// so that both functions are tested on the same cache state.
-    #[cfg(feature = "cache-firewall")]
-    fn cpu_cache_firewall() {
-        use std::hint::black_box;
-        let mut buf = black_box(vec![0u8; 1024 * 512]);
-        rand::thread_rng().fill_bytes(&mut buf);
-        let _sum = buf.iter().fold(0u32, |a, b| a.wrapping_add(*b as u32));
-    }
-
     /// Measure the difference in performance of two functions
     ///
     /// Provides a way to save a raw dump of measurements into directory
@@ -317,6 +310,7 @@ mod commands {
         settings: MeasurementSettings,
         loop_mode: LoopMode,
         samples_dump_path: Option<PathBuf>,
+        firewall: CacheFirewall,
     }
 
     impl<'a> PairedTest<'a> {
@@ -329,6 +323,7 @@ mod commands {
             samples_dump_path: Option<PathBuf>,
         ) -> Self {
             let seed = seed.unwrap_or_else(rand::random);
+            let firewall = CacheFirewall::new(1024 * 1024);
             Self {
                 baseline,
                 candidate,
@@ -336,6 +331,7 @@ mod commands {
                 settings,
                 loop_mode,
                 samples_dump_path,
+                firewall,
             }
         }
 
@@ -389,8 +385,9 @@ mod commands {
                 if i % self.settings.samples_per_haystack == 0 {
                     a_func.next_haystack();
                     b_func.next_haystack();
-                    #[cfg(feature = "cache-firewall")]
-                    cpu_cache_firewall();
+                    if self.settings.cache_firewall {
+                        self.firewall.issue_read();
+                    }
                 }
 
                 a_func.run(iterations);
