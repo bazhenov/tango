@@ -58,8 +58,11 @@ enum BenchmarkMode {
         #[arg(long = "fail-threshold")]
         fail_threshold: Option<f64>,
 
-        #[arg(long = "cache-firewall", default_value_t = false)]
-        cache_firewall: bool,
+        #[arg(long = "cache-firewall")]
+        cache_firewall: Option<bool>,
+
+        #[arg(long = "yield-before-sample")]
+        yield_before_sample: Option<bool>,
 
         #[arg(short = 'f', long = "filter")]
         filter: Option<String>,
@@ -144,6 +147,7 @@ pub fn run(mut settings: MeasurementSettings) -> Result<ExitCode> {
             seed,
             sampler,
             cache_firewall,
+            yield_before_sample,
         } => {
             let mut reporter: Box<dyn Reporter> = if verbose {
                 Box::<VerboseReporter>::default()
@@ -164,7 +168,13 @@ pub fn run(mut settings: MeasurementSettings) -> Result<ExitCode> {
             let spi_lib = Spi::for_library(&lib)?;
 
             settings.filter_outliers = filter_outliers;
-            settings.cache_firewall = cache_firewall;
+            if let Some(cache_firewall) = cache_firewall {
+                settings.cache_firewall = cache_firewall;
+            }
+
+            if let Some(yield_before_sample) = yield_before_sample {
+                settings.yield_before_sample = yield_before_sample;
+            }
 
             if let Some(sampler) = sampler {
                 settings.sampler_type = sampler;
@@ -388,6 +398,10 @@ mod commands {
                     if self.settings.cache_firewall {
                         self.firewall.issue_read();
                     }
+                }
+
+                if self.settings.yield_before_sample {
+                    std::thread::yield_now();
                 }
 
                 a_func.run(iterations);

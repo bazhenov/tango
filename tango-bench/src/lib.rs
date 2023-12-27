@@ -483,6 +483,8 @@ pub struct MeasurementSettings {
     pub sampler_type: SamplerType,
 
     pub cache_firewall: bool,
+
+    pub yield_before_sample: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -529,6 +531,7 @@ pub const DEFAULT_SETTINGS: MeasurementSettings = MeasurementSettings {
     max_iterations_per_sample: 5000,
     sampler_type: SamplerType::Random,
     cache_firewall: false,
+    yield_before_sample: false,
 };
 
 impl Default for MeasurementSettings {
