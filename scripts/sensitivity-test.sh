@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -eo pipefail
 
-cargo +nightly export ./target/benchmarks -- bench --bench='tango-*' --features=hw-timer
+cargo +nightly export ./target/benchmarks -- bench --bench='tango-*'
 
 mkdir -p target/dump
 rm -f target/dump/*.csv
