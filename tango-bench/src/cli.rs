@@ -402,13 +402,14 @@ mod commands {
                 if i % self.settings.samples_per_haystack == 0 {
                     a_func.next_haystack();
                     b_func.next_haystack();
-                    if self.settings.cache_firewall {
-                        self.firewall.issue_read();
-                    }
                 }
 
                 if self.settings.yield_before_sample {
                     std::thread::yield_now();
+                }
+
+                if self.settings.cache_firewall {
+                    self.firewall.issue_read();
                 }
 
                 a_func.run(iterations);

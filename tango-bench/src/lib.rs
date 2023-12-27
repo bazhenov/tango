@@ -482,7 +482,7 @@ pub struct MeasurementSettings {
 
     pub sampler_type: SamplerType,
 
-    /// If true, the scheduler will perform a dummy data read after new haystack generation to spoil the CPU cache
+    /// If true, the scheduler will perform a dummy data read between samples generation to spoil the CPU cache
     ///
     /// Cache firewall is a way to reduce the impact of the CPU cache on the benchmarking process. It tries
     /// to minimize discrepancies in performance between two algorithms due to the CPU cache state.
@@ -507,10 +507,8 @@ struct CacheFirewall {
 
 impl CacheFirewall {
     fn new(bytes: usize) -> Self {
-        let mut cache_lines = Vec::new();
-        for _ in 0..bytes / mem::size_of::<CacheLine>() {
-            cache_lines.push(CacheLine::new());
-        }
+        let n = bytes / mem::size_of::<CacheLine>();
+        let cache_lines = vec![CacheLine::default(); n];
         Self { cache_lines }
     }
 
@@ -523,13 +521,8 @@ impl CacheFirewall {
 
 #[repr(C)]
 #[repr(align(64))]
-struct CacheLine([u32; 8]);
-
-impl CacheLine {
-    fn new() -> Self {
-        Self([0; 8])
-    }
-}
+#[derive(Default, Clone, Copy)]
+struct CacheLine([u16; 32]);
 
 pub const DEFAULT_SETTINGS: MeasurementSettings = MeasurementSettings {
     filter_outliers: false,
