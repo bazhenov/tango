@@ -6,8 +6,7 @@ use std::{
     cell::RefCell,
     cmp::Ordering,
     hint::black_box,
-    io,
-    mem::size_of,
+    io, mem,
     ops::{Add, Div, RangeInclusive},
     rc::Rc,
     str::Utf8Error,
@@ -163,14 +162,22 @@ struct SimpleFunc<F> {
 
 impl<O, F: Fn() -> O> MeasureTarget for SimpleFunc<F> {
     fn measure(&mut self, iterations: usize) -> u64 {
-        let mut result = Vec::with_capacity(iterations);
-        let start = ActiveTimer::start();
-        for _ in 0..iterations {
-            result.push(black_box((self.func)()));
+        if mem::needs_drop::<O>() {
+            let mut result = Vec::with_capacity(iterations);
+            let start = ActiveTimer::start();
+            for _ in 0..iterations {
+                result.push(black_box((self.func)()));
+            }
+            let time = ActiveTimer::stop(start);
+            drop(result);
+            time
+        } else {
+            let start = ActiveTimer::start();
+            for _ in 0..iterations {
+                black_box((self.func)());
+            }
+            ActiveTimer::stop(start)
         }
-        let time = ActiveTimer::stop(start);
-        drop(result);
-        time
     }
 
     fn estimate_iterations(&mut self, time_ms: u32) -> usize {
@@ -227,17 +234,26 @@ where
     fn measure(&mut self, iterations: usize) -> u64 {
         let mut g = self.g.borrow_mut();
         let haystack = &*self.haystack.get_or_insert_with(|| g.next_haystack());
-
         let f = self.f.borrow_mut();
-        let mut result = Vec::with_capacity(iterations);
-        let start = ActiveTimer::start();
-        for _ in 0..iterations {
-            let needle = g.next_needle(haystack);
-            result.push(black_box((f)(haystack, &needle)));
+
+        if mem::needs_drop::<O>() {
+            let mut result = Vec::with_capacity(iterations);
+            let start = ActiveTimer::start();
+            for _ in 0..iterations {
+                let needle = g.next_needle(haystack);
+                result.push(black_box((f)(haystack, &needle)));
+            }
+            let time = ActiveTimer::stop(start);
+            drop(result);
+            time
+        } else {
+            let start = ActiveTimer::start();
+            for _ in 0..iterations {
+                let needle = g.next_needle(haystack);
+                black_box((f)(haystack, &needle));
+            }
+            ActiveTimer::stop(start)
         }
-        let time = ActiveTimer::stop(start);
-        drop(result);
-        time
     }
 
     fn estimate_iterations(&mut self, time_ms: u32) -> usize {
@@ -483,7 +499,7 @@ struct CacheFirewall {
 impl CacheFirewall {
     fn new(bytes: usize) -> Self {
         let mut cache_lines = Vec::new();
-        for _ in 0..bytes / size_of::<CacheLine>() {
+        for _ in 0..bytes / mem::size_of::<CacheLine>() {
             cache_lines.push(CacheLine::new());
         }
         Self { cache_lines }
