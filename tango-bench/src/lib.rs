@@ -482,8 +482,15 @@ pub struct MeasurementSettings {
 
     pub sampler_type: SamplerType,
 
+    /// If true, the scheduler will perform a dummy data read after new haystack generation to spoil the CPU cache
+    ///
+    /// Cache firewall is a way to reduce the impact of the CPU cache on the benchmarking process. It tries
+    /// to minimize discrepancies in performance between two algorithms due to the CPU cache state.
     pub cache_firewall: bool,
 
+    /// If true, scheduler will perform a yield of control back to the OS before taking each sample
+    ///
+    /// Yielding control to the OS is a way to reduce the impact of OS scheduler on the benchmarking process.
     pub yield_before_sample: bool,
 }
 

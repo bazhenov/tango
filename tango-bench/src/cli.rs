@@ -46,32 +46,39 @@ enum BenchmarkMode {
         #[arg(long = "seed")]
         seed: Option<u64>,
 
+        /// Number of samples to take for each test
         #[arg(short = 's', long = "samples")]
         samples: Option<NonZeroUsize>,
 
+        /// The strategy to decide the number of iterations to run for each sample (values: flat, linear, random)
         #[arg(long = "sampler")]
         sampler: Option<SamplerType>,
 
+        /// Duration of each sample in seconds
         #[arg(short = 't', long = "time")]
         time: Option<f64>,
 
+        /// Fail if the difference between the two measurements is greater than the given threshold in percent
         #[arg(long = "fail-threshold")]
         fail_threshold: Option<f64>,
 
+        /// Perform a dummy read between samsples to minimize the effect of cache on the performance
         #[arg(long = "cache-firewall")]
         cache_firewall: Option<bool>,
 
+        /// Delegate control back to the OS before each sample
         #[arg(long = "yield-before-sample")]
         yield_before_sample: Option<bool>,
 
+        /// Filter tests by name (eg. '*/{sorted,unsorted}/[0-9]*')
         #[arg(short = 'f', long = "filter")]
         filter: Option<String>,
 
-        // report only statistically significant results
+        /// Report only statistically significant results
         #[arg(short = 'g', long = "significant-only", default_value_t = false)]
         significant_only: bool,
 
-        /// disable outlier detection
+        /// Enable outlier detection
         #[arg(short = 'o', long = "filter-outliers")]
         filter_outliers: bool,
 
