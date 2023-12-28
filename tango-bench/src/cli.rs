@@ -62,9 +62,10 @@ enum BenchmarkMode {
         #[arg(long = "fail-threshold")]
         fail_threshold: Option<f64>,
 
-        /// Perform a dummy read between samsples to minimize the effect of cache on the performance
+        /// Perform a read of a dummy data between samsples to minimize the effect of cache on the performance
+        /// (size in Kbytes)
         #[arg(long = "cache-firewall")]
-        cache_firewall: Option<bool>,
+        cache_firewall: Option<usize>,
 
         /// Delegate control back to the OS before each sample
         #[arg(long = "yield-before-sample")]
@@ -175,9 +176,7 @@ pub fn run(mut settings: MeasurementSettings) -> Result<ExitCode> {
             let spi_lib = Spi::for_library(&lib)?;
 
             settings.filter_outliers = filter_outliers;
-            if let Some(cache_firewall) = cache_firewall {
-                settings.cache_firewall = cache_firewall;
-            }
+            settings.cache_firewall = cache_firewall;
 
             if let Some(yield_before_sample) = yield_before_sample {
                 settings.yield_before_sample = yield_before_sample;
@@ -327,7 +326,7 @@ mod commands {
         settings: MeasurementSettings,
         loop_mode: LoopMode,
         samples_dump_path: Option<PathBuf>,
-        firewall: CacheFirewall,
+        firewall: Option<CacheFirewall>,
     }
 
     impl<'a> PairedTest<'a> {
@@ -340,7 +339,10 @@ mod commands {
             samples_dump_path: Option<PathBuf>,
         ) -> Self {
             let seed = seed.unwrap_or_else(rand::random);
-            let firewall = CacheFirewall::new(1024 * 1024);
+            let firewall = settings
+                .cache_firewall
+                .map(|s| s * 1024)
+                .map(CacheFirewall::new);
             Self {
                 baseline,
                 candidate,
@@ -408,8 +410,8 @@ mod commands {
                     std::thread::yield_now();
                 }
 
-                if self.settings.cache_firewall {
-                    self.firewall.issue_read();
+                if let Some(firewall) = &self.firewall {
+                    firewall.issue_read();
                 }
 
                 a_func.run(iterations);

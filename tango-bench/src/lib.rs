@@ -482,11 +482,13 @@ pub struct MeasurementSettings {
 
     pub sampler_type: SamplerType,
 
-    /// If true, the scheduler will perform a dummy data read between samples generation to spoil the CPU cache
+    /// Size of a CPU cache firewall in KBytes
+    ///
+    /// If set, the scheduler will perform a dummy data read between samples generation to spoil the CPU cache
     ///
     /// Cache firewall is a way to reduce the impact of the CPU cache on the benchmarking process. It tries
     /// to minimize discrepancies in performance between two algorithms due to the CPU cache state.
-    pub cache_firewall: bool,
+    pub cache_firewall: Option<usize>,
 
     /// If true, scheduler will perform a yield of control back to the OS before taking each sample
     ///
@@ -501,6 +503,9 @@ pub enum SamplerType {
     Random,
 }
 
+/// Performs a dummy reads from memory to spoil given amount of CPU cache
+///
+/// Uses cache aligned data arrays to perform minimum amount of reads possible to spoil the cache
 struct CacheFirewall {
     cache_lines: Vec<CacheLine>,
 }
@@ -514,6 +519,8 @@ impl CacheFirewall {
 
     fn issue_read(&self) {
         for line in &self.cache_lines {
+            // Because CacheLine is aligned on 64 bytes it is enough to read single element from the array
+            // to spoil the whole cache line
             unsafe { ptr::read_volatile(&line.0[0]) };
         }
     }
@@ -530,7 +537,7 @@ pub const DEFAULT_SETTINGS: MeasurementSettings = MeasurementSettings {
     min_iterations_per_sample: 1,
     max_iterations_per_sample: 5000,
     sampler_type: SamplerType::Random,
-    cache_firewall: false,
+    cache_firewall: None,
     yield_before_sample: false,
 };
 
