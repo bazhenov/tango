@@ -964,7 +964,7 @@ mod timer {
 fn median_execution_time(target: &mut dyn MeasureTarget, iterations: u32) -> u64 {
     assert!(iterations >= 1);
     let measures: Vec<_> = (0..iterations).map(|_| target.measure(1)).collect();
-    median(measures)
+    median(measures).max(1)
 }
 
 fn median<T: Copy + Ord + Add<Output = T> + Div<Output = T>>(mut measures: Vec<T>) -> T {
