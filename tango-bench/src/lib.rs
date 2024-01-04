@@ -259,8 +259,8 @@ where
     fn estimate_iterations(&mut self, time_ms: u32) -> usize {
         // Here we relying on the fact that measure() is not generating a new haystack
         // without a call to next_haystack()
-        let measurements = (0..11).map(|_| self.measure(1)).collect::<Vec<_>>();
-        (time_ms as usize * NS_TO_MS) / median(measurements) as usize
+        let median = median_execution_time(self, 10);
+        (time_ms as usize * NS_TO_MS) / median as usize
     }
 
     fn next_haystack(&mut self) -> bool {
