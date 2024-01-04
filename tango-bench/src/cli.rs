@@ -638,4 +638,19 @@ mod tests {
 
         assert_eq!(format!("{}", HumanTime(-1200000.)), "-1.2 ms");
     }
+
+    // Sane checking some simple patterns
+    #[test]
+    fn check_glob() {
+        let patterns = vec!["a/*/*", "a/**", "*/32/*", "**/b", "a/{32,64}/*"];
+        let input = "a/32/b";
+        for pattern in patterns {
+            assert!(
+                glob_match(pattern, input),
+                "failed to match {} against {}",
+                pattern,
+                input
+            );
+        }
+    }
 }
