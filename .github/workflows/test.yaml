@@ -3,37 +3,36 @@ name: Test
 on: push
 
 jobs:
+  lint:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: "clippy, rustfmt"
+      - uses: Swatinem/rust-cache@v2
+      - name: Checking formatting
+        run: cargo fmt -- --check --color always
+      - name: Running clippy
+        run: cargo clippy --all-targets --all-features -p tango-bench
   test:
     strategy:
       matrix:
         include:
-          - target: x86_64-unknown-linux-gnu
-            os: ubuntu-22.04
-          - target: x86_64-apple-darwin
-            os: macos-11
-          - target: x86_64-pc-windows-msvc
-            os: windows-2019
+          - os: ubuntu-22.04
+          - os: macos-11
+          - os: windows-2019
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v3
-
-      - name: Prepare Environment
-        run: rustup update stable && rustup default stable
-
-      - uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            ./target/
-          key: Test/${{ runner.os }}
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
 
       - name: Run Tests
         run: cargo test
 
   bench:
+    needs: [test, lint]
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v3
@@ -41,23 +40,11 @@ jobs:
         with:
           ref: dev
           path: baseline-branch
-
-      - name: Prepare Environment
-        run: |
-          rustup update stable
-          rustup default stable
-          cargo install cargo-export --version 0.2.0
-
-      - uses: actions/cache@v3
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
         with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            ./target/
-            ./baseline-branch/target/
-          key: Bench/${{ runner.os }}
+          tool: cargo-export
 
       - name: Building Benchmarks
         run: |
