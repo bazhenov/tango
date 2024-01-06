@@ -11,6 +11,8 @@ jobs:
             os: ubuntu-22.04
           - target: x86_64-apple-darwin
             os: macos-11
+          - target: x86_64-pc-windows-msvc
+            os: windows-2019
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v3
