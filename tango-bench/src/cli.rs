@@ -15,6 +15,7 @@ use rand::{rngs::SmallRng, SeedableRng};
 use std::{
     env::args,
     fmt::Display,
+    io::{stderr, Write},
     num::NonZeroUsize,
     path::PathBuf,
     process::ExitCode,
@@ -82,6 +83,10 @@ enum BenchmarkMode {
         /// Enable outlier detection
         #[arg(short = 'o', long = "filter-outliers")]
         filter_outliers: bool,
+
+        /// Quiet mode
+        #[arg(short = 'q')]
+        quiet: bool,
 
         #[arg(short = 'v', long = "verbose", default_value_t = false)]
         verbose: bool,
@@ -156,6 +161,7 @@ pub fn run(mut settings: MeasurementSettings) -> Result<ExitCode> {
             sampler,
             cache_firewall,
             yield_before_sample,
+            quiet,
         } => {
             let mut reporter: Box<dyn Reporter> = if verbose {
                 Box::<VerboseReporter>::default()
@@ -198,6 +204,9 @@ pub fn run(mut settings: MeasurementSettings) -> Result<ExitCode> {
                 }
 
                 if spi_lib.lookup(&func.name).is_none() {
+                    if !quiet {
+                        writeln!(stderr(), "{} skipped...", &func.name)?;
+                    }
                     continue;
                 }
 
@@ -268,7 +277,7 @@ mod commands {
     };
     use std::{
         fs::{self, File},
-        io::{self, BufWriter, Write as _},
+        io::{self, BufWriter},
         mem,
         path::Path,
         time::Instant,
