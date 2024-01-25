@@ -267,7 +267,7 @@ mod commands {
         RandomSampler, RunResult, Sampler, SamplerType,
     };
     use std::{
-        fs::File,
+        fs::{self, File},
         io::{self, BufWriter, Write as _},
         mem,
         path::Path,
@@ -435,6 +435,9 @@ mod commands {
             .ok_or(Error::NoMeasurements)?;
 
             if let Some(path) = &self.samples_dump_path {
+                if !path.exists() {
+                    fs::create_dir_all(path)?;
+                }
                 let file_name = format!("{}.csv", test_name.replace('/', "-"));
                 let file_path = path.join(file_name);
                 let values = a_func
