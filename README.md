@@ -117,6 +117,7 @@ There are several arguments you can pass to the `compare` command to change it b
   - `-f` – filter benchmarks by name. Glob patterns are supported (eg. `*/bench_name/{2,4,8}/**`)
   - `o`, `--filter-outliers` – additionally filter outliers
   - `--fail-threshold` – do fail if new version is slower than baseline on a given percentage
+  - `--fail-fast` - do fail after first benchmark exceeding fail threshold, not after the whole suite
 
 ## Contributing
 
