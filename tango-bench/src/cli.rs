@@ -63,6 +63,10 @@ enum BenchmarkMode {
         #[arg(long = "fail-threshold")]
         fail_threshold: Option<f64>,
 
+        /// Should we terminate early if --fail-threshold is exceed
+        #[arg(long = "fail-fast")]
+        fail_fast: bool,
+
         /// Perform a read of a dummy data between samsples to minimize the effect of cache on the performance
         /// (size in Kbytes)
         #[arg(long = "cache-firewall")]
@@ -156,6 +160,7 @@ pub fn run(mut settings: MeasurementSettings) -> Result<ExitCode> {
             filter_outliers,
             path_to_dump,
             fail_threshold,
+            fail_fast,
             significant_only,
             seed,
             sampler,
@@ -198,6 +203,8 @@ pub fn run(mut settings: MeasurementSettings) -> Result<ExitCode> {
             let paired_test =
                 PairedTest::new(&spi_lib, &spi_self, settings, seed, loop_mode, path_to_dump);
 
+            let mut exit_code = ExitCode::SUCCESS;
+
             for func in spi_self.tests() {
                 if !filter.is_empty() && !glob_match(filter, &func.name) {
                     continue;
@@ -223,12 +230,15 @@ pub fn run(mut settings: MeasurementSettings) -> Result<ExitCode> {
                                 "[ERROR] Performance regressed {:+.1}% >= {:.1}%  -  test: {}",
                                 result.diff_estimate.pct, threshold, func.name
                             );
-                            return Ok(ExitCode::FAILURE);
+                            exit_code = ExitCode::FAILURE;
+                            if fail_fast {
+                                return Ok(ExitCode::FAILURE);
+                            }
                         }
                     }
                 }
             }
-            Ok(ExitCode::SUCCESS)
+            Ok(exit_code)
         }
     }
 }
