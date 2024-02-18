@@ -313,6 +313,10 @@ mod commands {
             self.samples.push(sample);
         }
 
+        fn run_no_measure(&mut self, iterations: usize) {
+            self.spi.run(self.func, iterations);
+        }
+
         fn next_haystack(&mut self) {
             self.spi.next_haystack(self.func);
         }
@@ -405,7 +409,6 @@ mod commands {
             let start_time = Instant::now();
             while self.loop_mode.should_continue(i, start_time) {
                 let iterations = sampler.next_sample_iterations(i);
-                i += 1;
 
                 // !!! IMPORTANT !!!
                 // Algorithms should be called in different order on each new iteration.
@@ -420,22 +423,32 @@ mod commands {
                     switch_counter += 1;
                 }
 
-                if i % self.settings.samples_per_haystack == 0 {
-                    a_func.next_haystack();
-                    b_func.next_haystack();
-                }
-
                 if self.settings.yield_before_sample {
                     std::thread::yield_now();
                 }
 
-                if let Some(firewall) = &self.firewall {
-                    firewall.issue_read();
-                }
+                let new_haystack = i % self.settings.samples_per_haystack == 0;
 
+                if new_haystack {
+                    a_func.next_haystack();
+                    a_func.run_no_measure(iterations_per_sample);
+                    if let Some(firewall) = &self.firewall {
+                        firewall.issue_read();
+                    }
+                }
                 a_func.run(iterations);
+
+                if new_haystack {
+                    b_func.next_haystack();
+                    b_func.run_no_measure(iterations_per_sample);
+                    if let Some(firewall) = &self.firewall {
+                        firewall.issue_read();
+                    }
+                }
                 b_func.run(iterations);
+
                 sample_iterations.push(iterations);
+                i += 1;
             }
 
             // If we switched functions odd number of times then we need to swap them back so that
