@@ -8,7 +8,7 @@ use tango_bench::{
 };
 
 const SIZES: [usize; 14] = [
-    8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4069, 8192, 16384, 32768, 65536,
+    8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536,
 ];
 
 struct Lcg(usize);
@@ -61,6 +61,7 @@ where
     fn next_haystack(&mut self) -> Self::Haystack {
         let vec = generate_sorted_vec(self.size, self.value_dup_factor);
         let max = usize::try_from(*vec.last().unwrap()).ok().unwrap();
+
         Sample {
             collection: C::from_sorted_vec(vec),
             max_value: max,

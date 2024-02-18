@@ -4,12 +4,12 @@ version = "0.2.0"
 edition = "2021"
 
 [dependencies]
-tango-bench = { path="../tango-bench" }
+tango-bench = { path = "../tango-bench" }
 rand = { version = "0.8", features = ["small_rng"] }
 
 [dev-dependencies]
 criterion = "0.5.1"
-ordsearch = { version = "0.2.5", features = ["nightly"] }
+ordsearch = { version = "0.2.5" }
 num-traits = "0.2"
 
 [[bench]]
