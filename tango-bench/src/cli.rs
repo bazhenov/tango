@@ -88,6 +88,10 @@ enum BenchmarkMode {
         #[arg(short = 'o', long = "filter-outliers")]
         filter_outliers: bool,
 
+        /// Perform warmup iterations before taking measurements (1/10 of sample iterations)
+        #[arg(long = "warmup")]
+        warmup_enabled: Option<bool>,
+
         /// Quiet mode
         #[arg(short = 'q')]
         quiet: bool,
@@ -166,6 +170,7 @@ pub fn run(mut settings: MeasurementSettings) -> Result<ExitCode> {
             sampler,
             cache_firewall,
             yield_before_sample,
+            warmup_enabled,
             quiet,
         } => {
             let mut reporter: Box<dyn Reporter> = if verbose {
@@ -189,10 +194,12 @@ pub fn run(mut settings: MeasurementSettings) -> Result<ExitCode> {
             settings.filter_outliers = filter_outliers;
             settings.cache_firewall = cache_firewall;
 
+            if let Some(warmup_enabled) = warmup_enabled {
+                settings.warmup_enabled = warmup_enabled;
+            }
             if let Some(yield_before_sample) = yield_before_sample {
                 settings.yield_before_sample = yield_before_sample;
             }
-
             if let Some(sampler) = sampler {
                 settings.sampler_type = sampler;
             }
@@ -436,7 +443,9 @@ mod commands {
                         firewall.issue_read();
                     }
                 }
-                a_func.run(warmup_iterations);
+                if self.settings.warmup_enabled {
+                    a_func.run(warmup_iterations);
+                }
                 computation_time_ns += a_func.measure(iterations);
 
                 if new_haystack {
@@ -446,7 +455,9 @@ mod commands {
                         firewall.issue_read();
                     }
                 }
-                b_func.run(warmup_iterations);
+                if self.settings.warmup_enabled {
+                    b_func.run(warmup_iterations);
+                }
                 computation_time_ns += b_func.measure(iterations);
 
                 sample_iterations.push(iterations);

@@ -485,6 +485,7 @@ pub struct MeasurementSettings {
 
     pub sampler_type: SamplerType,
 
+    /// If true scheduler performs warmup iterations before measuring function
     pub warmup_enabled: bool,
 
     /// Size of a CPU cache firewall in KBytes
