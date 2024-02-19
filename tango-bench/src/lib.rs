@@ -752,7 +752,9 @@ impl DiffEstimate {
 
         // significant result is far away from 0 and have more than 0.5% base/candidate difference
         // z_score = 2.6 corresponds to 99% significance level
-        let significant = z_score.abs() >= 2.6 && (diff.mean / baseline.mean).abs() > 0.005;
+        let significant = z_score.abs() >= 2.6
+            && (diff.mean / baseline.mean).abs() > 0.005
+            && diff.mean.abs() >= ActiveTimer::precision() as f64;
         let pct = diff.mean / baseline.mean * 100.0;
 
         Self { pct, significant }
@@ -924,6 +926,13 @@ mod timer {
     pub(super) trait Timer<T> {
         fn start() -> T;
         fn stop(start_time: T) -> u64;
+
+        /// Timer precision in nanoseconds
+        ///
+        /// The results less than the precision of a timer are considered not significant
+        fn precision() -> u64 {
+            1
+        }
     }
 
     pub(super) struct PlatformTimer;
