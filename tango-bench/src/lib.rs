@@ -2,14 +2,8 @@ use core::ptr;
 use num_traits::ToPrimitive;
 use rand::{rngs::SmallRng, Rng, SeedableRng};
 use std::{
-    any::type_name,
-    cell::RefCell,
-    cmp::Ordering,
-    hint::black_box,
-    io, mem,
-    ops::{Add, Div, RangeInclusive},
-    rc::Rc,
-    str::Utf8Error,
+    any::type_name, cell::RefCell, cmp::Ordering, hint::black_box, io, mem, ops::RangeInclusive,
+    rc::Rc, str::Utf8Error, usize,
 };
 use thiserror::Error;
 use timer::{ActiveTimer, Timer};
@@ -136,7 +130,28 @@ pub trait MeasureTarget {
     /// for implementation to be fast (in the order of 10 ms).
     /// If possible the same input arguments should be used when building the estimate.
     /// If the single call of a function is longer than provided timespan the implementation should return 0.
-    fn estimate_iterations(&mut self, time_ms: u32) -> usize;
+    fn estimate_iterations(&mut self, time_ms: u32) -> usize {
+        let mut iters = 1;
+        let time_ns = time_ms as u64 * NS_TO_MS as u64;
+
+        for _ in 0..5 {
+            // Never believe short measurements because they are very unreliable. Pretending that
+            // measurement at least took 1us guarantees that we won't end up with an unreasonably large number
+            // of iterations
+            let time = self.measure(iters).max(1_000);
+            let time_per_iteration = time / iters as u64;
+            let new_iters = (time_ns / time_per_iteration) as usize;
+
+            // Do early stop if new estimate has the same order of magnitude. It is good enough.
+            if new_iters < 2 * iters {
+                return new_iters;
+            }
+
+            iters = new_iters;
+        }
+
+        iters
+    }
 
     /// Generates next haystack for the measurement
     ///
@@ -178,11 +193,6 @@ impl<O, F: Fn() -> O> MeasureTarget for SimpleFunc<F> {
             }
             ActiveTimer::stop(start)
         }
-    }
-
-    fn estimate_iterations(&mut self, time_ms: u32) -> usize {
-        let median = median_execution_time(self, 11) as usize;
-        time_ms as usize * NS_TO_MS / median
     }
 
     fn next_haystack(&mut self) -> bool {
@@ -254,13 +264,6 @@ where
             }
             ActiveTimer::stop(start)
         }
-    }
-
-    fn estimate_iterations(&mut self, time_ms: u32) -> usize {
-        // Here we relying on the fact that measure() is not generating a new haystack
-        // without a call to next_haystack()
-        let median = median_execution_time(self, 10);
-        (time_ms as usize * NS_TO_MS) / median as usize
     }
 
     fn next_haystack(&mut self) -> bool {
@@ -961,23 +964,16 @@ mod timer {
     }
 }
 
-fn median_execution_time(target: &mut dyn MeasureTarget, iterations: u32) -> u64 {
-    assert!(iterations >= 1);
-    let measures: Vec<_> = (0..iterations).map(|_| target.measure(1)).collect();
-    median(measures).max(1)
-}
-
-fn median<T: Copy + Ord + Add<Output = T> + Div<Output = T>>(mut measures: Vec<T>) -> T {
-    assert!(!measures.is_empty(), "Vec is empty");
-    measures.sort_unstable();
-    measures[measures.len() / 2]
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use rand::{rngs::SmallRng, Rng, RngCore, SeedableRng};
-    use std::{iter::Sum, thread, time::Duration};
+    use std::{
+        iter::Sum,
+        ops::{Add, Div},
+        thread,
+        time::Duration,
+    };
 
     #[test]
     fn check_iqr_variance_thresholds() {
@@ -1128,5 +1124,17 @@ mod tests {
             sum_of_squares += (f64::from(value) - mean).powi(2);
         }
         sum_of_squares / (n - 1.)
+    }
+
+    fn median_execution_time(target: &mut dyn MeasureTarget, iterations: u32) -> u64 {
+        assert!(iterations >= 1);
+        let measures: Vec<_> = (0..iterations).map(|_| target.measure(1)).collect();
+        median(measures).max(1)
+    }
+
+    fn median<T: Copy + Ord + Add<Output = T> + Div<Output = T>>(mut measures: Vec<T>) -> T {
+        assert!(!measures.is_empty(), "Vec is empty");
+        measures.sort_unstable();
+        measures[measures.len() / 2]
     }
 }
