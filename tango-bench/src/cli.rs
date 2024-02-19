@@ -324,6 +324,10 @@ mod commands {
         fn estimate_iterations(&mut self, iterations: u32) -> usize {
             self.spi.estimate_iterations(self.func, iterations)
         }
+
+        fn sync(&mut self, seed: u64) {
+            self.spi.sync(self.func, seed);
+        }
     }
 
     /// Measure the difference in performance of two functions
@@ -387,19 +391,22 @@ mod commands {
                 .lookup(test_name)
                 .expect("Invalid test name given");
 
-            let mut rng = SmallRng::seed_from_u64(self.seed);
-
-            let seed = rng.next_u64();
-            self.baseline.sync(a_func, seed);
-            self.candidate.sync(b_func, seed);
-
             let mut a_func = TestedFunction::new(self.baseline, a_func);
             let mut b_func = TestedFunction::new(self.candidate, b_func);
 
-            // Estimating the number of iterations achievable in 1 ms
+            let mut rng = SmallRng::seed_from_u64(self.seed);
+            let seed = rng.next_u64();
+            a_func.sync(seed);
+            b_func.sync(seed);
+
             let iterations_per_sample =
                 b_func.estimate_iterations(50) / 2 + a_func.estimate_iterations(50) / 2;
             let mut sampler = create_sampler(&self.settings, iterations_per_sample, seed);
+
+            // Synchronizing test functions one more time because estimation proces may perform different number of iterations
+            // on the functions thus running them out of sync.
+            a_func.sync(seed);
+            b_func.sync(seed);
 
             let mut i = 0;
             let mut switch_counter = 0;
