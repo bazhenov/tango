@@ -485,6 +485,8 @@ pub struct MeasurementSettings {
 
     pub sampler_type: SamplerType,
 
+    pub warmup_enabled: bool,
+
     /// Size of a CPU cache firewall in KBytes
     ///
     /// If set, the scheduler will perform a dummy data read between samples generation to spoil the CPU cache
@@ -542,6 +544,7 @@ pub const DEFAULT_SETTINGS: MeasurementSettings = MeasurementSettings {
     sampler_type: SamplerType::Random,
     cache_firewall: None,
     yield_before_sample: false,
+    warmup_enabled: true,
 };
 
 impl Default for MeasurementSettings {

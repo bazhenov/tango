@@ -20,7 +20,7 @@ use std::{
     path::PathBuf,
     process::ExitCode,
     str::FromStr,
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 pub type Result<T> = anyhow::Result<T>;
@@ -260,19 +260,10 @@ enum LoopMode {
 }
 
 impl LoopMode {
-    fn should_continue(&self, iter_no: usize, start_time: Instant) -> bool {
+    fn should_continue(&self, iter_no: usize, computation_time_ns: u64) -> bool {
         match self {
             LoopMode::Samples(samples) => iter_no < *samples,
-            LoopMode::Time(duration) => {
-                // Trying not to stress benchmarking loop with to much of clock calls and check deadline
-                // approximately each 200 milliseconds based on the number of iterations already performed
-                // (we're assuming each iteration is not longer than approximately 50 ms)
-                if (iter_no & 0b11) == 0 {
-                    Instant::now() < (start_time + *duration)
-                } else {
-                    true
-                }
-            }
+            LoopMode::Time(duration) => computation_time_ns < duration.as_nanos() as u64,
         }
     }
 }
@@ -290,7 +281,6 @@ mod commands {
         io::{self, BufWriter},
         mem,
         path::Path,
-        time::Instant,
     };
 
     struct TestedFunction<'a> {
@@ -308,12 +298,13 @@ mod commands {
             }
         }
 
-        fn run(&mut self, iterations: usize) {
+        fn measure(&mut self, iterations: usize) -> u64 {
             let sample = self.spi.run(self.func, iterations);
             self.samples.push(sample);
+            sample
         }
 
-        fn run_no_measure(&mut self, iterations: usize) {
+        fn run(&mut self, iterations: usize) {
             self.spi.run(self.func, iterations);
         }
 
@@ -382,7 +373,7 @@ mod commands {
         }
 
         pub fn run(&self, test_name: &str) -> Result<RunResult> {
-            const TIME_SLICE: u32 = 50;
+            const TIME_SLICE: u32 = 10;
             let a_func = self
                 .baseline
                 .lookup(test_name)
@@ -415,9 +406,10 @@ mod commands {
 
             let mut sample_iterations = vec![];
 
-            let start_time = Instant::now();
-            while self.loop_mode.should_continue(i, start_time) {
+            let mut computation_time_ns = 0;
+            while self.loop_mode.should_continue(i, computation_time_ns) {
                 let iterations = sampler.next_sample_iterations(i);
+                let warmup_iterations = (iterations / 10).max(1);
 
                 // !!! IMPORTANT !!!
                 // Algorithms should be called in different order on each new iteration.
@@ -440,21 +432,22 @@ mod commands {
 
                 if new_haystack {
                     a_func.next_haystack();
-                    a_func.run_no_measure(iterations_per_sample);
                     if let Some(firewall) = &self.firewall {
                         firewall.issue_read();
                     }
                 }
-                a_func.run(iterations);
+                a_func.run(warmup_iterations);
+                computation_time_ns += a_func.measure(iterations);
 
                 if new_haystack {
                     b_func.next_haystack();
-                    b_func.run_no_measure(iterations_per_sample);
+
                     if let Some(firewall) = &self.firewall {
                         firewall.issue_read();
                     }
                 }
-                b_func.run(iterations);
+                b_func.run(warmup_iterations);
+                computation_time_ns += b_func.measure(iterations);
 
                 sample_iterations.push(iterations);
                 i += 1;
