@@ -267,10 +267,10 @@ enum LoopMode {
 }
 
 impl LoopMode {
-    fn should_continue(&self, iter_no: usize, computation_time_ns: u64) -> bool {
+    fn should_continue(&self, iter_no: usize, loop_time: Duration) -> bool {
         match self {
             LoopMode::Samples(samples) => iter_no < *samples,
-            LoopMode::Time(duration) => computation_time_ns < duration.as_nanos() as u64,
+            LoopMode::Time(duration) => loop_time < *duration,
         }
     }
 }
@@ -380,7 +380,7 @@ mod commands {
         }
 
         pub fn run(&self, test_name: &str) -> Result<RunResult> {
-            const TIME_SLICE: u32 = 10;
+            const TIME_SLICE_MS: u32 = 10;
             let a_func = self
                 .baseline
                 .lookup(test_name)
@@ -398,10 +398,10 @@ mod commands {
             a_func.sync(seed);
             b_func.sync(seed);
 
-            let a_estimate = (a_func.estimate_iterations(TIME_SLICE) / 2).max(1);
-            let b_estimate = (b_func.estimate_iterations(TIME_SLICE) / 2).max(1);
-            let iterations_per_sample = a_estimate.min(b_estimate);
-            let mut sampler = create_sampler(&self.settings, iterations_per_sample, seed);
+            let a_estimate = (a_func.estimate_iterations(TIME_SLICE_MS) / 2).max(1);
+            let b_estimate = (b_func.estimate_iterations(TIME_SLICE_MS) / 2).max(1);
+            let mut iterations_per_sample = a_estimate.min(b_estimate);
+            let mut sampler = create_sampler(&self.settings, seed);
 
             // Synchronizing test functions one more time because the estimation process may perform a different
             // number of iterations on the functions, thus running them out of sync.
@@ -413,10 +413,20 @@ mod commands {
 
             let mut sample_iterations = vec![];
 
-            let mut computation_time_ns = 0;
-            while self.loop_mode.should_continue(i, computation_time_ns) {
-                let iterations = sampler.next_sample_iterations(i);
-                let warmup_iterations = (iterations / 10).max(1);
+            let mut loop_time = Duration::from_secs(0);
+            let mut loop_iterations = 0;
+            while self.loop_mode.should_continue(i, loop_time) {
+                if loop_time > Duration::from_millis(100) {
+                    // correcting time slice estimates
+                    iterations_per_sample =
+                        loop_iterations * TIME_SLICE_MS as usize / loop_time.as_millis() as usize;
+                }
+                let iterations = sampler.next_sample_iterations(i, iterations_per_sample);
+                loop_iterations += iterations;
+                let warmup_iterations = self
+                    .settings
+                    .warmup_enabled
+                    .then(|| (iterations / 10).max(1));
 
                 // !!! IMPORTANT !!!
                 // Algorithms should be called in different order on each new iteration.
@@ -436,30 +446,14 @@ mod commands {
                 }
 
                 let new_haystack = i % self.settings.samples_per_haystack == 0;
+                let mut sample_time = 0;
 
-                if new_haystack {
-                    a_func.next_haystack();
-                    if let Some(firewall) = &self.firewall {
-                        firewall.issue_read();
-                    }
-                }
-                if self.settings.warmup_enabled {
-                    a_func.run(warmup_iterations);
-                }
-                computation_time_ns += a_func.measure(iterations);
+                sample_time +=
+                    self.run_func(new_haystack, &mut a_func, warmup_iterations, iterations);
+                sample_time +=
+                    self.run_func(new_haystack, &mut b_func, warmup_iterations, iterations);
 
-                if new_haystack {
-                    b_func.next_haystack();
-
-                    if let Some(firewall) = &self.firewall {
-                        firewall.issue_read();
-                    }
-                }
-                if self.settings.warmup_enabled {
-                    b_func.run(warmup_iterations);
-                }
-                computation_time_ns += b_func.measure(iterations);
-
+                loop_time += Duration::from_nanos(sample_time);
                 sample_iterations.push(iterations);
                 i += 1;
             }
@@ -498,17 +492,32 @@ mod commands {
 
             Ok(run_result)
         }
+
+        fn run_func(
+            &self,
+            new_haystack: bool,
+            f: &mut TestedFunction,
+            warmup_iterations: Option<usize>,
+            iterations: usize,
+        ) -> u64 {
+            if new_haystack {
+                f.next_haystack();
+                if let Some(firewall) = &self.firewall {
+                    firewall.issue_read();
+                }
+            }
+            if let Some(warmup_iterations) = warmup_iterations {
+                f.run(warmup_iterations);
+            }
+            f.measure(iterations)
+        }
     }
 
-    fn create_sampler(
-        settings: &MeasurementSettings,
-        estimate: usize,
-        seed: u64,
-    ) -> Box<dyn Sampler> {
+    fn create_sampler(settings: &MeasurementSettings, seed: u64) -> Box<dyn Sampler> {
         match settings.sampler_type {
-            SamplerType::Flat => Box::new(FlatSampler::new(settings, estimate)),
-            SamplerType::Linear => Box::new(LinearSampler::new(settings, estimate)),
-            SamplerType::Random => Box::new(RandomSampler::new(settings, estimate, seed)),
+            SamplerType::Flat => Box::new(FlatSampler::new(settings)),
+            SamplerType::Linear => Box::new(LinearSampler::new(settings)),
+            SamplerType::Random => Box::new(RandomSampler::new(settings, seed)),
         }
     }
 
