@@ -33,6 +33,9 @@ pub enum Error {
     #[error("Unknown sampler type. Available options are: flat and linear")]
     UnknownSamplerType,
 
+    #[error("Invalid test name given")]
+    InvalidTestName,
+
     #[error("IO Error")]
     IOError(#[from] io::Error),
 }
@@ -350,8 +353,7 @@ impl<G: Generator> BenchmarkMatrix<G> {
         let f = Rc::new(RefCell::new(f));
         self.generators
             .iter()
-            .map(Rc::clone)
-            .map(|g| GenFunc::from_ref_cell(name, Rc::clone(&f), g))
+            .map(|g| GenFunc::from_ref_cell(name, Rc::clone(&f), Rc::clone(g)))
             .map(Box::new)
             .for_each(|f| self.functions.push(f));
         self

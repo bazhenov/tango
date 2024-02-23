@@ -1,7 +1,7 @@
 //! Contains functionality of a `cargo bench` harness
 
 use self::{
-    commands::PairedTest,
+    commands::run_paired_test,
     reporting::{ConsoleReporter, VerboseReporter},
 };
 use crate::{dylib::Spi, Error, MeasurementSettings, Reporter, SamplerType};
@@ -11,7 +11,6 @@ use colorz::mode::{self, Mode};
 use core::fmt;
 use glob_match::glob_match;
 use libloading::Library;
-use rand::{rngs::SmallRng, SeedableRng};
 use std::{
     env::args,
     fmt::Display,
@@ -191,6 +190,9 @@ pub fn run(mut settings: MeasurementSettings) -> Result<ExitCode> {
                 .with_context(|| format!("Unable to open library: {}", path.display()))?;
             let spi_lib = Spi::for_library(&lib)?;
 
+            // We need to cast lifetimes of both Spi values so they become interchangeable
+            let (mut spi_lib, mut spi_self) = downcast_lifetime(spi_lib, spi_self);
+
             settings.filter_outliers = filter_outliers;
             settings.cache_firewall = cache_firewall;
 
@@ -205,26 +207,37 @@ pub fn run(mut settings: MeasurementSettings) -> Result<ExitCode> {
             }
 
             let filter = filter.as_deref().unwrap_or("");
-
             let loop_mode = create_loop_mode(samples, time)?;
-            let paired_test =
-                PairedTest::new(&spi_lib, &spi_self, settings, seed, loop_mode, path_to_dump);
 
             let mut exit_code = ExitCode::SUCCESS;
 
-            for func in spi_self.tests() {
-                if !filter.is_empty() && !glob_match(filter, &func.name) {
+            let test_names = spi_self
+                .tests()
+                .iter()
+                .map(|t| &t.name)
+                .cloned()
+                .collect::<Vec<_>>();
+            for func_name in test_names {
+                if !filter.is_empty() && !glob_match(filter, &func_name) {
                     continue;
                 }
 
-                if spi_lib.lookup(&func.name).is_none() {
+                if spi_lib.lookup(&func_name).is_none() {
                     if !quiet {
-                        writeln!(stderr(), "{} skipped...", &func.name)?;
+                        writeln!(stderr(), "{} skipped...", &func_name)?;
                     }
                     continue;
                 }
 
-                let result = paired_test.run(&func.name)?;
+                let result = run_paired_test(
+                    &mut spi_lib,
+                    &mut spi_self,
+                    &func_name,
+                    settings,
+                    seed,
+                    loop_mode,
+                    path_to_dump.as_ref(),
+                )?;
 
                 if result.diff_estimate.significant || !significant_only {
                     reporter.on_complete(&result);
@@ -235,7 +248,7 @@ pub fn run(mut settings: MeasurementSettings) -> Result<ExitCode> {
                         if result.diff_estimate.pct >= threshold {
                             eprintln!(
                                 "[ERROR] Performance regressed {:+.1}% >= {:.1}%  -  test: {}",
-                                result.diff_estimate.pct, threshold, func.name
+                                result.diff_estimate.pct, threshold, func_name
                             );
                             exit_code = ExitCode::FAILURE;
                             if fail_fast {
@@ -248,6 +261,18 @@ pub fn run(mut settings: MeasurementSettings) -> Result<ExitCode> {
             Ok(exit_code)
         }
     }
+}
+
+/// Casts the lifetimes of two `Spi` objects to the same lifetime `'a`.
+///
+/// This is safe because we ensure that `'b` outlives `'a`, so the
+/// reference with `'b` can be coerced to the shorter lifetime `'a`.
+///
+/// # Returns
+///
+/// A tuple containing the two `Spi` objects with their lifetimes cast to `'a`.
+fn downcast_lifetime<'a, 'b: 'a>(a: Spi<'a>, b: Spi<'b>) -> (Spi<'a>, Spi<'a>) {
+    (a, b)
 }
 
 fn create_loop_mode(samples: Option<NonZeroUsize>, time: Option<f64>) -> Result<LoopMode> {
@@ -276,11 +301,10 @@ impl LoopMode {
 }
 
 mod commands {
-    use rand::RngCore;
 
     use super::*;
     use crate::{
-        calculate_run_result, dylib::NamedFunction, CacheFirewall, FlatSampler, LinearSampler,
+        calculate_run_result, dylib::FunctionIdx, CacheFirewall, FlatSampler, LinearSampler,
         RandomSampler, RunResult, Sampler, SamplerType,
     };
     use std::{
@@ -290,14 +314,14 @@ mod commands {
         path::Path,
     };
 
-    struct TestedFunction<'a> {
-        spi: &'a Spi<'a>,
-        func: &'a NamedFunction,
+    struct TestedFunction<'a, 'l> {
+        spi: &'a mut Spi<'l>,
+        func: FunctionIdx,
         samples: Vec<u64>,
     }
 
-    impl<'a> TestedFunction<'a> {
-        fn new(spi: &'a Spi<'a>, func: &'a NamedFunction) -> Self {
+    impl<'a, 'l> TestedFunction<'a, 'l> {
+        fn new(spi: &'a mut Spi<'l>, func: FunctionIdx) -> Self {
             TestedFunction {
                 spi,
                 func,
@@ -319,8 +343,8 @@ mod commands {
             self.spi.next_haystack(self.func);
         }
 
-        fn estimate_iterations(&mut self, iterations: u32) -> usize {
-            self.spi.estimate_iterations(self.func, iterations)
+        fn estimate_iterations(&mut self, time_ms: u32) -> usize {
+            self.spi.estimate_iterations(self.func, time_ms)
         }
 
         fn sync(&mut self, seed: u64) {
@@ -344,173 +368,153 @@ mod commands {
     ///
     /// Returns a percentage difference in performance of two functions if this change is
     /// statistically significant
-    pub(crate) struct PairedTest<'a> {
-        baseline: &'a Spi<'a>,
-        candidate: &'a Spi<'a>,
-        seed: u64,
+    pub fn run_paired_test<'l>(
+        baseline: &mut Spi<'l>,
+        candidate: &mut Spi<'l>,
+        test_name: &str,
         settings: MeasurementSettings,
+        seed: Option<u64>,
         loop_mode: LoopMode,
-        samples_dump_path: Option<PathBuf>,
-        firewall: Option<CacheFirewall>,
+        samples_dump_path: Option<&PathBuf>,
+    ) -> Result<RunResult> {
+        const TIME_SLICE_MS: u32 = 10;
+
+        let firewall = settings
+            .cache_firewall
+            .map(|s| s * 1024)
+            .map(CacheFirewall::new);
+        let baseline_func = baseline.lookup(test_name).ok_or(Error::InvalidTestName)?;
+        let candidate_func = candidate.lookup(test_name).ok_or(Error::InvalidTestName)?;
+
+        let mut baseline = TestedFunction::new(baseline, baseline_func.idx);
+        let mut candidate = TestedFunction::new(candidate, candidate_func.idx);
+
+        let mut a_func = &mut baseline;
+        let mut b_func = &mut candidate;
+
+        let seed = seed.unwrap_or_else(rand::random);
+        a_func.sync(seed);
+        b_func.sync(seed);
+
+        let a_estimate = (a_func.estimate_iterations(TIME_SLICE_MS) / 2).max(1);
+        let b_estimate = (b_func.estimate_iterations(TIME_SLICE_MS) / 2).max(1);
+        let mut iterations_per_sample = a_estimate.min(b_estimate);
+        let mut sampler = create_sampler(&settings, seed);
+
+        // Synchronizing test functions one more time because the estimation process may perform a different
+        // number of iterations on the functions, thus running them out of sync.
+        a_func.sync(seed);
+        b_func.sync(seed);
+
+        let mut i = 0;
+        let mut switch_counter = 0;
+
+        let mut sample_iterations = vec![];
+
+        let mut loop_time = Duration::from_secs(0);
+        let mut loop_iterations = 0;
+        while loop_mode.should_continue(i, loop_time) {
+            if loop_time > Duration::from_millis(100) {
+                // correcting time slice estimates
+                iterations_per_sample =
+                    loop_iterations * TIME_SLICE_MS as usize / loop_time.as_millis() as usize;
+            }
+            let iterations = sampler.next_sample_iterations(i, iterations_per_sample);
+            loop_iterations += iterations;
+            let warmup_iterations = settings.warmup_enabled.then(|| (iterations / 10).max(1));
+
+            // !!! IMPORTANT !!!
+            // Algorithms should be called in different order on each new iteration.
+            // This equalize the probability of facing unfortunate circumstances like cache misses or page faults
+            // for both functions. Although both algorithms are from distinct shared objects and therefore
+            // must be fully self-contained in terms of virtual address space (each shared object has its own
+            // generator instances, static variables, memory mappings, etc.) it might be the case that
+            // on the level of physical memory both of them rely on the same memory-mapped test data, for example.
+            // In that case first function will experience the larger amount of major page faults.
+            {
+                mem::swap(&mut a_func, &mut b_func);
+                switch_counter += 1;
+            }
+
+            if settings.yield_before_sample {
+                std::thread::yield_now();
+            }
+
+            let new_haystack = i % settings.samples_per_haystack == 0;
+            let mut sample_time = 0;
+
+            sample_time += run_func(
+                new_haystack,
+                a_func,
+                warmup_iterations,
+                iterations,
+                firewall.as_ref(),
+            );
+            sample_time += run_func(
+                new_haystack,
+                b_func,
+                warmup_iterations,
+                iterations,
+                firewall.as_ref(),
+            );
+
+            loop_time += Duration::from_nanos(sample_time);
+            sample_iterations.push(iterations);
+            i += 1;
+        }
+
+        // If we switched functions odd number of times then we need to swap them back so that
+        // the first function is always the baseline.
+        if switch_counter % 2 != 0 {
+            mem::swap(&mut a_func, &mut b_func);
+        }
+
+        let run_result = calculate_run_result(
+            test_name,
+            &a_func.samples,
+            &b_func.samples,
+            &sample_iterations,
+            settings.filter_outliers,
+        )
+        .ok_or(Error::NoMeasurements)?;
+
+        if let Some(path) = samples_dump_path {
+            if !path.exists() {
+                fs::create_dir_all(path)?;
+            }
+            let file_name = format!("{}.csv", test_name.replace('/', "-"));
+            let file_path = path.join(file_name);
+            let values = a_func
+                .samples
+                .iter()
+                .copied()
+                .zip(b_func.samples.iter().copied())
+                .zip(sample_iterations.iter().copied())
+                .map(|((a, b), c)| (a, b, c));
+            write_raw_measurements(file_path, values)
+                .context("Unable to write raw measurements")?;
+        }
+
+        Ok(run_result)
     }
 
-    impl<'a> PairedTest<'a> {
-        pub fn new(
-            baseline: &'a Spi<'a>,
-            candidate: &'a Spi<'a>,
-            settings: MeasurementSettings,
-            seed: Option<u64>,
-            loop_mode: LoopMode,
-            samples_dump_path: Option<PathBuf>,
-        ) -> Self {
-            let seed = seed.unwrap_or_else(rand::random);
-            let firewall = settings
-                .cache_firewall
-                .map(|s| s * 1024)
-                .map(CacheFirewall::new);
-            Self {
-                baseline,
-                candidate,
-                seed,
-                settings,
-                loop_mode,
-                samples_dump_path,
-                firewall,
+    fn run_func(
+        new_haystack: bool,
+        f: &mut TestedFunction,
+        warmup_iterations: Option<usize>,
+        iterations: usize,
+        firewall: Option<&CacheFirewall>,
+    ) -> u64 {
+        if new_haystack {
+            f.next_haystack();
+            if let Some(firewall) = firewall {
+                firewall.issue_read();
             }
         }
-
-        pub fn run(&self, test_name: &str) -> Result<RunResult> {
-            const TIME_SLICE_MS: u32 = 10;
-            let a_func = self
-                .baseline
-                .lookup(test_name)
-                .expect("Invalid test name given");
-            let b_func = self
-                .candidate
-                .lookup(test_name)
-                .expect("Invalid test name given");
-
-            let mut a_func = TestedFunction::new(self.baseline, a_func);
-            let mut b_func = TestedFunction::new(self.candidate, b_func);
-
-            let mut rng = SmallRng::seed_from_u64(self.seed);
-            let seed = rng.next_u64();
-            a_func.sync(seed);
-            b_func.sync(seed);
-
-            let a_estimate = (a_func.estimate_iterations(TIME_SLICE_MS) / 2).max(1);
-            let b_estimate = (b_func.estimate_iterations(TIME_SLICE_MS) / 2).max(1);
-            let mut iterations_per_sample = a_estimate.min(b_estimate);
-            let mut sampler = create_sampler(&self.settings, seed);
-
-            // Synchronizing test functions one more time because the estimation process may perform a different
-            // number of iterations on the functions, thus running them out of sync.
-            a_func.sync(seed);
-            b_func.sync(seed);
-
-            let mut i = 0;
-            let mut switch_counter = 0;
-
-            let mut sample_iterations = vec![];
-
-            let mut loop_time = Duration::from_secs(0);
-            let mut loop_iterations = 0;
-            while self.loop_mode.should_continue(i, loop_time) {
-                if loop_time > Duration::from_millis(100) {
-                    // correcting time slice estimates
-                    iterations_per_sample =
-                        loop_iterations * TIME_SLICE_MS as usize / loop_time.as_millis() as usize;
-                }
-                let iterations = sampler.next_sample_iterations(i, iterations_per_sample);
-                loop_iterations += iterations;
-                let warmup_iterations = self
-                    .settings
-                    .warmup_enabled
-                    .then(|| (iterations / 10).max(1));
-
-                // !!! IMPORTANT !!!
-                // Algorithms should be called in different order on each new iteration.
-                // This equalize the probability of facing unfortunate circumstances like cache misses or page faults
-                // for both functions. Although both algorithms are from distinct shared objects and therefore
-                // must be fully self-contained in terms of virtual address space (each shared object has its own
-                // generator instances, static variables, memory mappings, etc.) it might be the case that
-                // on the level of physical memory both of them rely on the same memory-mapped test data, for example.
-                // In that case first function will experience the larger amount of major page faults.
-                {
-                    mem::swap(&mut a_func, &mut b_func);
-                    switch_counter += 1;
-                }
-
-                if self.settings.yield_before_sample {
-                    std::thread::yield_now();
-                }
-
-                let new_haystack = i % self.settings.samples_per_haystack == 0;
-                let mut sample_time = 0;
-
-                sample_time +=
-                    self.run_func(new_haystack, &mut a_func, warmup_iterations, iterations);
-                sample_time +=
-                    self.run_func(new_haystack, &mut b_func, warmup_iterations, iterations);
-
-                loop_time += Duration::from_nanos(sample_time);
-                sample_iterations.push(iterations);
-                i += 1;
-            }
-
-            // If we switched functions odd number of times then we need to swap them back so that
-            // the first function is always the baseline.
-            if switch_counter % 2 != 0 {
-                mem::swap(&mut a_func, &mut b_func);
-            }
-
-            let run_result = calculate_run_result(
-                test_name,
-                &a_func.samples,
-                &b_func.samples,
-                &sample_iterations,
-                self.settings.filter_outliers,
-            )
-            .ok_or(Error::NoMeasurements)?;
-
-            if let Some(path) = &self.samples_dump_path {
-                if !path.exists() {
-                    fs::create_dir_all(path)?;
-                }
-                let file_name = format!("{}.csv", test_name.replace('/', "-"));
-                let file_path = path.join(file_name);
-                let values = a_func
-                    .samples
-                    .iter()
-                    .copied()
-                    .zip(b_func.samples.iter().copied())
-                    .zip(sample_iterations.iter().copied())
-                    .map(|((a, b), c)| (a, b, c));
-                write_raw_measurements(file_path, values)
-                    .context("Unable to write raw measurements")?;
-            }
-
-            Ok(run_result)
+        if let Some(warmup_iterations) = warmup_iterations {
+            f.run(warmup_iterations);
         }
-
-        fn run_func(
-            &self,
-            new_haystack: bool,
-            f: &mut TestedFunction,
-            warmup_iterations: Option<usize>,
-            iterations: usize,
-        ) -> u64 {
-            if new_haystack {
-                f.next_haystack();
-                if let Some(firewall) = &self.firewall {
-                    firewall.issue_read();
-                }
-            }
-            if let Some(warmup_iterations) = warmup_iterations {
-                f.run(warmup_iterations);
-            }
-            f.measure(iterations)
-        }
+        f.measure(iterations)
     }
 
     fn create_sampler(settings: &MeasurementSettings, seed: u64) -> Box<dyn Sampler> {

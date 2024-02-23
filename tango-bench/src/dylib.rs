@@ -11,14 +11,17 @@ use std::{
 
 pub struct Spi<'l> {
     tests: Vec<NamedFunction>,
+    selected_function: Option<usize>,
     vt: Box<dyn VTable + 'l>,
 }
+
+pub type FunctionIdx = usize;
 
 pub struct NamedFunction {
     pub name: String,
 
     ///  Function index in FFI API
-    idx: usize,
+    pub idx: FunctionIdx,
 }
 
 impl<'l> Spi<'l> {
@@ -52,7 +55,11 @@ impl<'l> Spi<'l> {
             tests.push(NamedFunction { name, idx });
         }
 
-        Ok(Spi { vt, tests })
+        Ok(Spi {
+            vt,
+            tests,
+            selected_function: None,
+        })
     }
 
     pub(crate) fn tests(&self) -> &[NamedFunction] {
@@ -63,24 +70,32 @@ impl<'l> Spi<'l> {
         self.tests.iter().find(|f| f.name == name)
     }
 
-    pub(crate) fn run(&self, func: &NamedFunction, iterations: usize) -> u64 {
-        self.vt.select(func.idx);
+    pub(crate) fn run(&mut self, func: FunctionIdx, iterations: usize) -> u64 {
+        self.select(func);
         self.vt.run(iterations)
     }
 
-    pub(crate) fn estimate_iterations(&self, func: &NamedFunction, time_ms: u32) -> usize {
-        self.vt.select(func.idx);
+    pub(crate) fn estimate_iterations(&mut self, func: FunctionIdx, time_ms: u32) -> usize {
+        self.select(func);
         self.vt.estimate_iterations(time_ms)
     }
 
-    pub(crate) fn sync(&self, func: &NamedFunction, seed: u64) {
-        self.vt.select(func.idx);
+    pub(crate) fn sync(&mut self, func: FunctionIdx, seed: u64) {
+        self.select(func);
         self.vt.sync(seed)
     }
 
-    pub(crate) fn next_haystack(&self, func: &NamedFunction) -> bool {
-        self.vt.select(func.idx);
+    pub(crate) fn next_haystack(&mut self, func: FunctionIdx) -> bool {
+        self.select(func);
         self.vt.next_haystack()
+    }
+
+    fn select(&mut self, idx: usize) {
+        let different_function = self.selected_function.map(|v| v != idx).unwrap_or(true);
+        if different_function {
+            self.vt.select(idx);
+            self.selected_function = Some(idx);
+        }
     }
 }
 
