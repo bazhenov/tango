@@ -562,57 +562,52 @@ impl Default for MeasurementSettings {
 trait Sampler {
     /// Returns the number of iterations to run for the next sample
     ///
-    /// Accepts the number of iteration being run starting from 0.
-    fn next_sample_iterations(&mut self, iteration_no: usize) -> usize;
+    /// Accepts the number of iteration being run starting from 0 and cummulative time spent by both functions
+    fn next_sample_iterations(&mut self, iteration_no: usize, estimate: usize) -> usize;
 }
 
 /// Runs the same number of iterations for each sample
 ///
-/// Estimates the number of iterations based on the number of iterations achieved in 1 ms and uses
-/// this number as a base for the number of iterations for each sample. This is the default sampler which is
-/// suitable for most cases.
+/// Estimates the number of iterations based on the number of iterations achieved in 10 ms and uses
+/// this number as a base for the number of iterations for each sample.
 struct FlatSampler {
-    iterations: usize,
+    min: usize,
+    max: usize,
 }
 
 impl FlatSampler {
-    /// Creates a new sampler
-    ///
-    /// estimate_1ms is the number of iterations to run to estimate the number of iterations to run in 1 ms
-    fn new(settings: &MeasurementSettings, estimate: usize) -> Self {
+    fn new(settings: &MeasurementSettings) -> Self {
         FlatSampler {
-            iterations: estimate.clamp(
-                settings.min_iterations_per_sample.max(1),
-                settings.max_iterations_per_sample,
-            ),
+            min: settings.min_iterations_per_sample.max(1),
+            max: settings.max_iterations_per_sample,
         }
     }
 }
 
 impl Sampler for FlatSampler {
-    fn next_sample_iterations(&mut self, _iteration_no: usize) -> usize {
-        self.iterations
+    fn next_sample_iterations(&mut self, _iteration_no: usize, estimate: usize) -> usize {
+        estimate.clamp(self.min, self.max)
     }
 }
 
 struct LinearSampler {
-    max_iterations: usize,
+    min: usize,
+    max: usize,
 }
 
 impl LinearSampler {
-    fn new(settings: &MeasurementSettings, estimate: usize) -> Self {
+    fn new(settings: &MeasurementSettings) -> Self {
         Self {
-            max_iterations: estimate.clamp(
-                settings.min_iterations_per_sample.max(1),
-                settings.max_iterations_per_sample,
-            ),
+            min: settings.min_iterations_per_sample.max(1),
+            max: settings.max_iterations_per_sample,
         }
     }
 }
 
 impl Sampler for LinearSampler {
-    fn next_sample_iterations(&mut self, iteration_no: usize) -> usize {
-        (iteration_no % self.max_iterations) + 1
+    fn next_sample_iterations(&mut self, iteration_no: usize, estimate: usize) -> usize {
+        let estimate = estimate.clamp(self.min, self.max);
+        (iteration_no % estimate) + 1
     }
 }
 
@@ -621,24 +616,24 @@ impl Sampler for LinearSampler {
 /// This sampler uses a random number generator to decide the number of iterations for each sample.
 struct RandomSampler {
     rng: SmallRng,
-    max_iterations: usize,
+    min: usize,
+    max: usize,
 }
 
 impl RandomSampler {
-    pub fn new(settings: &MeasurementSettings, estimate: usize, seed: u64) -> Self {
+    pub fn new(settings: &MeasurementSettings, seed: u64) -> Self {
         Self {
             rng: SmallRng::seed_from_u64(seed),
-            max_iterations: estimate.clamp(
-                settings.min_iterations_per_sample.max(1),
-                settings.max_iterations_per_sample,
-            ),
+            min: settings.min_iterations_per_sample.max(1),
+            max: settings.max_iterations_per_sample,
         }
     }
 }
 
 impl Sampler for RandomSampler {
-    fn next_sample_iterations(&mut self, _iteration_no: usize) -> usize {
-        self.rng.gen_range(1..=self.max_iterations)
+    fn next_sample_iterations(&mut self, _iteration_no: usize, estimate: usize) -> usize {
+        let estimate = estimate.clamp(self.min, self.max);
+        self.rng.gen_range(1..=estimate)
     }
 }
 
