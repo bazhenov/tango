@@ -411,6 +411,12 @@ mod commands {
 
         let mut sample_iterations = vec![];
 
+        if let LoopMode::Samples(samples) = loop_mode {
+            sample_iterations.reserve(samples);
+            a_func.samples.reserve(samples);
+            b_func.samples.reserve(samples);
+        }
+
         let mut loop_time = Duration::from_secs(0);
         let mut loop_iterations = 0;
         while loop_mode.should_continue(i, loop_time) {
