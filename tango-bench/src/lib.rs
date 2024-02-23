@@ -360,11 +360,12 @@ impl<G: Generator> BenchmarkMatrix<G> {
 
 impl<G> IntoBenchmarks for BenchmarkMatrix<G> {
     fn into_benchmarks(self) -> Vec<Box<dyn MeasureTarget>> {
-        assert!(!self.functions.is_empty(), "No functions was given");
+        assert!(!self.functions.is_empty(), "No functions were given");
         self.functions
     }
 }
 
+/// Converts the implementing type into a vector of `MeasureTarget`.
 pub trait IntoBenchmarks {
     fn into_benchmarks(self) -> Vec<Box<dyn MeasureTarget>>;
 }
