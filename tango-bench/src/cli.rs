@@ -265,12 +265,11 @@ pub fn run(mut settings: MeasurementSettings) -> Result<ExitCode> {
 
 /// Casts the lifetimes of two `Spi` objects to the same lifetime `'a`.
 ///
-/// This is safe because we ensure that `'b` outlives `'a`, so the
-/// reference with `'b` can be coerced to the shorter lifetime `'a`.
-///
-/// # Returns
-///
-/// A tuple containing the two `Spi` objects with their lifetimes cast to `'a`.
+/// This is safe because we ensure that `'b` outlives `'a`, so the reference with `'b` can be coerced
+/// to the shorter lifetime `'a`. This is needed to get rid of the 'static lifetime when dealing with
+/// [`Spi::for_self()`]. Without it, you wouldn't be able to create mutable references to both
+/// [`Spi::for_self()`] and [`Spi::for_library()`] which can be swapped in place,
+/// because they will have different lifetimes.
 fn downcast_lifetime<'a, 'b: 'a>(a: Spi<'a>, b: Spi<'b>) -> (Spi<'a>, Spi<'a>) {
     (a, b)
 }
