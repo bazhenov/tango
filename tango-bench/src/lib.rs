@@ -142,7 +142,7 @@ pub trait MeasureTarget {
             // measurement at least took 1us guarantees that we won't end up with an unreasonably large number
             // of iterations
             let time = self.measure(iters).max(1_000);
-            let time_per_iteration = time / iters as u64;
+            let time_per_iteration = (time / iters as u64).max(1);
             let new_iters = (time_ns / time_per_iteration) as usize;
 
             // Do early stop if new estimate has the same order of magnitude. It is good enough.
@@ -171,6 +171,79 @@ pub trait MeasureTarget {
 
     /// Name of the benchmark
     fn name(&self) -> &str;
+}
+
+pub mod new_api {
+    use crate::{
+        timer::{ActiveTimer, Timer},
+        MeasureTarget,
+    };
+    use std::{hint::black_box, marker::PhantomData};
+
+    pub struct BenchParams {
+        pub seed: u64,
+    }
+
+    struct Bench<B, I, T> {
+        name: String,
+        seed: u64,
+        bench: B,
+        iter: Option<I>,
+        _phantom: PhantomData<T>,
+    }
+
+    pub fn new_bench<B: Benchmark<I, O> + 'static, I: Iteration<O> + 'static, O: 'static>(
+        name: impl Into<String>,
+        bench: B,
+    ) -> Box<dyn MeasureTarget> {
+        let name = name.into();
+        assert!(!name.is_empty());
+        let bench = Bench::<B, I, O> {
+            name,
+            bench,
+            iter: None,
+            seed: 0,
+            _phantom: PhantomData,
+        };
+        Box::new(bench)
+    }
+
+    pub trait Iteration<T>: FnMut() -> T {}
+    impl<T: FnMut() -> O, O> Iteration<O> for T {}
+
+    pub trait Benchmark<I: Iteration<O>, O>: FnMut(&BenchParams) -> I {
+        fn create_iter(&mut self, params: &BenchParams) -> I {
+            (self)(params)
+        }
+    }
+
+    impl<T: FnMut(&BenchParams) -> I, I: Iteration<O>, O> Benchmark<I, O> for T {}
+
+    impl<B: Benchmark<I, O>, I: Iteration<O>, O> MeasureTarget for Bench<B, I, O> {
+        fn measure(&mut self, iterations: usize) -> u64 {
+            if self.iter.is_none() {
+                self.next_haystack();
+            }
+            let iter = self.iter.as_mut().unwrap();
+
+            let start = ActiveTimer::start();
+            for _ in 0..iterations {
+                black_box((iter)());
+            }
+            ActiveTimer::stop(start)
+        }
+
+        fn next_haystack(&mut self) -> bool {
+            self.iter = Some(self.bench.create_iter(&BenchParams { seed: self.seed }));
+            true
+        }
+
+        fn sync(&mut self, seed: u64) {}
+
+        fn name(&self) -> &str {
+            self.name.as_str()
+        }
+    }
 }
 
 struct SimpleFunc<F> {

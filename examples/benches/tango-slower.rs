@@ -2,7 +2,7 @@
 
 use crate::test_funcs::{factorial, sum};
 use tango_bench::{
-    benchmark_fn, generators::RandomVec, tango_benchmarks, tango_main, BenchmarkMatrix,
+    generators::RandomVec, new_api::new_bench, tango_benchmarks, tango_main, BenchmarkMatrix,
     IntoBenchmarks,
 };
 use test_funcs::{sort_stable, str_count_rev, str_take, RandomSubstring};
@@ -17,8 +17,8 @@ fn str_benchmarks() -> impl IntoBenchmarks {
 
 fn num_benchmarks() -> impl IntoBenchmarks {
     [
-        benchmark_fn("sum", || sum(5000)),
-        benchmark_fn("factorial", || factorial(500)),
+        new_bench("sum", |_| || sum(4950)),
+        new_bench("factorial", |_| || factorial(495)),
     ]
 }
 

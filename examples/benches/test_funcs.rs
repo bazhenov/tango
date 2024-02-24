@@ -3,7 +3,7 @@ use std::{hint::black_box, ops::Range, rc::Rc};
 use tango_bench::Generator;
 
 /// HTML page with a lot of chinese text to test UTF8 decoding speed
-const INPUT_TEXT: &str = include_str!("./input.txt");
+pub const INPUT_TEXT: &str = include_str!("./input.txt");
 
 #[derive(Clone)]
 pub struct RandomSubstring {
@@ -17,10 +17,7 @@ pub struct RandomSubstring {
 impl RandomSubstring {
     #[allow(unused)]
     pub fn new() -> Self {
-        let char_indicies = INPUT_TEXT
-            .char_indices()
-            .map(|(idx, _)| idx)
-            .collect::<Vec<_>>();
+        let char_indicies = build_char_indicies(INPUT_TEXT);
         let rng = SmallRng::seed_from_u64(42);
         let length = 50000;
         Self {
@@ -31,6 +28,10 @@ impl RandomSubstring {
             name: format!("RandomString<{}>", length),
         }
     }
+}
+
+pub fn build_char_indicies(text: &str) -> Vec<usize> {
+    text.char_indices().map(|(idx, _)| idx).collect()
 }
 impl Generator for RandomSubstring {
     type Haystack = Rc<String>;
@@ -97,6 +98,18 @@ pub fn str_std<T>(s: &String, _: &T) -> usize {
 pub fn str_count<T: AsRef<String>>(s: &T, idx: &Range<usize>) -> usize {
     let mut l = 0;
     for _ in s.as_ref()[idx.start..idx.end].chars() {
+        l += 1;
+    }
+    l
+}
+
+#[cfg_attr(feature = "align", repr(align(32)))]
+#[cfg_attr(feature = "align", inline(never))]
+#[allow(unused)]
+#[allow(clippy::ptr_arg)]
+pub fn str_count_new(s: &str) -> usize {
+    let mut l = 0;
+    for _ in s.chars() {
         l += 1;
     }
     l
