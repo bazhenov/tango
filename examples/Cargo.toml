@@ -8,7 +8,6 @@ tango-bench = { path = "../tango-bench" }
 rand = { version = "0.8", features = ["small_rng"] }
 
 [dev-dependencies]
-criterion = "0.5.1"
 ordsearch = { version = "0.2.5" }
 num-traits = "0.2"
 
@@ -22,10 +21,6 @@ harness = false
 
 [[bench]]
 name = "search-btree"
-harness = false
-
-[[bench]]
-name = "criterion"
 harness = false
 
 [[bench]]
