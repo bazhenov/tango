@@ -1,25 +1,16 @@
 #![cfg_attr(feature = "align", feature(fn_align))]
 
-use std::rc::Rc;
-
 use crate::test_funcs::{factorial, sum};
-use rand::{rngs::SmallRng, Rng, SeedableRng};
+use std::rc::Rc;
 use tango_bench::{
-    benchmark_fn, generators::RandomVec, new_api::benchmark_fn_with_setup, tango_benchmarks,
-    tango_main, BenchmarkMatrix, IntoBenchmarks,
+    benchmark_fn, generators::RandomVec, tango_benchmarks, tango_main, BenchmarkMatrix,
+    IntoBenchmarks,
 };
 use test_funcs::{
-    build_char_indicies, sort_unstable, str_count, str_count_new, str_take, RandomSubstring,
-    INPUT_TEXT,
+    create_str_benchmark, sort_unstable, str_count, str_take, IndexedString, INPUT_TEXT,
 };
 
 mod test_funcs;
-
-fn str_benchmarks() -> impl IntoBenchmarks {
-    BenchmarkMatrix::new(RandomSubstring::new())
-        .add_function("str_length", str_count)
-        .add_function("str_length_limit", |h, n| str_take(4950, h, n))
-}
 
 fn num_benchmarks() -> impl IntoBenchmarks {
     [
@@ -33,31 +24,13 @@ fn vec_benchmarks() -> impl IntoBenchmarks {
         .add_function("sort", sort_unstable)
 }
 
-fn new_benchmarks() -> impl IntoBenchmarks {
-    let mut benches = vec![];
-    let input_string = INPUT_TEXT;
-    let indicies = Rc::new(build_char_indicies(input_string));
-    for length in [5, 500, 50_000] {
-        let indicies = Rc::clone(&indicies);
-        let bench = benchmark_fn_with_setup(format!("str_length/length<{}>", length), move |p| {
-            let mut rng = SmallRng::seed_from_u64(p.seed);
-            let indicies = Rc::clone(&indicies);
-            move || {
-                let start = rng.gen_range(0..indicies.len() - length);
-                let range = indicies[start]..indicies[start + length];
-                str_count_new(&input_string[range])
-            }
-        });
-        benches.push(bench);
-    }
-
-    benches
+fn str_benchmarks() -> impl IntoBenchmarks {
+    let input = Rc::new(IndexedString::from(INPUT_TEXT));
+    [
+        create_str_benchmark("str_length/random", &input, str_count),
+        create_str_benchmark("str_length/random_limited", &input, |s| str_take(4950, s)),
+    ]
 }
 
-tango_benchmarks!(
-    str_benchmarks(),
-    num_benchmarks(),
-    vec_benchmarks(),
-    new_benchmarks()
-);
+tango_benchmarks!(str_benchmarks(), num_benchmarks(), vec_benchmarks());
 tango_main!();

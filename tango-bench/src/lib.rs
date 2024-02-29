@@ -2,13 +2,11 @@ use core::ptr;
 use num_traits::ToPrimitive;
 use rand::{rngs::SmallRng, Rng, SeedableRng};
 use std::{
-    any::type_name, cell::RefCell, cmp::Ordering, hint::black_box, io, mem, ops::RangeInclusive,
-    rc::Rc, str::Utf8Error, usize,
+    any::type_name, cell::RefCell, cmp::Ordering, hint::black_box, io, marker::PhantomData, mem,
+    ops::RangeInclusive, rc::Rc, str::Utf8Error, usize,
 };
 use thiserror::Error;
 use timer::{ActiveTimer, Timer};
-
-use crate::new_api::benchmark_fn_with_setup;
 
 pub mod cli;
 pub mod dylib;
@@ -175,117 +173,73 @@ pub trait MeasureTarget {
     fn name(&self) -> &str;
 }
 
-pub mod new_api {
-    use crate::{
-        timer::{ActiveTimer, Timer},
-        MeasureTarget,
+pub struct BenchParams {
+    pub seed: u64,
+}
+
+struct Bench<B, I, T> {
+    name: String,
+    seed: u64,
+    bench: B,
+    iter: Option<I>,
+    _phantom: PhantomData<T>,
+}
+
+pub fn benchmark_fn_with_setup<
+    B: Benchmark<I, O> + 'static,
+    I: Iteration<O> + 'static,
+    O: 'static,
+>(
+    name: impl Into<String>,
+    bench: B,
+) -> Box<dyn MeasureTarget> {
+    let name = name.into();
+    assert!(!name.is_empty());
+    let bench = Bench::<B, I, O> {
+        name,
+        bench,
+        iter: None,
+        seed: 0,
+        _phantom: PhantomData,
     };
-    use std::{hint::black_box, marker::PhantomData};
+    Box::new(bench)
+}
 
-    pub struct BenchParams {
-        pub seed: u64,
-    }
+pub trait Iteration<T>: FnMut() -> T {}
+impl<T: FnMut() -> O, O> Iteration<O> for T {}
 
-    struct Bench<B, I, T> {
-        name: String,
-        seed: u64,
-        bench: B,
-        iter: Option<I>,
-        _phantom: PhantomData<T>,
-    }
-
-    pub fn benchmark_fn_with_setup<
-        B: Benchmark<I, O> + 'static,
-        I: Iteration<O> + 'static,
-        O: 'static,
-    >(
-        name: impl Into<String>,
-        bench: B,
-    ) -> Box<dyn MeasureTarget> {
-        let name = name.into();
-        assert!(!name.is_empty());
-        let bench = Bench::<B, I, O> {
-            name,
-            bench,
-            iter: None,
-            seed: 0,
-            _phantom: PhantomData,
-        };
-        Box::new(bench)
-    }
-
-    pub trait Iteration<T>: FnMut() -> T {}
-    impl<T: FnMut() -> O, O> Iteration<O> for T {}
-
-    pub trait Benchmark<I: Iteration<O>, O>: FnMut(&BenchParams) -> I {
-        fn create_iter(&mut self, params: &BenchParams) -> I {
-            (self)(params)
-        }
-    }
-
-    impl<T: FnMut(&BenchParams) -> I, I: Iteration<O>, O> Benchmark<I, O> for T {}
-
-    impl<B: Benchmark<I, O>, I: Iteration<O>, O> MeasureTarget for Bench<B, I, O> {
-        fn measure(&mut self, iterations: usize) -> u64 {
-            if self.iter.is_none() {
-                self.next_haystack();
-            }
-            let iter = self.iter.as_mut().unwrap();
-
-            let start = ActiveTimer::start();
-            for _ in 0..iterations {
-                black_box((iter)());
-            }
-            ActiveTimer::stop(start)
-        }
-
-        fn next_haystack(&mut self) -> bool {
-            self.iter = Some(self.bench.create_iter(&BenchParams { seed: self.seed }));
-            true
-        }
-
-        fn sync(&mut self, seed: u64) {}
-
-        fn name(&self) -> &str {
-            self.name.as_str()
-        }
+pub trait Benchmark<I: Iteration<O>, O>: FnMut(&BenchParams) -> I {
+    fn create_iter(&mut self, params: &BenchParams) -> I {
+        (self)(params)
     }
 }
 
-struct SimpleFunc<F> {
-    name: &'static str,
-    func: F,
-}
+impl<T: FnMut(&BenchParams) -> I, I: Iteration<O>, O> Benchmark<I, O> for T {}
 
-impl<O, F: Fn() -> O> MeasureTarget for SimpleFunc<F> {
+impl<B: Benchmark<I, O>, I: Iteration<O>, O> MeasureTarget for Bench<B, I, O> {
     fn measure(&mut self, iterations: usize) -> u64 {
-        if mem::needs_drop::<O>() {
-            let mut result = Vec::with_capacity(iterations);
-            let start = ActiveTimer::start();
-            for _ in 0..iterations {
-                result.push(black_box((self.func)()));
-            }
-            let time = ActiveTimer::stop(start);
-            drop(result);
-            time
-        } else {
-            let start = ActiveTimer::start();
-            for _ in 0..iterations {
-                black_box((self.func)());
-            }
-            ActiveTimer::stop(start)
+        if self.iter.is_none() {
+            self.next_haystack();
         }
+        let iter = self.iter.as_mut().unwrap();
+
+        let start = ActiveTimer::start();
+        for _ in 0..iterations {
+            black_box((iter)());
+        }
+        ActiveTimer::stop(start)
     }
 
     fn next_haystack(&mut self) -> bool {
-        false
+        self.iter = Some(self.bench.create_iter(&BenchParams { seed: self.seed }));
+        true
     }
+
+    fn sync(&mut self, seed: u64) {}
 
     fn name(&self) -> &str {
-        self.name
+        self.name.as_str()
     }
-
-    fn sync(&mut self, _: u64) {}
 }
 
 /// Implementation of a [`MeasureTarget`] which uses [`Generator`] to generates a new payload for a function

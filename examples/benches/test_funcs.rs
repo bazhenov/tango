@@ -1,63 +1,48 @@
 use rand::{rngs::SmallRng, Rng, SeedableRng};
-use std::{hint::black_box, ops::Range, rc::Rc};
-use tango_bench::Generator;
+use std::{hint::black_box, rc::Rc};
+use tango_bench::{benchmark_fn_with_setup, MeasureTarget};
 
 /// HTML page with a lot of chinese text to test UTF8 decoding speed
 pub const INPUT_TEXT: &str = include_str!("./input.txt");
 
-#[derive(Clone)]
-pub struct RandomSubstring {
-    char_indicies: Vec<usize>,
-    rng: SmallRng,
-    length: usize,
-    value: Rc<String>,
-    name: String,
+#[allow(unused)]
+pub(crate) fn create_str_benchmark(
+    name: &'static str,
+    input: &Rc<IndexedString>,
+    f: fn(&str) -> usize,
+) -> Box<dyn MeasureTarget> {
+    let input = Rc::clone(input);
+    benchmark_fn_with_setup(name, move |p| {
+        let mut rng = SmallRng::seed_from_u64(p.seed);
+        let input = Rc::clone(&input);
+        move || f(random_substring(&input, &mut rng))
+    })
 }
 
-impl RandomSubstring {
-    #[allow(unused)]
-    pub fn new() -> Self {
-        let char_indicies = build_char_indicies(INPUT_TEXT);
-        let rng = SmallRng::seed_from_u64(42);
-        let length = 50000;
+fn random_substring<'a>(input: &'a IndexedString, rng: &mut impl Rng) -> &'a str {
+    let length = 50_000;
+    let indices = &input.indices;
+    let start = rng.gen_range(0..indices.len() - length);
+    let range = indices[start]..indices[start + length];
+    &input.string[range]
+}
+
+pub(crate) struct IndexedString {
+    string: String,
+    indices: Vec<usize>,
+}
+
+impl From<&str> for IndexedString {
+    fn from(value: &str) -> Self {
         Self {
-            char_indicies,
-            rng,
-            value: Rc::new(INPUT_TEXT.to_string()),
-            length,
-            name: format!("RandomString<{}>", length),
+            string: value.to_owned(),
+            indices: build_char_indicies(value),
         }
     }
 }
 
 pub fn build_char_indicies(text: &str) -> Vec<usize> {
     text.char_indices().map(|(idx, _)| idx).collect()
-}
-impl Generator for RandomSubstring {
-    type Haystack = Rc<String>;
-    type Needle = Range<usize>;
-
-    fn next_haystack(&mut self) -> Self::Haystack {
-        Rc::clone(&self.value)
-    }
-
-    fn name(&self) -> &str {
-        &self.name
-    }
-
-    fn next_needle(&mut self, _haystack: &Self::Haystack) -> Self::Needle {
-        let start = self
-            .rng
-            .gen_range(0..self.char_indicies.len() - self.length);
-
-        let from = self.char_indicies[start];
-        let to = self.char_indicies[start + self.length];
-        from..to
-    }
-
-    fn sync(&mut self, seed: u64) {
-        self.rng = SmallRng::seed_from_u64(seed);
-    }
 }
 
 #[cfg_attr(feature = "align", repr(align(32)))]
@@ -87,17 +72,9 @@ pub fn factorial(mut n: usize) -> usize {
 #[cfg_attr(feature = "align", inline(never))]
 #[allow(unused)]
 #[allow(clippy::ptr_arg)]
-pub fn str_std<T>(s: &String, _: &T) -> usize {
-    s.chars().count()
-}
-
-#[cfg_attr(feature = "align", repr(align(32)))]
-#[cfg_attr(feature = "align", inline(never))]
-#[allow(unused)]
-#[allow(clippy::ptr_arg)]
-pub fn str_count<T: AsRef<String>>(s: &T, idx: &Range<usize>) -> usize {
+pub fn str_count_rev(s: &str) -> usize {
     let mut l = 0;
-    for _ in s.as_ref()[idx.start..idx.end].chars() {
+    for _ in s.chars().rev() {
         l += 1;
     }
     l
@@ -107,7 +84,7 @@ pub fn str_count<T: AsRef<String>>(s: &T, idx: &Range<usize>) -> usize {
 #[cfg_attr(feature = "align", inline(never))]
 #[allow(unused)]
 #[allow(clippy::ptr_arg)]
-pub fn str_count_new(s: &str) -> usize {
+pub fn str_count(s: &str) -> usize {
     let mut l = 0;
     for _ in s.chars() {
         l += 1;
@@ -119,20 +96,8 @@ pub fn str_count_new(s: &str) -> usize {
 #[cfg_attr(feature = "align", inline(never))]
 #[allow(unused)]
 #[allow(clippy::ptr_arg)]
-pub fn str_count_rev<T: AsRef<String>>(s: &T, idx: &Range<usize>) -> usize {
-    let mut l = 0;
-    for _ in s.as_ref()[idx.start..idx.end].chars().rev() {
-        l += 1;
-    }
-    l
-}
-
-#[cfg_attr(feature = "align", repr(align(32)))]
-#[cfg_attr(feature = "align", inline(never))]
-#[allow(unused)]
-#[allow(clippy::ptr_arg)]
-pub fn str_take(n: usize, s: &String, idx: &Range<usize>) -> usize {
-    s[idx.start..idx.end].chars().take(black_box(n)).count()
+pub fn str_take(n: usize, s: &str) -> usize {
+    s.chars().take(black_box(n)).count()
 }
 
 #[cfg_attr(feature = "align", repr(align(32)))]
