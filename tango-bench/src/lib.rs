@@ -8,6 +8,8 @@ use std::{
 use thiserror::Error;
 use timer::{ActiveTimer, Timer};
 
+use crate::new_api::benchmark_fn_with_setup;
+
 pub mod cli;
 pub mod dylib;
 pub mod generators;
@@ -104,12 +106,12 @@ macro_rules! tango_main {
     };
 }
 
-pub fn benchmark_fn<O, F: Fn() -> O + 'static>(
+pub fn benchmark_fn<O: 'static, F: Fn() -> O + Copy + 'static>(
     name: &'static str,
     func: F,
 ) -> Box<dyn MeasureTarget> {
     assert!(!name.is_empty());
-    Box::new(SimpleFunc { name, func })
+    benchmark_fn_with_setup(name, move |_| func)
 }
 
 pub trait MeasureTarget {
@@ -192,7 +194,11 @@ pub mod new_api {
         _phantom: PhantomData<T>,
     }
 
-    pub fn new_bench<B: Benchmark<I, O> + 'static, I: Iteration<O> + 'static, O: 'static>(
+    pub fn benchmark_fn_with_setup<
+        B: Benchmark<I, O> + 'static,
+        I: Iteration<O> + 'static,
+        O: 'static,
+    >(
         name: impl Into<String>,
         bench: B,
     ) -> Box<dyn MeasureTarget> {

@@ -5,8 +5,8 @@ use std::rc::Rc;
 use crate::test_funcs::{factorial, sum};
 use rand::{rngs::SmallRng, Rng, SeedableRng};
 use tango_bench::{
-    generators::RandomVec, new_api::new_bench, tango_benchmarks, tango_main, BenchmarkMatrix,
-    IntoBenchmarks,
+    benchmark_fn, generators::RandomVec, new_api::benchmark_fn_with_setup, tango_benchmarks,
+    tango_main, BenchmarkMatrix, IntoBenchmarks,
 };
 use test_funcs::{
     build_char_indicies, sort_unstable, str_count, str_count_new, str_take, RandomSubstring,
@@ -23,8 +23,8 @@ fn str_benchmarks() -> impl IntoBenchmarks {
 
 fn num_benchmarks() -> impl IntoBenchmarks {
     [
-        new_bench("sum", |_| || sum(4950)),
-        new_bench("factorial", |_| || factorial(495)),
+        benchmark_fn("sum", || sum(4950)),
+        benchmark_fn("factorial", || factorial(495)),
     ]
 }
 
@@ -39,7 +39,7 @@ fn new_benchmarks() -> impl IntoBenchmarks {
     let indicies = Rc::new(build_char_indicies(input_string));
     for length in [5, 500, 50_000] {
         let indicies = Rc::clone(&indicies);
-        let bench = new_bench(format!("str_length/length<{}>", length), move |p| {
+        let bench = benchmark_fn_with_setup(format!("str_length/length<{}>", length), move |p| {
             let mut rng = SmallRng::seed_from_u64(p.seed);
             let indicies = Rc::clone(&indicies);
             move || {
