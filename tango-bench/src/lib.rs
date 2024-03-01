@@ -223,11 +223,23 @@ impl<B: Benchmark<I, O>, I: Iteration<O>, O> MeasureTarget for Bench<B, I, O> {
         }
         let iter = self.iter.as_mut().unwrap();
 
-        let start = ActiveTimer::start();
-        for _ in 0..iterations {
-            black_box((iter)());
+        if mem::needs_drop::<O>() {
+            let mut result = Vec::with_capacity(iterations);
+
+            let start = ActiveTimer::start();
+            for _ in 0..iterations {
+                result.push(black_box((iter)()));
+            }
+            let time = ActiveTimer::stop(start);
+            drop(result);
+            time
+        } else {
+            let start = ActiveTimer::start();
+            for _ in 0..iterations {
+                black_box((iter)());
+            }
+            ActiveTimer::stop(start)
         }
-        ActiveTimer::stop(start)
     }
 
     fn next_haystack(&mut self) -> bool {
