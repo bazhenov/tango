@@ -57,8 +57,9 @@ fn iqr_interquartile_range_benchmarks() -> impl IntoBenchmarks {
 fn empty_benchmarks() -> impl IntoBenchmarks {
     [benchmark_fn_with_setup(
         "measure_empty_function",
-        move |_| {
+        move |p| {
             let mut bench = benchmark_fn("_", || 42);
+            bench.prepare_state(p.seed);
             move || bench.measure(1)
         },
     )]

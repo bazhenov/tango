@@ -338,16 +338,12 @@ mod commands {
             self.spi.run(self.func, iterations);
         }
 
-        fn next_haystack(&mut self) {
-            self.spi.next_haystack(self.func);
+        fn prepare_state(&mut self, seed: u64) {
+            self.spi.prepare_state(self.func, seed);
         }
 
         fn estimate_iterations(&mut self, time_ms: u32) -> usize {
             self.spi.estimate_iterations(self.func, time_ms)
-        }
-
-        fn sync(&mut self, seed: u64) {
-            self.spi.sync(self.func, seed);
         }
     }
 
@@ -392,18 +388,15 @@ mod commands {
         let mut b_func = &mut candidate;
 
         let seed = seed.unwrap_or_else(rand::random);
-        a_func.sync(seed);
-        b_func.sync(seed);
 
+        a_func.prepare_state(seed);
         let a_estimate = (a_func.estimate_iterations(TIME_SLICE_MS) / 2).max(1);
+
+        b_func.prepare_state(seed);
         let b_estimate = (b_func.estimate_iterations(TIME_SLICE_MS) / 2).max(1);
+
         let mut iterations_per_sample = a_estimate.min(b_estimate);
         let mut sampler = create_sampler(&settings, seed);
-
-        // Synchronizing test functions one more time because the estimation process may perform a different
-        // number of iterations on the functions, thus running them out of sync.
-        a_func.sync(seed);
-        b_func.sync(seed);
 
         let mut i = 0;
         let mut switch_counter = 0;
@@ -445,18 +438,18 @@ mod commands {
                 std::thread::yield_now();
             }
 
-            let new_haystack = i % settings.samples_per_haystack == 0;
+            let prepare_state_seed = (i % settings.samples_per_haystack == 0).then(|| seed);
             let mut sample_time = 0;
 
             sample_time += run_func(
-                new_haystack,
+                prepare_state_seed,
                 a_func,
                 warmup_iterations,
                 iterations,
                 firewall.as_ref(),
             );
             sample_time += run_func(
-                new_haystack,
+                prepare_state_seed,
                 b_func,
                 warmup_iterations,
                 iterations,
@@ -504,14 +497,14 @@ mod commands {
     }
 
     fn run_func(
-        new_haystack: bool,
+        prepare_state_seed: Option<u64>,
         f: &mut TestedFunction,
         warmup_iterations: Option<usize>,
         iterations: usize,
         firewall: Option<&CacheFirewall>,
     ) -> u64 {
-        if new_haystack {
-            f.next_haystack();
+        if let Some(seed) = prepare_state_seed {
+            f.prepare_state(seed);
             if let Some(firewall) = firewall {
                 firewall.issue_read();
             }

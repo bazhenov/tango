@@ -158,13 +158,7 @@ pub trait MeasureTarget {
     /// Calling this method should update internal haystack used for measurement. Returns `true` if update happend,
     /// `false` if implementation doesn't support haystack generation.
     /// Haystack/Needle distinction is described in [`Generator`] trait.
-    fn next_haystack(&mut self) -> bool;
-
-    /// Synchronize RNG state
-    ///
-    /// If this implementation has linked generator with RNG state, this method should delegate to
-    /// [`Generator::sync()`]
-    fn sync(&mut self, seed: u64);
+    fn prepare_state(&mut self, seed: u64) -> bool;
 
     /// Name of the benchmark
     fn name(&self) -> &str;
@@ -176,7 +170,6 @@ pub struct BenchParams {
 
 struct Bench<B, I, T> {
     name: String,
-    seed: u64,
     bench: B,
     iter: Option<I>,
     _phantom: PhantomData<T>,
@@ -196,7 +189,6 @@ pub fn benchmark_fn_with_setup<
         name,
         bench,
         iter: None,
-        seed: 0,
         _phantom: PhantomData,
     };
     Box::new(bench)
@@ -215,10 +207,10 @@ impl<T: FnMut(&BenchParams) -> I, I: BenchmarkIteration<O>, O> BenchmarkSample<I
 
 impl<S: BenchmarkSample<I, O>, I: BenchmarkIteration<O>, O> MeasureTarget for Bench<S, I, O> {
     fn measure(&mut self, iterations: usize) -> u64 {
-        if self.iter.is_none() {
-            self.next_haystack();
-        }
-        let iter = self.iter.as_mut().unwrap();
+        let iter = self
+            .iter
+            .as_mut()
+            .expect("No prepare_state() was called before measure()");
 
         if mem::needs_drop::<O>() {
             let mut result = Vec::with_capacity(iterations);
@@ -239,12 +231,10 @@ impl<S: BenchmarkSample<I, O>, I: BenchmarkIteration<O>, O> MeasureTarget for Be
         }
     }
 
-    fn next_haystack(&mut self) -> bool {
-        self.iter = Some(self.bench.create_iter(&BenchParams { seed: self.seed }));
+    fn prepare_state(&mut self, seed: u64) -> bool {
+        self.iter = Some(self.bench.create_iter(&BenchParams { seed }));
         true
     }
-
-    fn sync(&mut self, seed: u64) {}
 
     fn name(&self) -> &str {
         self.name.as_str()
@@ -311,17 +301,15 @@ where
         }
     }
 
-    fn next_haystack(&mut self) -> bool {
-        self.haystack = Some(self.g.borrow_mut().next_haystack());
+    fn prepare_state(&mut self, seed: u64) -> bool {
+        let generator = &mut self.g.borrow_mut();
+        generator.sync(seed);
+        self.haystack = Some(generator.next_haystack());
         true
     }
 
     fn name(&self) -> &str {
         &self.name
-    }
-
-    fn sync(&mut self, seed: u64) {
-        self.g.borrow_mut().sync(seed)
     }
 }
 
@@ -1150,6 +1138,7 @@ mod tests {
         let mut target = benchmark_fn("foo", move || {
             thread::sleep(Duration::from_millis(expected_delay))
         });
+        target.prepare_state(0);
 
         let median = median_execution_time(target.as_mut(), 10).as_millis() as u64;
         assert!(median < expected_delay * 10);

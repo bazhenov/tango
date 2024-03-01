@@ -80,14 +80,9 @@ impl<'l> Spi<'l> {
         self.vt.estimate_iterations(time_ms)
     }
 
-    pub(crate) fn sync(&mut self, func: FunctionIdx, seed: u64) {
+    pub(crate) fn prepare_state(&mut self, func: FunctionIdx, seed: u64) -> bool {
         self.select(func);
-        self.vt.sync(seed)
-    }
-
-    pub(crate) fn next_haystack(&mut self, func: FunctionIdx) -> bool {
-        self.select(func);
-        self.vt.next_haystack()
+        self.vt.prepare_state(seed)
     }
 
     fn select(&mut self, idx: usize) {
@@ -149,8 +144,7 @@ pub mod ffi {
     type SelectFn = unsafe extern "C" fn(usize);
     type RunFn = unsafe extern "C" fn(usize) -> u64;
     type EstimateIterationsFn = unsafe extern "C" fn(u32) -> usize;
-    type NextHaystackFn = unsafe extern "C" fn() -> bool;
-    type SyncFn = unsafe extern "C" fn(u64);
+    type PrepareStateFn = unsafe extern "C" fn(u64) -> bool;
     type FreeFn = unsafe extern "C" fn();
 
     /// This block of constants is checking that all exported tango functions are of valid type according to the API.
@@ -164,7 +158,6 @@ pub mod ffi {
         const TANGO_GET_TEST_NAME: GetTestNameFn = tango_get_test_name;
         const TANGO_RUN: RunFn = tango_run;
         const TANGO_ESTIMATE_ITERATIONS: EstimateIterationsFn = tango_estimate_iterations;
-        const TANGO_SYNC: SyncFn = tango_sync;
         const TANGO_FREE: FreeFn = tango_free;
     }
 
@@ -211,18 +204,11 @@ pub mod ffi {
     }
 
     #[no_mangle]
-    unsafe extern "C" fn tango_next_haystack() -> bool {
+    unsafe extern "C" fn tango_prepare_state(seed: u64) -> bool {
         if let Some(s) = STATE.as_mut() {
-            s.selected_mut().next_haystack()
+            s.selected_mut().prepare_state(seed)
         } else {
             false
-        }
-    }
-
-    #[no_mangle]
-    unsafe extern "C" fn tango_sync(seed: u64) {
-        if let Some(s) = STATE.as_mut() {
-            s.selected_mut().sync(seed)
         }
     }
 
@@ -238,8 +224,7 @@ pub mod ffi {
         fn get_test_name(&self, ptr: *mut *const c_char, len: *mut usize);
         fn run(&self, iterations: usize) -> u64;
         fn estimate_iterations(&self, time_ms: u32) -> usize;
-        fn next_haystack(&self) -> bool;
-        fn sync(&self, seed: u64);
+        fn prepare_state(&self, seed: u64) -> bool;
     }
 
     pub(super) static mut SELF_SPI: Option<SelfVTable> = Some(SelfVTable);
@@ -276,12 +261,8 @@ pub mod ffi {
             unsafe { tango_estimate_iterations(time_ms) }
         }
 
-        fn next_haystack(&self) -> bool {
-            unsafe { tango_next_haystack() }
-        }
-
-        fn sync(&self, seed: u64) {
-            unsafe { tango_sync(seed) }
+        fn prepare_state(&self, seed: u64) -> bool {
+            unsafe { tango_prepare_state(seed) }
         }
     }
 
@@ -300,8 +281,7 @@ pub mod ffi {
         get_test_name_fn: Symbol<'l, GetTestNameFn>,
         run_fn: Symbol<'l, RunFn>,
         estimate_iterations_fn: Symbol<'l, EstimateIterationsFn>,
-        next_haystack_fn: Symbol<'l, NextHaystackFn>,
-        sync_fn: Symbol<'l, SyncFn>,
+        prepare_state_fn: Symbol<'l, PrepareStateFn>,
         free_fn: Symbol<'l, FreeFn>,
     }
 
@@ -315,8 +295,7 @@ pub mod ffi {
                     get_test_name_fn: lookup_symbol(library, "tango_get_test_name")?,
                     run_fn: lookup_symbol(library, "tango_run")?,
                     estimate_iterations_fn: lookup_symbol(library, "tango_estimate_iterations")?,
-                    next_haystack_fn: lookup_symbol(library, "tango_next_haystack")?,
-                    sync_fn: lookup_symbol(library, "tango_sync")?,
+                    prepare_state_fn: lookup_symbol(library, "tango_prepare_state")?,
                     free_fn: lookup_symbol(library, "tango_free")?,
                 })
             }
@@ -348,12 +327,8 @@ pub mod ffi {
             unsafe { (self.estimate_iterations_fn)(time_ms) }
         }
 
-        fn next_haystack(&self) -> bool {
-            unsafe { (self.next_haystack_fn)() }
-        }
-
-        fn sync(&self, seed: u64) {
-            unsafe { (self.sync_fn)(seed) }
+        fn prepare_state(&self, seed: u64) -> bool {
+            unsafe { (self.prepare_state_fn)(seed) }
         }
     }
 
