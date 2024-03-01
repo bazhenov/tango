@@ -3,7 +3,7 @@ use num_traits::ToPrimitive;
 use rand::{rngs::SmallRng, Rng, SeedableRng};
 use std::{
     any::type_name, cell::RefCell, cmp::Ordering, hint::black_box, io, marker::PhantomData, mem,
-    ops::RangeInclusive, rc::Rc, str::Utf8Error, usize,
+    ops::RangeInclusive, rc::Rc, str::Utf8Error, time::Duration, usize,
 };
 use thiserror::Error;
 use timer::{ActiveTimer, Timer};
@@ -13,8 +13,6 @@ pub mod dylib;
 pub mod generators;
 #[cfg(target_os = "linux")]
 pub mod linux;
-
-const NS_TO_MS: usize = 1_000_000;
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -117,14 +115,13 @@ pub trait MeasureTarget {
     ///
     /// Returns the cumulative execution time (all iterations) with nanoseconds precision,
     /// but not necessarily accuracy. Usually this time is get by `clock_gettime()` call or some other
-    /// platform-specific system call.
+    /// platform-specific call.
     ///
-    /// This method should use the same arguments for measuring the test function unless [`next_haystack()`]
-    /// method is called. Only then new set of input arguments should be generated. Although it is allowed
-    /// to call this method without first calling [`next_haystack()`]. In which case first haystack should be
-    /// generated automatically.
+    /// This method should use the same arguments for measuring the test function unless [`prepare_state()`]
+    /// method is called. Only then new set of input arguments should be generated. It is NOT allowed
+    /// to call this method without first calling [`prepare_state()`].
     ///
-    /// [`next_haystack()`]: Self::next_haystack()
+    /// [`prepare_state()`]: Self::prepare_state()
     fn measure(&mut self, iterations: usize) -> u64;
 
     /// Estimates the number of iterations achievable within given time.
@@ -135,7 +132,7 @@ pub trait MeasureTarget {
     /// If the single call of a function is longer than provided timespan the implementation should return 0.
     fn estimate_iterations(&mut self, time_ms: u32) -> usize {
         let mut iters = 1;
-        let time_ns = time_ms as u64 * NS_TO_MS as u64;
+        let time_ns = Duration::from_millis(time_ms as u64).as_nanos() as u64;
 
         for _ in 0..5 {
             // Never believe short measurements because they are very unreliable. Pretending that
@@ -186,8 +183,8 @@ struct Bench<B, I, T> {
 }
 
 pub fn benchmark_fn_with_setup<
-    B: Benchmark<I, O> + 'static,
-    I: Iteration<O> + 'static,
+    B: BenchmarkSample<I, O> + 'static,
+    I: BenchmarkIteration<O> + 'static,
     O: 'static,
 >(
     name: impl Into<String>,
@@ -205,18 +202,18 @@ pub fn benchmark_fn_with_setup<
     Box::new(bench)
 }
 
-pub trait Iteration<T>: FnMut() -> T {}
-impl<T: FnMut() -> O, O> Iteration<O> for T {}
+pub trait BenchmarkIteration<T>: FnMut() -> T {}
+impl<T: FnMut() -> O, O> BenchmarkIteration<O> for T {}
 
-pub trait Benchmark<I: Iteration<O>, O>: FnMut(&BenchParams) -> I {
+pub trait BenchmarkSample<I: BenchmarkIteration<O>, O>: FnMut(&BenchParams) -> I {
     fn create_iter(&mut self, params: &BenchParams) -> I {
         (self)(params)
     }
 }
 
-impl<T: FnMut(&BenchParams) -> I, I: Iteration<O>, O> Benchmark<I, O> for T {}
+impl<T: FnMut(&BenchParams) -> I, I: BenchmarkIteration<O>, O> BenchmarkSample<I, O> for T {}
 
-impl<B: Benchmark<I, O>, I: Iteration<O>, O> MeasureTarget for Bench<B, I, O> {
+impl<S: BenchmarkSample<I, O>, I: BenchmarkIteration<O>, O> MeasureTarget for Bench<S, I, O> {
     fn measure(&mut self, iterations: usize) -> u64 {
         if self.iter.is_none() {
             self.next_haystack();
@@ -471,7 +468,7 @@ pub trait Generator {
     /// Generates next random haystack for the benchmark
     ///
     /// All iterations within sample are using the same haystack. Haystack are changed only between samples
-    /// (see. [`MeasureTarget::next_haystack()`]).
+    /// (see. [`MeasureTarget::prepare_state()`]).
     fn next_haystack(&mut self) -> Self::Haystack;
 
     /// Generates next random needle for the benchmark
@@ -1154,7 +1151,7 @@ mod tests {
             thread::sleep(Duration::from_millis(expected_delay))
         });
 
-        let median = median_execution_time(target.as_mut(), 10) / NS_TO_MS as u64;
+        let median = median_execution_time(target.as_mut(), 10).as_millis() as u64;
         assert!(median < expected_delay * 10);
     }
 
@@ -1182,10 +1179,11 @@ mod tests {
         sum_of_squares / (n - 1.)
     }
 
-    fn median_execution_time(target: &mut dyn MeasureTarget, iterations: u32) -> u64 {
+    fn median_execution_time(target: &mut dyn MeasureTarget, iterations: u32) -> Duration {
         assert!(iterations >= 1);
         let measures: Vec<_> = (0..iterations).map(|_| target.measure(1)).collect();
-        median(measures).max(1)
+        let time = median(measures).max(1);
+        Duration::from_nanos(time)
     }
 
     fn median<T: Copy + Ord + Add<Output = T> + Div<Output = T>>(mut measures: Vec<T>) -> T {
