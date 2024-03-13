@@ -416,7 +416,8 @@ impl IntoBenchmarks for Vec<Box<dyn MeasureTarget>> {
 
 /// Generates the payload for the benchmarking functions
 ///
-/// One of the most important parts of the benchmarking process is generating the payload to test the algorithm. This /// is what this trait is doing. Test function registered in the system can accepts two arguments:
+/// One of the most important parts of the benchmarking process is generating the payload to test the algorithm. This
+/// is what this trait is doing. Test function registered in the system can accepts two arguments:
 /// - *haystack* - usually the data structure we're testing the algorithm on
 /// - *needle* - the supplementary used to test the algorithm.
 ///
