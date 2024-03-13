@@ -185,13 +185,8 @@ pub fn run(mut settings: MeasurementSettings) -> Result<ExitCode> {
             #[cfg(target_os = "linux")]
             let path = crate::linux::patch_pie_binary_if_needed(&path)?.unwrap_or(path);
 
-            let spi_self = Spi::for_self().ok_or(Error::SpiSelfWasMoved)??;
-            let lib = unsafe { Library::new(&path) }
-                .with_context(|| format!("Unable to open library: {}", path.display()))?;
-            let spi_lib = Spi::for_library(&lib)?;
-
-            // We need to cast lifetimes of both Spi values so they become interchangeable
-            let (mut spi_lib, mut spi_self) = downcast_lifetime(spi_lib, spi_self);
+            let mut spi_self = Spi::spi_handle_for_self().ok_or(Error::SpiSelfWasMoved)?;
+            let mut spi_lib = Spi::spi_handle_for_library(&path);
 
             settings.filter_outliers = filter_outliers;
             settings.cache_firewall = cache_firewall;
@@ -263,17 +258,6 @@ pub fn run(mut settings: MeasurementSettings) -> Result<ExitCode> {
     }
 }
 
-/// Casts the lifetimes of two `Spi` objects to the same lifetime `'a`.
-///
-/// This is safe because we ensure that `'b` outlives `'a`, so the reference with `'b` can be coerced
-/// to the shorter lifetime `'a`. This is needed to get rid of the 'static lifetime when dealing with
-/// [`Spi::for_self()`]. Without it, you wouldn't be able to create mutable references to both
-/// [`Spi::for_self()`] and [`Spi::for_library()`] which can be swapped in place,
-/// because they will have different lifetimes.
-fn downcast_lifetime<'a, 'b: 'a>(a: Spi<'a>, b: Spi<'b>) -> (Spi<'a>, Spi<'a>) {
-    (a, b)
-}
-
 fn create_loop_mode(samples: Option<NonZeroUsize>, time: Option<f64>) -> Result<LoopMode> {
     let loop_mode = match (samples, time) {
         (Some(samples), None) => LoopMode::Samples(samples.into()),
@@ -303,8 +287,9 @@ mod commands {
 
     use super::*;
     use crate::{
-        calculate_run_result, dylib::FunctionIdx, CacheFirewall, FlatSampler, LinearSampler,
-        RandomSampler, RunResult, Sampler, SamplerType,
+        calculate_run_result,
+        dylib::{FunctionIdx, SpiHandle},
+        CacheFirewall, FlatSampler, LinearSampler, RandomSampler, RunResult, Sampler, SamplerType,
     };
     use std::{
         fs::{self, File},
@@ -313,14 +298,14 @@ mod commands {
         path::Path,
     };
 
-    struct TestedFunction<'a, 'l> {
-        spi: &'a mut Spi<'l>,
+    struct TestedFunction<'a> {
+        spi: &'a mut SpiHandle,
         func: FunctionIdx,
         samples: Vec<u64>,
     }
 
-    impl<'a, 'l> TestedFunction<'a, 'l> {
-        fn new(spi: &'a mut Spi<'l>, func: FunctionIdx) -> Self {
+    impl<'a> TestedFunction<'a> {
+        fn new(spi: &'a mut SpiHandle, func: FunctionIdx) -> Self {
             TestedFunction {
                 spi,
                 func,
@@ -328,14 +313,18 @@ mod commands {
             }
         }
 
-        fn measure(&mut self, iterations: usize) -> u64 {
-            let sample = self.spi.run(self.func, iterations);
+        fn measure(&mut self, iterations: usize) {
+            self.spi.measure(self.func, iterations);
+        }
+
+        fn read_sample(&mut self) -> u64 {
+            let sample = self.spi.read_sample();
             self.samples.push(sample);
             sample
         }
 
-        fn run(&mut self, iterations: usize) {
-            self.spi.run(self.func, iterations);
+        fn run(&mut self, iterations: usize) -> u64 {
+            self.spi.run(self.func, iterations)
         }
 
         fn prepare_state(&mut self, seed: u64) {
@@ -363,9 +352,9 @@ mod commands {
     ///
     /// Returns a percentage difference in performance of two functions if this change is
     /// statistically significant
-    pub fn run_paired_test<'l>(
-        baseline: &mut Spi<'l>,
-        candidate: &mut Spi<'l>,
+    pub fn run_paired_test(
+        baseline: &mut SpiHandle,
+        candidate: &mut SpiHandle,
         test_name: &str,
         settings: MeasurementSettings,
         seed: Option<u64>,
@@ -441,20 +430,24 @@ mod commands {
             let prepare_state_seed = (i % settings.samples_per_haystack == 0).then(|| seed);
             let mut sample_time = 0;
 
-            sample_time += run_func(
+            prepare_func(
                 prepare_state_seed,
                 a_func,
                 warmup_iterations,
-                iterations,
                 firewall.as_ref(),
             );
-            sample_time += run_func(
+            prepare_func(
                 prepare_state_seed,
                 b_func,
                 warmup_iterations,
-                iterations,
                 firewall.as_ref(),
             );
+
+            a_func.measure(iterations);
+            b_func.measure(iterations);
+            let a_sample_time = a_func.read_sample();
+            let b_sample_time = b_func.read_sample();
+            sample_time += a_sample_time.max(b_sample_time);
 
             loop_time += Duration::from_nanos(sample_time);
             sample_iterations.push(iterations);
@@ -496,13 +489,12 @@ mod commands {
         Ok(run_result)
     }
 
-    fn run_func(
+    fn prepare_func(
         prepare_state_seed: Option<u64>,
         f: &mut TestedFunction,
         warmup_iterations: Option<usize>,
-        iterations: usize,
         firewall: Option<&CacheFirewall>,
-    ) -> u64 {
+    ) {
         if let Some(seed) = prepare_state_seed {
             f.prepare_state(seed);
             if let Some(firewall) = firewall {
@@ -512,7 +504,6 @@ mod commands {
         if let Some(warmup_iterations) = warmup_iterations {
             f.run(warmup_iterations);
         }
-        f.measure(iterations)
     }
 
     fn create_sampler(settings: &MeasurementSettings, seed: u64) -> Box<dyn Sampler> {

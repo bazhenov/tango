@@ -1,13 +1,22 @@
 //! Loading and resolving symbols from .dylib/.so libraries
 
-use self::ffi::VTable;
+use self::ffi::{SelfVTable, VTable, SELF_SPI};
 use crate::{Error, MeasureTarget};
+use anyhow::Context;
 use libloading::{Library, Symbol};
 use std::{
     ffi::c_char,
+    path::{Path, PathBuf},
     ptr::{addr_of, null},
     slice, str,
+    sync::{
+        mpsc::{channel, Receiver, Sender},
+        Arc, Barrier, OnceLock,
+    },
+    thread::{self, JoinHandle},
 };
+
+static BARRIER: OnceLock<Arc<Barrier>> = OnceLock::new();
 
 pub struct Spi<'l> {
     tests: Vec<NamedFunction>,
@@ -17,21 +26,170 @@ pub struct Spi<'l> {
 
 pub type FunctionIdx = usize;
 
+#[derive(Debug, Clone)]
 pub struct NamedFunction {
     pub name: String,
 
-    ///  Function index in FFI API
+    /// Function index in FFI API
     pub idx: FunctionIdx,
 }
 
-impl<'l> Spi<'l> {
-    pub(crate) fn for_library(library: &'l Library) -> Result<Self, Error> {
-        Self::for_vtable(ffi::LibraryVTable::new(library)?)
+pub(crate) struct SpiHandle {
+    worker: JoinHandle<()>,
+    tests: Vec<NamedFunction>,
+    selected_function: Option<FunctionIdx>,
+    tx: Sender<SpiRequest>,
+    rx: Receiver<SpiReply>,
+}
+
+impl SpiHandle {
+    pub(crate) fn tests(&self) -> &[NamedFunction] {
+        &self.tests
     }
 
+    pub(crate) fn lookup(&self, name: &str) -> Option<&NamedFunction> {
+        self.tests.iter().find(|f| f.name == name)
+    }
+
+    pub(crate) fn run(&mut self, func: FunctionIdx, iterations: usize) -> u64 {
+        self.select(func);
+        self.tx.send(SpiRequest::Run { iterations }).unwrap();
+        match self.rx.recv().unwrap() {
+            SpiReply::Run(time) => time,
+            r @ _ => panic!("Unexpected response: {:?}", r),
+        }
+    }
+
+    pub(crate) fn measure(&mut self, func: FunctionIdx, iterations: usize) {
+        self.select(func);
+        self.tx.send(SpiRequest::Measure { iterations }).unwrap();
+    }
+
+    pub(crate) fn read_sample(&mut self) -> u64 {
+        match self.rx.recv().unwrap() {
+            SpiReply::Measure(time) => time,
+            r @ _ => panic!("Unexpected response: {:?}", r),
+        }
+    }
+
+    pub(crate) fn estimate_iterations(&mut self, func: FunctionIdx, time_ms: u32) -> usize {
+        self.select(func);
+        self.tx
+            .send(SpiRequest::EstimateIterations { time_ms })
+            .unwrap();
+        match self.rx.recv().unwrap() {
+            SpiReply::EstimateIterations(iters) => iters,
+            r @ _ => panic!("Unexpected response: {:?}", r),
+        }
+    }
+
+    pub(crate) fn prepare_state(&mut self, func: FunctionIdx, seed: u64) -> bool {
+        self.select(func);
+        self.tx.send(SpiRequest::PrepareState { seed }).unwrap();
+        match self.rx.recv().unwrap() {
+            SpiReply::PrepareState(ret) => ret,
+            r @ _ => panic!("Unexpected response: {:?}", r),
+        }
+    }
+
+    pub(crate) fn select(&mut self, idx: usize) {
+        let different_function = self.selected_function.map(|v| v != idx).unwrap_or(true);
+        if different_function {
+            self.tx.send(SpiRequest::Select { idx }).unwrap();
+            match self.rx.recv().unwrap() {
+                SpiReply::Select(_) => {
+                    self.selected_function = Some(idx);
+                    return;
+                }
+                r @ _ => panic!("Unexpected response: {:?}", r),
+            }
+        }
+    }
+}
+
+fn spi_worker_for_library(path: PathBuf, rx: Receiver<SpiRequest>, tx: Sender<SpiReply>) {
+    let lib = unsafe { Library::new(&path) }
+        .with_context(|| format!("Unable to open library: {}", path.display()))
+        .unwrap();
+    let spi = Spi::for_vtable(ffi::LibraryVTable::new(&lib).unwrap()).unwrap();
+    spi_worker(rx, spi, tx);
+}
+
+fn spi_worker_for_self(self_vtable: SelfVTable, rx: Receiver<SpiRequest>, tx: Sender<SpiReply>) {
+    let spi = Spi::for_vtable(self_vtable).unwrap();
+    spi_worker(rx, spi, tx);
+}
+
+fn spi_worker(rx: Receiver<SpiRequest>, mut spi: Spi<'_>, tx: Sender<SpiReply>) {
+    use SpiReply as Rp;
+    use SpiRequest as Rq;
+
+    let barrier = BARRIER.get_or_init(|| Arc::new(Barrier::new(2)));
+    let barrier = Arc::clone(&barrier);
+    while let Ok(req) = rx.recv() {
+        let reply = match req {
+            Rq::EstimateIterations { time_ms } => {
+                Rp::EstimateIterations(spi.estimate_iterations(0, time_ms))
+            }
+            Rq::PrepareState { seed } => Rp::PrepareState(spi.prepare_state(0, seed)),
+            Rq::Select { idx } => Rp::Select(spi.select(idx)),
+            Rq::Run { iterations } => Rp::Run(spi.run(0, iterations)),
+            Rq::Measure { iterations } => {
+                barrier.wait();
+                Rp::Measure(spi.run(0, iterations))
+            }
+            Rq::ListTests => Rp::ListTests(spi.tests().to_vec()),
+        };
+        tx.send(reply).unwrap();
+    }
+}
+
+impl<'l> Spi<'l> {
     /// TODO: should be singleton
     pub(crate) fn for_self() -> Option<Result<Self, Error>> {
         unsafe { ffi::SELF_SPI.take().map(Self::for_vtable) }
+    }
+
+    pub(crate) fn spi_handle_for_library(path: impl AsRef<Path>) -> SpiHandle {
+        let (request_tx, request_rx) = channel();
+        let (reply_tx, reply_rx) = channel();
+        let path = path.as_ref().to_path_buf();
+        let worker = thread::spawn(move || spi_worker_for_library(path, request_rx, reply_tx));
+
+        request_tx.send(SpiRequest::ListTests).unwrap();
+        let tests = match reply_rx.recv().unwrap() {
+            SpiReply::ListTests(tests) => tests,
+            r @ _ => panic!("Unexpected response: {:?}", r),
+        };
+
+        SpiHandle {
+            worker,
+            tests,
+            tx: request_tx,
+            rx: reply_rx,
+            selected_function: None,
+        }
+    }
+
+    pub(crate) fn spi_handle_for_self() -> Option<SpiHandle> {
+        let (request_tx, request_rx) = channel();
+        let (reply_tx, reply_rx) = channel();
+        let vtable = unsafe { SELF_SPI.take() }?;
+        let worker = thread::spawn(move || spi_worker_for_self(vtable, request_rx, reply_tx));
+
+        request_tx.send(SpiRequest::ListTests).unwrap();
+        let tests = match reply_rx.recv().unwrap() {
+            SpiReply::ListTests(tests) => tests,
+            r @ _ => panic!("Unexpected response: {:?}", r),
+        };
+
+        Some(SpiHandle {
+            worker,
+            tests,
+            tx: request_tx,
+            rx: reply_rx,
+            selected_function: None,
+        })
     }
 
     fn for_vtable<T: VTable + 'l>(vt: T) -> Result<Self, Error> {
@@ -66,22 +224,15 @@ impl<'l> Spi<'l> {
         &self.tests
     }
 
-    pub(crate) fn lookup(&self, name: &str) -> Option<&NamedFunction> {
-        self.tests.iter().find(|f| f.name == name)
-    }
-
     pub(crate) fn run(&mut self, func: FunctionIdx, iterations: usize) -> u64 {
-        self.select(func);
         self.vt.run(iterations)
     }
 
     pub(crate) fn estimate_iterations(&mut self, func: FunctionIdx, time_ms: u32) -> usize {
-        self.select(func);
         self.vt.estimate_iterations(time_ms)
     }
 
     pub(crate) fn prepare_state(&mut self, func: FunctionIdx, seed: u64) -> bool {
-        self.select(func);
         self.vt.prepare_state(seed)
     }
 
@@ -92,6 +243,25 @@ impl<'l> Spi<'l> {
             self.selected_function = Some(idx);
         }
     }
+}
+
+enum SpiRequest {
+    ListTests,
+    EstimateIterations { time_ms: u32 },
+    PrepareState { seed: u64 },
+    Select { idx: usize },
+    Run { iterations: usize },
+    Measure { iterations: usize },
+}
+
+#[derive(Debug)]
+enum SpiReply {
+    ListTests(Vec<NamedFunction>),
+    EstimateIterations(usize),
+    PrepareState(bool),
+    Select(()),
+    Run(u64),
+    Measure(u64),
 }
 
 /// State which holds the information about list of benchmarks and which one is selected.
