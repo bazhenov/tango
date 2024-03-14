@@ -4,7 +4,10 @@ use self::{
     commands::run_paired_test,
     reporting::{ConsoleReporter, VerboseReporter},
 };
-use crate::{dylib::Spi, Error, MeasurementSettings, Reporter, SamplerType};
+use crate::{
+    dylib::{Spi, SpiMode},
+    Error, MeasurementSettings, Reporter, SamplerType,
+};
 use anyhow::{bail, Context};
 use clap::Parser;
 use colorz::mode::{self, Mode};
@@ -90,6 +93,9 @@ enum BenchmarkMode {
         #[arg(long = "warmup")]
         warmup_enabled: Option<bool>,
 
+        #[arg(short = 'p', long = "parallel")]
+        parallel: bool,
+
         /// Quiet mode
         #[arg(short = 'q')]
         quiet: bool,
@@ -146,7 +152,7 @@ pub fn run(mut settings: MeasurementSettings) -> Result<ExitCode> {
 
     match subcommand {
         BenchmarkMode::List { bench_flags: _ } => {
-            let spi = Spi::spi_handle_for_self().ok_or(Error::SpiSelfWasMoved)?;
+            let spi = Spi::for_self(SpiMode::Synchronous).ok_or(Error::SpiSelfWasMoved)?;
             for func in spi.tests() {
                 println!("{}", func.name);
             }
@@ -169,6 +175,7 @@ pub fn run(mut settings: MeasurementSettings) -> Result<ExitCode> {
             cache_firewall,
             yield_before_sample,
             warmup_enabled,
+            parallel,
             quiet,
         } => {
             let mut reporter: Box<dyn Reporter> = if verbose {
@@ -184,8 +191,14 @@ pub fn run(mut settings: MeasurementSettings) -> Result<ExitCode> {
             #[cfg(target_os = "linux")]
             let path = crate::linux::patch_pie_binary_if_needed(&path)?.unwrap_or(path);
 
-            let mut spi_self = Spi::spi_handle_for_self().ok_or(Error::SpiSelfWasMoved)?;
-            let mut spi_lib = Spi::spi_handle_for_library(&path);
+            let mode = if parallel {
+                SpiMode::Asynchronous
+            } else {
+                SpiMode::Synchronous
+            };
+
+            let mut spi_self = Spi::for_self(mode).ok_or(Error::SpiSelfWasMoved)?;
+            let mut spi_lib = Spi::for_library(&path, mode);
 
             settings.filter_outliers = filter_outliers;
             settings.cache_firewall = cache_firewall;
@@ -287,7 +300,7 @@ mod commands {
     use super::*;
     use crate::{
         calculate_run_result,
-        dylib::{FunctionIdx, SpiHandle},
+        dylib::{FunctionIdx, Spi},
         CacheFirewall, FlatSampler, LinearSampler, RandomSampler, RunResult, Sampler, SamplerType,
     };
     use std::{
@@ -298,13 +311,13 @@ mod commands {
     };
 
     struct TestedFunction<'a> {
-        spi: &'a mut SpiHandle,
+        spi: &'a mut Spi,
         func: FunctionIdx,
         samples: Vec<u64>,
     }
 
     impl<'a> TestedFunction<'a> {
-        fn new(spi: &'a mut SpiHandle, func: FunctionIdx) -> Self {
+        fn new(spi: &'a mut Spi, func: FunctionIdx) -> Self {
             TestedFunction {
                 spi,
                 func,
@@ -352,8 +365,8 @@ mod commands {
     /// Returns a percentage difference in performance of two functions if this change is
     /// statistically significant
     pub fn run_paired_test(
-        baseline: &mut SpiHandle,
-        candidate: &mut SpiHandle,
+        baseline: &mut Spi,
+        candidate: &mut Spi,
         test_name: &str,
         settings: MeasurementSettings,
         seed: Option<u64>,

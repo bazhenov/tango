@@ -1,22 +1,17 @@
 //! Loading and resolving symbols from .dylib/.so libraries
 
-use self::ffi::{SelfVTable, VTable, SELF_SPI};
+use self::ffi::{VTable, SELF_VTABLE};
 use crate::{Error, MeasureTarget};
 use anyhow::Context;
 use libloading::{Library, Symbol};
 use std::{
     ffi::c_char,
-    path::{Path, PathBuf},
+    path::Path,
     ptr::{addr_of, null},
     slice, str,
     sync::mpsc::{channel, Receiver, Sender},
     thread::{self, JoinHandle},
 };
-
-pub struct Spi {
-    tests: Vec<NamedFunction>,
-    vt: Box<dyn VTable>,
-}
 
 pub type FunctionIdx = usize;
 
@@ -28,15 +23,42 @@ pub struct NamedFunction {
     pub idx: FunctionIdx,
 }
 
-pub(crate) struct SpiHandle {
-    worker: JoinHandle<()>,
+pub(crate) struct Spi {
     tests: Vec<NamedFunction>,
     selected_function: Option<FunctionIdx>,
-    tx: Sender<SpiRequest>,
-    rx: Receiver<SpiReply>,
+    mode: SpiImpl,
 }
 
-impl SpiHandle {
+#[derive(PartialEq, Eq, Clone, Copy)]
+pub enum SpiMode {
+    Synchronous,
+    Asynchronous,
+}
+
+enum SpiImpl {
+    Synchronous {
+        vt: Box<dyn VTable>,
+        last_measurement: u64,
+    },
+    Asynchronous {
+        worker: JoinHandle<()>,
+        tx: Sender<SpiRequest>,
+        rx: Receiver<SpiReply>,
+    },
+}
+
+impl Spi {
+    pub(crate) fn for_library(path: impl AsRef<Path>, mode: SpiMode) -> Spi {
+        let lib = unsafe { Library::new(path.as_ref()) }
+            .with_context(|| format!("Unable to open library: {}", path.as_ref().display()))
+            .unwrap();
+        spi_handle_for_vtable(ffi::LibraryVTable::new(lib).unwrap(), mode)
+    }
+
+    pub(crate) fn for_self(mode: SpiMode) -> Option<Spi> {
+        unsafe { SELF_VTABLE.take() }.map(|vt| spi_handle_for_vtable(vt, mode))
+    }
+
     pub(crate) fn tests(&self) -> &[NamedFunction] {
         &self.tests
     }
@@ -47,162 +69,165 @@ impl SpiHandle {
 
     pub(crate) fn run(&mut self, func: FunctionIdx, iterations: usize) -> u64 {
         self.select(func);
-        self.tx.send(SpiRequest::Run { iterations }).unwrap();
-        match self.rx.recv().unwrap() {
-            SpiReply::Run(time) => time,
-            r @ _ => panic!("Unexpected response: {:?}", r),
+        match &self.mode {
+            SpiImpl::Synchronous { vt, .. } => vt.run(iterations),
+            SpiImpl::Asynchronous { worker: _, tx, rx } => {
+                tx.send(SpiRequest::Run { iterations }).unwrap();
+                match rx.recv().unwrap() {
+                    SpiReply::Run(time) => time,
+                    r @ _ => panic!("Unexpected response: {:?}", r),
+                }
+            }
         }
     }
 
     pub(crate) fn measure(&mut self, func: FunctionIdx, iterations: usize) {
         self.select(func);
-        self.tx.send(SpiRequest::Measure { iterations }).unwrap();
+        match &mut self.mode {
+            SpiImpl::Synchronous {
+                vt,
+                last_measurement,
+            } => {
+                *last_measurement = vt.run(iterations);
+            }
+            SpiImpl::Asynchronous { tx, .. } => {
+                tx.send(SpiRequest::Measure { iterations }).unwrap();
+            }
+        }
     }
 
     pub(crate) fn read_sample(&mut self) -> u64 {
-        match self.rx.recv().unwrap() {
-            SpiReply::Measure(time) => time,
-            r @ _ => panic!("Unexpected response: {:?}", r),
+        match &self.mode {
+            SpiImpl::Synchronous {
+                last_measurement, ..
+            } => *last_measurement,
+            SpiImpl::Asynchronous { rx, .. } => match rx.recv().unwrap() {
+                SpiReply::Measure(time) => time,
+                r @ _ => panic!("Unexpected response: {:?}", r),
+            },
         }
     }
 
     pub(crate) fn estimate_iterations(&mut self, func: FunctionIdx, time_ms: u32) -> usize {
         self.select(func);
-        self.tx
-            .send(SpiRequest::EstimateIterations { time_ms })
-            .unwrap();
-        match self.rx.recv().unwrap() {
-            SpiReply::EstimateIterations(iters) => iters,
-            r @ _ => panic!("Unexpected response: {:?}", r),
+        match &self.mode {
+            SpiImpl::Synchronous { vt, .. } => vt.estimate_iterations(time_ms),
+            SpiImpl::Asynchronous { tx, rx, .. } => {
+                tx.send(SpiRequest::EstimateIterations { time_ms }).unwrap();
+                match rx.recv().unwrap() {
+                    SpiReply::EstimateIterations(iters) => iters,
+                    r @ _ => panic!("Unexpected response: {:?}", r),
+                }
+            }
         }
     }
 
     pub(crate) fn prepare_state(&mut self, func: FunctionIdx, seed: u64) -> bool {
         self.select(func);
-        self.tx.send(SpiRequest::PrepareState { seed }).unwrap();
-        match self.rx.recv().unwrap() {
-            SpiReply::PrepareState(ret) => ret,
-            r @ _ => panic!("Unexpected response: {:?}", r),
+        match &self.mode {
+            SpiImpl::Synchronous { vt, .. } => vt.prepare_state(seed),
+            SpiImpl::Asynchronous { tx, rx, .. } => {
+                tx.send(SpiRequest::PrepareState { seed }).unwrap();
+                match rx.recv().unwrap() {
+                    SpiReply::PrepareState(ret) => ret,
+                    r @ _ => panic!("Unexpected response: {:?}", r),
+                }
+            }
         }
     }
 
     pub(crate) fn select(&mut self, idx: usize) {
         let different_function = self.selected_function.map(|v| v != idx).unwrap_or(true);
         if different_function {
-            self.tx.send(SpiRequest::Select { idx }).unwrap();
-            match self.rx.recv().unwrap() {
-                SpiReply::Select(_) => {
-                    self.selected_function = Some(idx);
-                    return;
+            match &self.mode {
+                SpiImpl::Synchronous { vt, .. } => vt.select(idx),
+                SpiImpl::Asynchronous { tx, rx, .. } => {
+                    tx.send(SpiRequest::Select { idx }).unwrap();
+                    match rx.recv().unwrap() {
+                        SpiReply::Select(_) => {
+                            self.selected_function = Some(idx);
+                            return;
+                        }
+                        r @ _ => panic!("Unexpected response: {:?}", r),
+                    }
                 }
-                r @ _ => panic!("Unexpected response: {:?}", r),
             }
         }
     }
 }
 
-fn spi_worker_for_library(path: PathBuf, rx: Receiver<SpiRequest>, tx: Sender<SpiReply>) {
-    let lib = unsafe { Library::new(&path) }
-        .with_context(|| format!("Unable to open library: {}", path.display()))
-        .unwrap();
-    let spi = Spi::for_vtable(ffi::LibraryVTable::new(lib).unwrap()).unwrap();
-    spi_worker(rx, spi, tx);
-}
-
-fn spi_worker_for_self(self_vtable: SelfVTable, rx: Receiver<SpiRequest>, tx: Sender<SpiReply>) {
-    let spi = Spi::for_vtable(self_vtable).unwrap();
-    spi_worker(rx, spi, tx);
-}
-
-fn spi_worker(rx: Receiver<SpiRequest>, spi: Spi, tx: Sender<SpiReply>) {
+fn spi_worker(vt: &dyn VTable, rx: Receiver<SpiRequest>, tx: Sender<SpiReply>) {
     use SpiReply as Rp;
     use SpiRequest as Rq;
 
     while let Ok(req) = rx.recv() {
         let reply = match req {
             Rq::EstimateIterations { time_ms } => {
-                Rp::EstimateIterations(spi.vt.estimate_iterations(time_ms))
+                Rp::EstimateIterations(vt.estimate_iterations(time_ms))
             }
-            Rq::PrepareState { seed } => Rp::PrepareState(spi.vt.prepare_state(seed)),
-            Rq::Select { idx } => Rp::Select(spi.vt.select(idx)),
-            Rq::Run { iterations } => Rp::Run(spi.vt.run(iterations)),
-            Rq::Measure { iterations } => Rp::Measure(spi.vt.run(iterations)),
-            Rq::ListTests => Rp::ListTests(spi.tests.to_vec()),
+            Rq::PrepareState { seed } => Rp::PrepareState(vt.prepare_state(seed)),
+            Rq::Select { idx } => Rp::Select(vt.select(idx)),
+            Rq::Run { iterations } => Rp::Run(vt.run(iterations)),
+            Rq::Measure { iterations } => Rp::Measure(vt.run(iterations)),
         };
         tx.send(reply).unwrap();
     }
 }
 
-impl Spi {
-    pub(crate) fn spi_handle_for_library(path: impl AsRef<Path>) -> SpiHandle {
-        let (request_tx, request_rx) = channel();
-        let (reply_tx, reply_rx) = channel();
-        let path = path.as_ref().to_path_buf();
-        let worker = thread::spawn(move || spi_worker_for_library(path, request_rx, reply_tx));
+fn spi_handle_for_vtable(vtable: impl VTable + Send + 'static, mode: SpiMode) -> Spi {
+    vtable.init();
+    let tests = enumerate_tests(&vtable).unwrap();
 
-        request_tx.send(SpiRequest::ListTests).unwrap();
-        let tests = match reply_rx.recv().unwrap() {
-            SpiReply::ListTests(tests) => tests,
-            r @ _ => panic!("Unexpected response: {:?}", r),
-        };
+    match mode {
+        SpiMode::Asynchronous => {
+            let (request_tx, request_rx) = channel();
+            let (reply_tx, reply_rx) = channel();
+            let worker = thread::spawn(move || {
+                spi_worker(&vtable, request_rx, reply_tx);
+            });
 
-        SpiHandle {
-            worker,
-            tests,
-            tx: request_tx,
-            rx: reply_rx,
-            selected_function: None,
-        }
-    }
-
-    pub(crate) fn spi_handle_for_self() -> Option<SpiHandle> {
-        let (request_tx, request_rx) = channel();
-        let (reply_tx, reply_rx) = channel();
-        let vtable = unsafe { SELF_SPI.take() }?;
-        let worker = thread::spawn(move || spi_worker_for_self(vtable, request_rx, reply_tx));
-
-        request_tx.send(SpiRequest::ListTests).unwrap();
-        let tests = match reply_rx.recv().unwrap() {
-            SpiReply::ListTests(tests) => tests,
-            r @ _ => panic!("Unexpected response: {:?}", r),
-        };
-
-        Some(SpiHandle {
-            worker,
-            tests,
-            tx: request_tx,
-            rx: reply_rx,
-            selected_function: None,
-        })
-    }
-
-    fn for_vtable(vt: impl VTable + 'static) -> Result<Self, Error> {
-        let vt = Box::new(vt);
-        vt.init();
-
-        let mut tests = vec![];
-        for idx in 0..vt.count() {
-            vt.select(idx);
-
-            let mut length = 0usize;
-            let name_ptr: *const c_char = null();
-            vt.get_test_name(addr_of!(name_ptr) as _, &mut length);
-            if length == 0 {
-                continue;
+            Spi {
+                tests,
+                selected_function: None,
+                mode: SpiImpl::Asynchronous {
+                    worker,
+                    tx: request_tx,
+                    rx: reply_rx,
+                },
             }
-            let slice = unsafe { slice::from_raw_parts(name_ptr as *const u8, length) };
-            let name = str::from_utf8(slice)
-                .map_err(Error::InvalidFFIString)?
-                .to_string();
-            tests.push(NamedFunction { name, idx });
         }
-
-        Ok(Spi { vt, tests })
+        SpiMode::Synchronous => Spi {
+            tests,
+            selected_function: None,
+            mode: SpiImpl::Synchronous {
+                vt: Box::new(vtable),
+                last_measurement: 0,
+            },
+        },
     }
 }
 
+fn enumerate_tests(vt: &dyn VTable) -> Result<Vec<NamedFunction>, Error> {
+    let mut tests = vec![];
+    for idx in 0..vt.count() {
+        vt.select(idx);
+
+        let mut length = 0usize;
+        let name_ptr: *const c_char = null();
+        vt.get_test_name(addr_of!(name_ptr) as _, &mut length);
+        if length == 0 {
+            continue;
+        }
+        let slice = unsafe { slice::from_raw_parts(name_ptr as *const u8, length) };
+        let name = str::from_utf8(slice)
+            .map_err(Error::InvalidFFIString)?
+            .to_string();
+        tests.push(NamedFunction { name, idx });
+    }
+    Ok(tests)
+}
+
 enum SpiRequest {
-    ListTests,
     EstimateIterations { time_ms: u32 },
     PrepareState { seed: u64 },
     Select { idx: usize },
@@ -212,7 +237,6 @@ enum SpiRequest {
 
 #[derive(Debug)]
 enum SpiReply {
-    ListTests(Vec<NamedFunction>),
     EstimateIterations(usize),
     PrepareState(bool),
     Select(()),
@@ -353,7 +377,7 @@ pub mod ffi {
         fn prepare_state(&self, seed: u64) -> bool;
     }
 
-    pub(super) static mut SELF_SPI: Option<SelfVTable> = Some(SelfVTable);
+    pub(super) static mut SELF_VTABLE: Option<SelfVTable> = Some(SelfVTable);
 
     /// FFI implementation for the current executable.
     ///
