@@ -13,9 +13,9 @@ use std::{
     thread::{self, JoinHandle},
 };
 
-pub struct Spi<'l> {
+pub struct Spi {
     tests: Vec<NamedFunction>,
-    vt: Box<dyn VTable + 'l>,
+    vt: Box<dyn VTable>,
 }
 
 pub type FunctionIdx = usize;
@@ -105,7 +105,7 @@ fn spi_worker_for_library(path: PathBuf, rx: Receiver<SpiRequest>, tx: Sender<Sp
     let lib = unsafe { Library::new(&path) }
         .with_context(|| format!("Unable to open library: {}", path.display()))
         .unwrap();
-    let spi = Spi::for_vtable(ffi::LibraryVTable::new(&lib).unwrap()).unwrap();
+    let spi = Spi::for_vtable(ffi::LibraryVTable::new(lib).unwrap()).unwrap();
     spi_worker(rx, spi, tx);
 }
 
@@ -114,7 +114,7 @@ fn spi_worker_for_self(self_vtable: SelfVTable, rx: Receiver<SpiRequest>, tx: Se
     spi_worker(rx, spi, tx);
 }
 
-fn spi_worker(rx: Receiver<SpiRequest>, spi: Spi<'_>, tx: Sender<SpiReply>) {
+fn spi_worker(rx: Receiver<SpiRequest>, spi: Spi, tx: Sender<SpiReply>) {
     use SpiReply as Rp;
     use SpiRequest as Rq;
 
@@ -133,7 +133,7 @@ fn spi_worker(rx: Receiver<SpiRequest>, spi: Spi<'_>, tx: Sender<SpiReply>) {
     }
 }
 
-impl<'l> Spi<'l> {
+impl Spi {
     pub(crate) fn spi_handle_for_library(path: impl AsRef<Path>) -> SpiHandle {
         let (request_tx, request_rx) = channel();
         let (reply_tx, reply_rx) = channel();
@@ -176,7 +176,7 @@ impl<'l> Spi<'l> {
         })
     }
 
-    fn for_vtable<T: VTable + 'l>(vt: T) -> Result<Self, Error> {
+    fn for_vtable(vt: impl VTable + 'static) -> Result<Self, Error> {
         let vt = Box::new(vt);
         vt.init();
 
@@ -261,7 +261,7 @@ pub unsafe fn __tango_init(benchmarks: Vec<Box<dyn MeasureTarget>>) {
 /// way two executables can coexist in the single process at the same time.
 pub mod ffi {
     use super::*;
-    use std::{os::raw::c_char, ptr::null, usize};
+    use std::{mem, os::raw::c_char, ptr::null, usize};
 
     /// Signature types of all FFI API functions
     pub type InitFn = unsafe extern "C" fn();
@@ -400,35 +400,53 @@ pub mod ffi {
         }
     }
 
-    pub(super) struct LibraryVTable<'l> {
-        init_fn: Symbol<'l, InitFn>,
-        count_fn: Symbol<'l, CountFn>,
-        select_fn: Symbol<'l, SelectFn>,
-        get_test_name_fn: Symbol<'l, GetTestNameFn>,
-        run_fn: Symbol<'l, RunFn>,
-        estimate_iterations_fn: Symbol<'l, EstimateIterationsFn>,
-        prepare_state_fn: Symbol<'l, PrepareStateFn>,
-        free_fn: Symbol<'l, FreeFn>,
+    pub(super) struct LibraryVTable {
+        /// SAFETY: using static here is sound because
+        ///  (1) this struct is private and field can not be accessed outside
+        ///  (2) rust has drop order guarantee (fields are dropped in declaration order)
+        init_fn: Symbol<'static, InitFn>,
+        count_fn: Symbol<'static, CountFn>,
+        select_fn: Symbol<'static, SelectFn>,
+        get_test_name_fn: Symbol<'static, GetTestNameFn>,
+        run_fn: Symbol<'static, RunFn>,
+        estimate_iterations_fn: Symbol<'static, EstimateIterationsFn>,
+        prepare_state_fn: Symbol<'static, PrepareStateFn>,
+        free_fn: Symbol<'static, FreeFn>,
+
+        /// SAFETY: This field should be last because it should be dropped last
+        _library: Box<Library>,
     }
 
-    impl<'l> LibraryVTable<'l> {
-        pub(super) fn new(library: &'l Library) -> Result<Self, Error> {
-            unsafe {
-                Ok(Self {
-                    init_fn: lookup_symbol(library, "tango_init")?,
-                    count_fn: lookup_symbol(library, "tango_count")?,
-                    select_fn: lookup_symbol(library, "tango_select")?,
-                    get_test_name_fn: lookup_symbol(library, "tango_get_test_name")?,
-                    run_fn: lookup_symbol(library, "tango_run")?,
-                    estimate_iterations_fn: lookup_symbol(library, "tango_estimate_iterations")?,
-                    prepare_state_fn: lookup_symbol(library, "tango_prepare_state")?,
-                    free_fn: lookup_symbol(library, "tango_free")?,
-                })
-            }
+    impl LibraryVTable {
+        pub(super) fn new(library: Library) -> Result<Self, Error> {
+            // SAFETY: library is pinned, therefore we can safley construct self-referential struct here
+            let library = Box::new(library);
+            let init_fn = lookup_symbol::<InitFn>(&*library, "tango_init")?;
+            let count_fn = lookup_symbol::<CountFn>(&*library, "tango_count")?;
+            let select_fn = lookup_symbol::<SelectFn>(&*library, "tango_select")?;
+            let get_test_name_fn =
+                lookup_symbol::<GetTestNameFn>(&*library, "tango_get_test_name")?;
+            let run_fn = lookup_symbol::<RunFn>(&*library, "tango_run")?;
+            let estimate_iterations_fn =
+                lookup_symbol::<EstimateIterationsFn>(&*library, "tango_estimate_iterations")?;
+            let prepare_state_fn =
+                lookup_symbol::<PrepareStateFn>(&*library, "tango_prepare_state")?;
+            let free_fn = lookup_symbol::<FreeFn>(&*library, "tango_free")?;
+            Ok(Self {
+                _library: library,
+                init_fn,
+                count_fn,
+                select_fn,
+                get_test_name_fn,
+                run_fn,
+                estimate_iterations_fn,
+                prepare_state_fn,
+                free_fn,
+            })
         }
     }
 
-    impl<'l> VTable for LibraryVTable<'l> {
+    impl VTable for LibraryVTable {
         fn init(&self) {
             unsafe { (self.init_fn)() }
         }
@@ -458,18 +476,21 @@ pub mod ffi {
         }
     }
 
-    impl<'l> Drop for LibraryVTable<'l> {
+    impl Drop for LibraryVTable {
         fn drop(&mut self) {
             unsafe { (self.free_fn)() }
         }
     }
 
-    unsafe fn lookup_symbol<'l, T>(
+    fn lookup_symbol<'l, T>(
         library: &'l Library,
         name: &'static str,
-    ) -> Result<Symbol<'l, T>, Error> {
-        library
-            .get(name.as_bytes())
-            .map_err(Error::UnableToLoadSymbol)
+    ) -> Result<Symbol<'static, T>, Error> {
+        unsafe {
+            let symbol: Symbol<'l, T> = library
+                .get(name.as_bytes())
+                .map_err(Error::UnableToLoadSymbol)?;
+            Ok(mem::transmute(symbol))
+        }
     }
 }
