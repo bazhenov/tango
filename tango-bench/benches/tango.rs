@@ -1,11 +1,8 @@
 #![cfg_attr(feature = "align", feature(fn_align))]
 
-use num_traits::ToPrimitive;
-use std::{cell::RefCell, rc::Rc};
 use tango_bench::{
     benchmark_fn, benchmark_fn_with_setup, generators::RandomVec, iqr_variance_thresholds,
-    tango_benchmarks, tango_main, BenchmarkMatrix, GenFunc, Generator, IntoBenchmarks,
-    MeasureTarget, Summary,
+    tango_benchmarks, tango_main, Generator, IntoBenchmarks, Summary,
 };
 
 #[derive(Clone)]
@@ -35,23 +32,20 @@ impl<H: Clone, N: Copy> Generator for StaticValue<H, N> {
     fn sync(&mut self, _: u64) {}
 }
 
-#[cfg_attr(feature = "align", repr(align(32)))]
-#[cfg_attr(feature = "align", inline(never))]
-fn create_summary<T: Copy + Ord + Default, N>(input: &Vec<T>, _: &N) -> Option<Summary<T>>
-where
-    T: ToPrimitive,
-{
-    Summary::from(input)
-}
-
 fn summary_benchmarks() -> impl IntoBenchmarks {
-    let generator = RandomVec::<i64>::new(1_000);
-    BenchmarkMatrix::new(generator).add_function("summary", create_summary)
+    let mut generator = RandomVec::<i64>::new(1_000);
+    [benchmark_fn_with_setup("summary", move |_| {
+        let input = generator.next_haystack();
+        move || Summary::from(&input)
+    })]
 }
 
 fn iqr_interquartile_range_benchmarks() -> impl IntoBenchmarks {
-    let generator = RandomVec::<f64>::new(1_000);
-    BenchmarkMatrix::new(generator).add_function("iqr", |c, _| iqr_variance_thresholds(c.clone()))
+    let mut generator = RandomVec::<f64>::new(1_000);
+    [benchmark_fn_with_setup("iqr", move |_| {
+        let input = generator.next_haystack();
+        move || iqr_variance_thresholds(input.clone())
+    })]
 }
 
 fn empty_benchmarks() -> impl IntoBenchmarks {
@@ -65,20 +59,8 @@ fn empty_benchmarks() -> impl IntoBenchmarks {
     )]
 }
 
-fn generator_empty_benchmarks() -> impl IntoBenchmarks {
-    let generator = StaticValue(0usize, 0usize);
-    let func = |_: &usize, needle: &usize| *needle;
-    let target = GenFunc::new("_", func, generator);
-
-    let generator = StaticValue(Rc::new(RefCell::new(target)), ());
-    BenchmarkMatrix::new(generator).add_function("measure_generator_function", |t, _| {
-        t.borrow_mut().measure(1)
-    })
-}
-
 tango_benchmarks!(
     empty_benchmarks(),
-    generator_empty_benchmarks(),
     summary_benchmarks(),
     iqr_interquartile_range_benchmarks()
 );
