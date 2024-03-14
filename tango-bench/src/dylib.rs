@@ -9,18 +9,12 @@ use std::{
     path::{Path, PathBuf},
     ptr::{addr_of, null},
     slice, str,
-    sync::{
-        mpsc::{channel, Receiver, Sender},
-        Arc, Barrier, OnceLock,
-    },
+    sync::mpsc::{channel, Receiver, Sender},
     thread::{self, JoinHandle},
 };
 
-static BARRIER: OnceLock<Arc<Barrier>> = OnceLock::new();
-
 pub struct Spi<'l> {
     tests: Vec<NamedFunction>,
-    selected_function: Option<usize>,
     vt: Box<dyn VTable + 'l>,
 }
 
@@ -120,36 +114,26 @@ fn spi_worker_for_self(self_vtable: SelfVTable, rx: Receiver<SpiRequest>, tx: Se
     spi_worker(rx, spi, tx);
 }
 
-fn spi_worker(rx: Receiver<SpiRequest>, mut spi: Spi<'_>, tx: Sender<SpiReply>) {
+fn spi_worker(rx: Receiver<SpiRequest>, spi: Spi<'_>, tx: Sender<SpiReply>) {
     use SpiReply as Rp;
     use SpiRequest as Rq;
 
-    let barrier = BARRIER.get_or_init(|| Arc::new(Barrier::new(2)));
-    let barrier = Arc::clone(&barrier);
     while let Ok(req) = rx.recv() {
         let reply = match req {
             Rq::EstimateIterations { time_ms } => {
-                Rp::EstimateIterations(spi.estimate_iterations(0, time_ms))
+                Rp::EstimateIterations(spi.vt.estimate_iterations(time_ms))
             }
-            Rq::PrepareState { seed } => Rp::PrepareState(spi.prepare_state(0, seed)),
-            Rq::Select { idx } => Rp::Select(spi.select(idx)),
-            Rq::Run { iterations } => Rp::Run(spi.run(0, iterations)),
-            Rq::Measure { iterations } => {
-                barrier.wait();
-                Rp::Measure(spi.run(0, iterations))
-            }
-            Rq::ListTests => Rp::ListTests(spi.tests().to_vec()),
+            Rq::PrepareState { seed } => Rp::PrepareState(spi.vt.prepare_state(seed)),
+            Rq::Select { idx } => Rp::Select(spi.vt.select(idx)),
+            Rq::Run { iterations } => Rp::Run(spi.vt.run(iterations)),
+            Rq::Measure { iterations } => Rp::Measure(spi.vt.run(iterations)),
+            Rq::ListTests => Rp::ListTests(spi.tests.to_vec()),
         };
         tx.send(reply).unwrap();
     }
 }
 
 impl<'l> Spi<'l> {
-    /// TODO: should be singleton
-    pub(crate) fn for_self() -> Option<Result<Self, Error>> {
-        unsafe { ffi::SELF_SPI.take().map(Self::for_vtable) }
-    }
-
     pub(crate) fn spi_handle_for_library(path: impl AsRef<Path>) -> SpiHandle {
         let (request_tx, request_rx) = channel();
         let (reply_tx, reply_rx) = channel();
@@ -213,35 +197,7 @@ impl<'l> Spi<'l> {
             tests.push(NamedFunction { name, idx });
         }
 
-        Ok(Spi {
-            vt,
-            tests,
-            selected_function: None,
-        })
-    }
-
-    pub(crate) fn tests(&self) -> &[NamedFunction] {
-        &self.tests
-    }
-
-    pub(crate) fn run(&mut self, func: FunctionIdx, iterations: usize) -> u64 {
-        self.vt.run(iterations)
-    }
-
-    pub(crate) fn estimate_iterations(&mut self, func: FunctionIdx, time_ms: u32) -> usize {
-        self.vt.estimate_iterations(time_ms)
-    }
-
-    pub(crate) fn prepare_state(&mut self, func: FunctionIdx, seed: u64) -> bool {
-        self.vt.prepare_state(seed)
-    }
-
-    fn select(&mut self, idx: usize) {
-        let different_function = self.selected_function.map(|v| v != idx).unwrap_or(true);
-        if different_function {
-            self.vt.select(idx);
-            self.selected_function = Some(idx);
-        }
+        Ok(Spi { vt, tests })
     }
 }
 

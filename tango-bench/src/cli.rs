@@ -10,7 +10,6 @@ use clap::Parser;
 use colorz::mode::{self, Mode};
 use core::fmt;
 use glob_match::glob_match;
-use libloading::Library;
 use std::{
     env::args,
     fmt::Display,
@@ -147,7 +146,7 @@ pub fn run(mut settings: MeasurementSettings) -> Result<ExitCode> {
 
     match subcommand {
         BenchmarkMode::List { bench_flags: _ } => {
-            let spi = Spi::for_self().ok_or(Error::SpiSelfWasMoved)??;
+            let spi = Spi::spi_handle_for_self().ok_or(Error::SpiSelfWasMoved)?;
             for func in spi.tests() {
                 println!("{}", func.name);
             }
