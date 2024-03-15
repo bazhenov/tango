@@ -74,7 +74,7 @@ Tango is designed to have the capability to detect a 1% change in performance wi
 
    fn factorial_benchmarks() -> impl IntoBenchmarks {
        [
-           benchmark_fn("factorial", || factorial(500)),
+           benchmark_fn("factorial", |b| b.iter(|| factorial(500))),
        ]
    }
 
@@ -93,7 +93,7 @@ Tango is designed to have the capability to detect a 1% change in performance wi
    ```rust,ignore
    fn factorial_benchmarks() -> impl IntoBenchmarks {
        [
-           benchmark_fn("factorial", || factorial(495)),
+           benchmark_fn("factorial", |b| b.iter(|| factorial(495))),
        ]
    }
    ```

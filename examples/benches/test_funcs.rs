@@ -1,6 +1,6 @@
 use rand::{rngs::SmallRng, Rng, SeedableRng};
 use std::{hint::black_box, rc::Rc};
-use tango_bench::{benchmark_fn, MeasureTarget};
+use tango_bench::{benchmark_fn, Benchmark};
 
 /// HTML page with a lot of chinese text to test UTF8 decoding speed
 pub const INPUT_TEXT: &str = include_str!("./input.txt");
@@ -10,7 +10,7 @@ pub(crate) fn create_str_benchmark(
     name: &'static str,
     input: &Rc<IndexedString>,
     f: fn(&str) -> usize,
-) -> Box<dyn MeasureTarget> {
+) -> Benchmark {
     let input = Rc::clone(input);
     benchmark_fn(name, move |b| {
         let mut rng = SmallRng::seed_from_u64(b.seed);

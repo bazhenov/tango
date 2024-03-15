@@ -49,7 +49,7 @@ pub enum Error {
 /// use tango_bench::{benchmark_fn, IntoBenchmarks, tango_benchmarks};
 ///
 /// fn time_benchmarks() -> impl IntoBenchmarks {
-///     [benchmark_fn("current_time", || Instant::now())]
+///     [benchmark_fn("current_time", |b| b.iter(|| Instant::now()))]
 /// }
 ///
 /// tango_benchmarks!(time_benchmarks());
@@ -102,60 +102,6 @@ macro_rules! tango_main {
     };
 }
 
-pub trait MeasureTarget {
-    /// Measures the performance if the function
-    ///
-    /// Returns the cumulative execution time (all iterations) with nanoseconds precision,
-    /// but not necessarily accuracy. Usually this time is get by `clock_gettime()` call or some other
-    /// platform-specific call.
-    ///
-    /// This method should use the same arguments for measuring the test function unless [`prepare_state()`]
-    /// method is called. Only then new set of input arguments should be generated. It is NOT allowed
-    /// to call this method without first calling [`prepare_state()`].
-    ///
-    /// [`prepare_state()`]: Self::prepare_state()
-    fn measure(&mut self, iterations: usize) -> u64;
-
-    /// Estimates the number of iterations achievable within given time.
-    ///
-    /// Time span is given in milliseconds (`time_ms`). Estimate can be an approximation and it is important
-    /// for implementation to be fast (in the order of 10 ms).
-    /// If possible the same input arguments should be used when building the estimate.
-    /// If the single call of a function is longer than provided timespan the implementation should return 0.
-    fn estimate_iterations(&mut self, time_ms: u32) -> usize {
-        let mut iters = 1;
-        let time_ns = Duration::from_millis(time_ms as u64).as_nanos() as u64;
-
-        for _ in 0..5 {
-            // Never believe short measurements because they are very unreliable. Pretending that
-            // measurement at least took 1us guarantees that we won't end up with an unreasonably large number
-            // of iterations
-            let time = self.measure(iters).max(1_000);
-            let time_per_iteration = (time / iters as u64).max(1);
-            let new_iters = (time_ns / time_per_iteration) as usize;
-
-            // Do early stop if new estimate has the same order of magnitude. It is good enough.
-            if new_iters < 2 * iters {
-                return new_iters;
-            }
-
-            iters = new_iters;
-        }
-
-        iters
-    }
-
-    /// Generates next haystack for the measurement
-    ///
-    /// Calling this method should update internal haystack used for measurement. Returns `true` if update happend,
-    /// `false` if implementation doesn't support haystack generation.
-    /// Haystack/Needle distinction is described in [`Generator`] trait.
-    fn prepare_state(&mut self, seed: u64) -> bool;
-
-    /// Name of the benchmark
-    fn name(&self) -> &str;
-}
-
 pub struct Bencher {
     pub seed: u64,
 }
@@ -184,7 +130,7 @@ impl<O, F: FnMut() -> O> Sampler for SimpleSampler<F> {
     }
 }
 
-struct Benchmark {
+pub struct Benchmark {
     name: String,
     sampler_factory: Box<dyn SamplerFactory>,
     sampler: Option<Box<dyn Sampler>>,
@@ -193,15 +139,14 @@ struct Benchmark {
 pub fn benchmark_fn<F: SamplerFactory + 'static>(
     name: impl Into<String>,
     sampler_factory: F,
-) -> Box<dyn MeasureTarget> {
+) -> Benchmark {
     let name = name.into();
     assert!(!name.is_empty());
-    let bench = Benchmark {
+    Benchmark {
         name,
         sampler_factory: Box::new(sampler_factory),
         sampler: None,
-    };
-    Box::new(bench)
+    }
 }
 
 pub trait BenchmarkIteration<T>: FnMut() -> T {}
@@ -215,8 +160,19 @@ pub trait SamplerFactory: FnMut(Bencher) -> Box<dyn Sampler> {
 
 impl<T: FnMut(Bencher) -> Box<dyn Sampler>> SamplerFactory for T {}
 
-impl MeasureTarget for Benchmark {
-    fn measure(&mut self, iterations: usize) -> u64 {
+impl Benchmark {
+    /// Measures the performance if the function
+    ///
+    /// Returns the cumulative execution time (all iterations) with nanoseconds precision,
+    /// but not necessarily accuracy. Usually this time is get by `clock_gettime()` call or some other
+    /// platform-specific call.
+    ///
+    /// This method should use the same arguments for measuring the test function unless [`prepare_state()`]
+    /// method is called. Only then new set of input arguments should be generated. It is NOT allowed
+    /// to call this method without first calling [`prepare_state()`].
+    ///
+    /// [`prepare_state()`]: Self::prepare_state()
+    pub fn measure(&mut self, iterations: usize) -> u64 {
         let sampler = self
             .sampler
             .as_mut()
@@ -225,29 +181,64 @@ impl MeasureTarget for Benchmark {
         sampler.measure(iterations)
     }
 
-    fn prepare_state(&mut self, seed: u64) -> bool {
+    /// Generates next haystack for the measurement
+    ///
+    /// Calling this method should update internal haystack used for measurement. Returns `true` if update happend,
+    /// `false` if implementation doesn't support haystack generation.
+    /// Haystack/Needle distinction is described in [`Generator`] trait.
+    pub fn prepare_state(&mut self, seed: u64) -> bool {
         self.sampler = Some(self.sampler_factory.create_sampler(Bencher { seed }));
         true
     }
 
-    fn name(&self) -> &str {
+    /// Estimates the number of iterations achievable within given time.
+    ///
+    /// Time span is given in milliseconds (`time_ms`). Estimate can be an approximation and it is important
+    /// for implementation to be fast (in the order of 10 ms).
+    /// If possible the same input arguments should be used when building the estimate.
+    /// If the single call of a function is longer than provided timespan the implementation should return 0.
+    pub fn estimate_iterations(&mut self, time_ms: u32) -> usize {
+        let mut iters = 1;
+        let time_ns = Duration::from_millis(time_ms as u64).as_nanos() as u64;
+
+        for _ in 0..5 {
+            // Never believe short measurements because they are very unreliable. Pretending that
+            // measurement at least took 1us guarantees that we won't end up with an unreasonably large number
+            // of iterations
+            let time = self.measure(iters).max(1_000);
+            let time_per_iteration = (time / iters as u64).max(1);
+            let new_iters = (time_ns / time_per_iteration) as usize;
+
+            // Do early stop if new estimate has the same order of magnitude. It is good enough.
+            if new_iters < 2 * iters {
+                return new_iters;
+            }
+
+            iters = new_iters;
+        }
+
+        iters
+    }
+
+    /// Name of the benchmark
+    pub fn name(&self) -> &str {
         self.name.as_str()
     }
 }
 
 /// Converts the implementing type into a vector of `MeasureTarget`.
 pub trait IntoBenchmarks {
-    fn into_benchmarks(self) -> Vec<Box<dyn MeasureTarget>>;
+    fn into_benchmarks(self) -> Vec<Benchmark>;
 }
 
-impl<const N: usize> IntoBenchmarks for [Box<dyn MeasureTarget>; N] {
-    fn into_benchmarks(self) -> Vec<Box<dyn MeasureTarget>> {
+impl<const N: usize> IntoBenchmarks for [Benchmark; N] {
+    fn into_benchmarks(self) -> Vec<Benchmark> {
         self.into_iter().collect()
     }
 }
 
-impl IntoBenchmarks for Vec<Box<dyn MeasureTarget>> {
-    fn into_benchmarks(self) -> Vec<Box<dyn MeasureTarget>> {
+impl IntoBenchmarks for Vec<Benchmark> {
+    fn into_benchmarks(self) -> Vec<Benchmark> {
         self
     }
 }
@@ -979,7 +970,7 @@ mod tests {
         });
         target.prepare_state(0);
 
-        let median = median_execution_time(target.as_mut(), 10).as_millis() as u64;
+        let median = median_execution_time(&mut target, 10).as_millis() as u64;
         assert!(median < expected_delay * 10);
     }
 
@@ -1007,7 +998,7 @@ mod tests {
         sum_of_squares / (n - 1.)
     }
 
-    fn median_execution_time(target: &mut dyn MeasureTarget, iterations: u32) -> Duration {
+    fn median_execution_time(target: &mut Benchmark, iterations: u32) -> Duration {
         assert!(iterations >= 1);
         let measures: Vec<_> = (0..iterations).map(|_| target.measure(1)).collect();
         let time = median(measures).max(1);
