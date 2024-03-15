@@ -2,8 +2,8 @@ use core::ptr;
 use num_traits::ToPrimitive;
 use rand::{rngs::SmallRng, Rng, SeedableRng};
 use std::{
-    any::type_name, cell::RefCell, cmp::Ordering, hint::black_box, io, mem, ops::RangeInclusive,
-    rc::Rc, str::Utf8Error, time::Duration, usize,
+    any::type_name, cmp::Ordering, hint::black_box, io, mem, ops::RangeInclusive, str::Utf8Error,
+    time::Duration, usize,
 };
 use thiserror::Error;
 use timer::{ActiveTimer, Timer};
@@ -102,14 +102,6 @@ macro_rules! tango_main {
     };
 }
 
-pub fn benchmark_fn<O: 'static, F: Fn() -> O + Copy + 'static>(
-    name: &'static str,
-    func: F,
-) -> Box<dyn MeasureTarget> {
-    assert!(!name.is_empty());
-    benchmark_fn_with_setup(name, move |b| b.iter(func))
-}
-
 pub trait MeasureTarget {
     /// Measures the performance if the function
     ///
@@ -198,7 +190,7 @@ struct Benchmark {
     sampler: Option<Box<dyn Sampler>>,
 }
 
-pub fn benchmark_fn_with_setup<F: SamplerFactory + 'static>(
+pub fn benchmark_fn<F: SamplerFactory + 'static>(
     name: impl Into<String>,
     sampler_factory: F,
 ) -> Box<dyn MeasureTarget> {
@@ -240,162 +232,6 @@ impl MeasureTarget for Benchmark {
 
     fn name(&self) -> &str {
         self.name.as_str()
-    }
-}
-
-/// Implementation of a [`MeasureTarget`] which uses [`Generator`] to generates a new payload for a function
-/// each new sample.
-pub struct GenFunc<F, G: Generator> {
-    f: Rc<RefCell<F>>,
-    g: Rc<RefCell<G>>,
-    haystack: Option<G::Haystack>,
-    name: String,
-}
-
-impl<F, O, G> GenFunc<F, G>
-where
-    G: Generator,
-    F: Fn(&G::Haystack, &G::Needle) -> O,
-{
-    pub fn new(name: &str, f: F, g: G) -> Self {
-        let f = Rc::new(RefCell::new(f));
-        let g = Rc::new(RefCell::new(g));
-        Self::from_ref_cell(name, f, g)
-    }
-
-    fn from_ref_cell(name: &str, f: Rc<RefCell<F>>, g: Rc<RefCell<G>>) -> Self {
-        Self {
-            name: format!("{}/{}", name, g.borrow().name()),
-            haystack: None,
-            f,
-            g,
-        }
-    }
-}
-
-impl<F, O, G> MeasureTarget for GenFunc<F, G>
-where
-    G: Generator,
-    F: Fn(&G::Haystack, &G::Needle) -> O,
-{
-    fn measure(&mut self, iterations: usize) -> u64 {
-        let mut g = self.g.borrow_mut();
-        let haystack = &*self.haystack.get_or_insert_with(|| g.next_haystack());
-        let f = self.f.borrow_mut();
-
-        if mem::needs_drop::<O>() {
-            let mut result = Vec::with_capacity(iterations);
-            let start = ActiveTimer::start();
-            for _ in 0..iterations {
-                let needle = g.next_needle(haystack);
-                result.push(black_box((f)(haystack, &needle)));
-            }
-            let time = ActiveTimer::stop(start);
-            drop(result);
-            time
-        } else {
-            let start = ActiveTimer::start();
-            for _ in 0..iterations {
-                let needle = g.next_needle(haystack);
-                black_box((f)(haystack, &needle));
-            }
-            ActiveTimer::stop(start)
-        }
-    }
-
-    fn prepare_state(&mut self, seed: u64) -> bool {
-        let generator = &mut self.g.borrow_mut();
-        generator.sync(seed);
-        self.haystack = Some(generator.next_haystack());
-        true
-    }
-
-    fn name(&self) -> &str {
-        &self.name
-    }
-}
-
-/// Matrix of functions is used to perform benchmark with different generator strategies.
-///
-/// It is a common task to benchmark function with different payload size and/or different structure of the payload.
-/// `BenchmarkMatrix` creates a new [`MeasureTarget`] for each unique combination of [`Generator`]
-/// and tested function.
-///
-/// # Example
-/// ```rust
-/// use tango_bench::{generators::RandomVec, BenchmarkMatrix, IntoBenchmarks};
-///
-/// fn sum_positive(haystack: &Vec<u32>, _: &()) -> u32 {
-///     haystack.iter().copied().filter(|v| *v > 0).sum()
-/// }
-///
-/// fn sum_benchmarks() -> impl IntoBenchmarks {
-///     BenchmarkMatrix::with_params([100, 1_000, 10_000], RandomVec::new)
-///         .add_function("sum_positive", sum_positive)
-/// }
-/// ```
-pub struct BenchmarkMatrix<G> {
-    generators: Vec<Rc<RefCell<G>>>,
-    functions: Vec<Box<dyn MeasureTarget>>,
-}
-
-impl<G: Generator> BenchmarkMatrix<G> {
-    pub fn new(generator: G) -> Self {
-        let generator = Rc::new(RefCell::new(generator));
-        Self {
-            generators: vec![generator],
-            functions: vec![],
-        }
-    }
-
-    /// New matrix with generator created for a given set of parameters
-    pub fn with_params<P>(params: impl IntoIterator<Item = P>, generator: impl Fn(P) -> G) -> Self {
-        let generators: Vec<_> = params
-            .into_iter()
-            .map(generator)
-            .map(RefCell::new)
-            .map(Rc::new)
-            .collect();
-        Self {
-            generators,
-            functions: vec![],
-        }
-    }
-
-    /// Add a new generator to the matrix for each parameter in the given iterator.
-    pub fn add_generators_with_params<P>(
-        mut self,
-        params: impl IntoIterator<Item = P>,
-        generator: impl Fn(P) -> G,
-    ) -> Self {
-        let generators = params
-            .into_iter()
-            .map(generator)
-            .map(RefCell::new)
-            .map(Rc::new);
-        self.generators.extend(generators);
-        self
-    }
-
-    pub fn add_function<F, O>(mut self, name: &str, f: F) -> Self
-    where
-        G: 'static,
-        F: Fn(&G::Haystack, &G::Needle) -> O + 'static,
-    {
-        let f = Rc::new(RefCell::new(f));
-        self.generators
-            .iter()
-            .map(|g| GenFunc::from_ref_cell(name, Rc::clone(&f), Rc::clone(g)))
-            .map(Box::new)
-            .for_each(|f| self.functions.push(f));
-        self
-    }
-}
-
-impl<G> IntoBenchmarks for BenchmarkMatrix<G> {
-    fn into_benchmarks(self) -> Vec<Box<dyn MeasureTarget>> {
-        assert!(!self.functions.is_empty(), "No functions were given");
-        self.functions
     }
 }
 
@@ -1138,8 +974,8 @@ mod tests {
     #[test]
     fn check_measure_time() {
         let expected_delay = 1;
-        let mut target = benchmark_fn("foo", move || {
-            thread::sleep(Duration::from_millis(expected_delay))
+        let mut target = benchmark_fn("foo", move |b| {
+            b.iter(move || thread::sleep(Duration::from_millis(expected_delay)))
         });
         target.prepare_state(0);
 

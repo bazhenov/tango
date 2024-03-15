@@ -3,9 +3,7 @@
 extern crate tango_bench;
 
 use std::{any::type_name, convert::TryFrom, fmt::Debug, iter, marker::PhantomData};
-use tango_bench::{
-    BenchmarkMatrix, Generator, IntoBenchmarks, MeasurementSettings, DEFAULT_SETTINGS,
-};
+use tango_bench::{benchmark_fn, IntoBenchmarks, MeasurementSettings, DEFAULT_SETTINGS};
 
 const SIZES: [usize; 14] = [
     8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536,
@@ -23,7 +21,6 @@ impl Lcg {
 pub struct RandomCollection<C: FromSortedVec> {
     rng: Lcg,
     size: usize,
-    name: String,
     value_dup_factor: usize,
     phantom: PhantomData<C>,
 }
@@ -33,32 +30,21 @@ where
     C::Item: Ord + Copy + TryFrom<usize>,
 {
     pub fn new(size: usize, value_dup_factor: usize) -> Self {
-        let type_name = type_name::<C::Item>();
-        let name = if value_dup_factor > 1 {
-            format!("{}/{}/dup-{}", type_name, size, value_dup_factor)
-        } else {
-            format!("{}/{}/nodup", type_name, size)
-        };
-
         Self {
             rng: Lcg(0),
             size,
             value_dup_factor,
-            name,
             phantom: PhantomData,
         }
     }
 }
 
-impl<C: FromSortedVec> Generator for RandomCollection<C>
+impl<C: FromSortedVec> RandomCollection<C>
 where
     C::Item: Ord + Copy + TryFrom<usize> + Debug,
     usize: TryFrom<C::Item>,
 {
-    type Haystack = Sample<C>;
-    type Needle = C::Item;
-
-    fn next_haystack(&mut self) -> Self::Haystack {
+    fn next_haystack(&mut self) -> Sample<C> {
         let vec = generate_sorted_vec(self.size, self.value_dup_factor);
         let max = usize::try_from(*vec.last().unwrap()).ok().unwrap();
 
@@ -68,11 +54,7 @@ where
         }
     }
 
-    fn name(&self) -> &str {
-        &self.name
-    }
-
-    fn next_needle(&mut self, sample: &Self::Haystack) -> Self::Needle {
+    fn next_needle(&mut self, sample: &Sample<C>) -> C::Item {
         self.rng.next(sample.max_value + 1)
     }
 
@@ -126,10 +108,21 @@ where
     C::Item: Copy + Ord + TryFrom<usize> + Debug,
     usize: TryFrom<C::Item>,
 {
-    BenchmarkMatrix::with_params(SIZES, |size| RandomCollection::<C>::new(size, 1))
-        .add_generators_with_params(SIZES, |size| RandomCollection::<C>::new(size, 16))
-        .add_function("search", f)
-        .into_benchmarks()
+    let mut benchmarks = vec![];
+    for size in SIZES {
+        let name = format!("{}/{}/nodup", type_name::<C::Item>(), size);
+        let bench = benchmark_fn(name, move |b| {
+            let mut coll = RandomCollection::<C>::new(size, 1);
+            coll.sync(b.seed);
+            let c = coll.next_haystack();
+            b.iter(move || {
+                let query = coll.next_needle(&c);
+                f(&c, &query)
+            })
+        });
+        benchmarks.push(bench);
+    }
+    benchmarks
 }
 
 pub const SETTINGS: MeasurementSettings = MeasurementSettings {

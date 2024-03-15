@@ -1,8 +1,8 @@
 #![cfg_attr(feature = "align", feature(fn_align))]
 
 use tango_bench::{
-    benchmark_fn, benchmark_fn_with_setup, generators::RandomVec, iqr_variance_thresholds,
-    tango_benchmarks, tango_main, Generator, IntoBenchmarks, Summary,
+    benchmark_fn, generators::RandomVec, iqr_variance_thresholds, tango_benchmarks, tango_main,
+    Generator, IntoBenchmarks, Summary,
 };
 
 #[derive(Clone)]
@@ -34,7 +34,8 @@ impl<H: Clone, N: Copy> Generator for StaticValue<H, N> {
 
 fn summary_benchmarks() -> impl IntoBenchmarks {
     let mut generator = RandomVec::<i64>::new(1_000);
-    [benchmark_fn_with_setup("summary", move |b| {
+    [benchmark_fn("summary", move |b| {
+        generator.sync(b.seed);
         let input = generator.next_haystack();
         b.iter(move || Summary::from(&input))
     })]
@@ -42,21 +43,19 @@ fn summary_benchmarks() -> impl IntoBenchmarks {
 
 fn iqr_interquartile_range_benchmarks() -> impl IntoBenchmarks {
     let mut generator = RandomVec::<f64>::new(1_000);
-    [benchmark_fn_with_setup("iqr", move |b| {
+    [benchmark_fn("iqr", move |b| {
+        generator.sync(b.seed);
         let input = generator.next_haystack();
         b.iter(move || iqr_variance_thresholds(input.clone()))
     })]
 }
 
 fn empty_benchmarks() -> impl IntoBenchmarks {
-    [benchmark_fn_with_setup(
-        "measure_empty_function",
-        move |p| {
-            let mut bench = benchmark_fn("_", || 42);
-            bench.prepare_state(p.seed);
-            p.iter(move || bench.measure(1))
-        },
-    )]
+    [benchmark_fn("measure_empty_function", move |p| {
+        let mut bench = benchmark_fn("_", |b| b.iter(|| 42));
+        bench.prepare_state(p.seed);
+        p.iter(move || bench.measure(1))
+    })]
 }
 
 tango_benchmarks!(
