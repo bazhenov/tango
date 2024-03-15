@@ -2,8 +2,8 @@ use core::ptr;
 use num_traits::ToPrimitive;
 use rand::{rngs::SmallRng, Rng, SeedableRng};
 use std::{
-    any::type_name, cell::RefCell, cmp::Ordering, hint::black_box, io, marker::PhantomData, mem,
-    ops::RangeInclusive, rc::Rc, str::Utf8Error, time::Duration, usize,
+    any::type_name, cell::RefCell, cmp::Ordering, hint::black_box, io, mem, ops::RangeInclusive,
+    rc::Rc, str::Utf8Error, time::Duration, usize,
 };
 use thiserror::Error;
 use timer::{ActiveTimer, Timer};
@@ -107,7 +107,7 @@ pub fn benchmark_fn<O: 'static, F: Fn() -> O + Copy + 'static>(
     func: F,
 ) -> Box<dyn MeasureTarget> {
     assert!(!name.is_empty());
-    benchmark_fn_with_setup(name, move |_| func)
+    benchmark_fn_with_setup(name, move |b| b.iter(func))
 }
 
 pub trait MeasureTarget {
@@ -164,32 +164,50 @@ pub trait MeasureTarget {
     fn name(&self) -> &str;
 }
 
-pub struct BenchParams {
+pub struct Bencher {
     pub seed: u64,
 }
 
-struct Bench<B, I, T> {
-    name: String,
-    bench: B,
-    iter: Option<I>,
-    _phantom: PhantomData<T>,
+impl Bencher {
+    pub fn iter<O: 'static, F: FnMut() -> O + 'static>(self, func: F) -> Box<dyn Sampler> {
+        Box::new(SimpleSampler { func })
+    }
 }
 
-pub fn benchmark_fn_with_setup<
-    B: BenchmarkSample<I, O> + 'static,
-    I: BenchmarkIteration<O> + 'static,
-    O: 'static,
->(
+struct SimpleSampler<F> {
+    func: F,
+}
+
+pub trait Sampler {
+    fn measure(&mut self, iterations: usize) -> u64;
+}
+
+impl<O, F: FnMut() -> O> Sampler for SimpleSampler<F> {
+    fn measure(&mut self, iterations: usize) -> u64 {
+        let start = ActiveTimer::start();
+        for _ in 0..iterations {
+            black_box((self.func)());
+        }
+        ActiveTimer::stop(start)
+    }
+}
+
+struct Benchmark {
+    name: String,
+    sampler_factory: Box<dyn SamplerFactory>,
+    sampler: Option<Box<dyn Sampler>>,
+}
+
+pub fn benchmark_fn_with_setup<F: SamplerFactory + 'static>(
     name: impl Into<String>,
-    bench: B,
+    sampler_factory: F,
 ) -> Box<dyn MeasureTarget> {
     let name = name.into();
     assert!(!name.is_empty());
-    let bench = Bench::<B, I, O> {
+    let bench = Benchmark {
         name,
-        bench,
-        iter: None,
-        _phantom: PhantomData,
+        sampler_factory: Box::new(sampler_factory),
+        sampler: None,
     };
     Box::new(bench)
 }
@@ -197,42 +215,26 @@ pub fn benchmark_fn_with_setup<
 pub trait BenchmarkIteration<T>: FnMut() -> T {}
 impl<T: FnMut() -> O, O> BenchmarkIteration<O> for T {}
 
-pub trait BenchmarkSample<I: BenchmarkIteration<O>, O>: FnMut(&BenchParams) -> I {
-    fn create_iter(&mut self, params: &BenchParams) -> I {
+pub trait SamplerFactory: FnMut(Bencher) -> Box<dyn Sampler> {
+    fn create_sampler(&mut self, params: Bencher) -> Box<dyn Sampler> {
         (self)(params)
     }
 }
 
-impl<T: FnMut(&BenchParams) -> I, I: BenchmarkIteration<O>, O> BenchmarkSample<I, O> for T {}
+impl<T: FnMut(Bencher) -> Box<dyn Sampler>> SamplerFactory for T {}
 
-impl<S: BenchmarkSample<I, O>, I: BenchmarkIteration<O>, O> MeasureTarget for Bench<S, I, O> {
+impl MeasureTarget for Benchmark {
     fn measure(&mut self, iterations: usize) -> u64 {
-        let iter = self
-            .iter
+        let sampler = self
+            .sampler
             .as_mut()
             .expect("No prepare_state() was called before measure()");
 
-        if mem::needs_drop::<O>() {
-            let mut result = Vec::with_capacity(iterations);
-
-            let start = ActiveTimer::start();
-            for _ in 0..iterations {
-                result.push(black_box((iter)()));
-            }
-            let time = ActiveTimer::stop(start);
-            drop(result);
-            time
-        } else {
-            let start = ActiveTimer::start();
-            for _ in 0..iterations {
-                black_box((iter)());
-            }
-            ActiveTimer::stop(start)
-        }
+        sampler.measure(iterations)
     }
 
     fn prepare_state(&mut self, seed: u64) -> bool {
-        self.iter = Some(self.bench.create_iter(&BenchParams { seed }));
+        self.sampler = Some(self.sampler_factory.create_sampler(Bencher { seed }));
         true
     }
 
@@ -588,12 +590,12 @@ impl Default for MeasurementSettings {
     }
 }
 
-/// Sampler is responsible for determining the number of iterations to run for each sample
+/// Responsible for determining the number of iterations to run for each sample
 ///
 /// Different sampler strategies can influence the results heavily. For example, if function is dependent heavily
 /// on a memory subsystem, then it should be tested with different number of iterations to be representative
 /// for different memory access patterns and cache states.
-trait Sampler {
+trait SampleLength {
     /// Returns the number of iterations to run for the next sample
     ///
     /// Accepts the number of iteration being run starting from 0 and cummulative time spent by both functions
@@ -604,32 +606,32 @@ trait Sampler {
 ///
 /// Estimates the number of iterations based on the number of iterations achieved in 10 ms and uses
 /// this number as a base for the number of iterations for each sample.
-struct FlatSampler {
+struct FlatSampleLength {
     min: usize,
     max: usize,
 }
 
-impl FlatSampler {
+impl FlatSampleLength {
     fn new(settings: &MeasurementSettings) -> Self {
-        FlatSampler {
+        FlatSampleLength {
             min: settings.min_iterations_per_sample.max(1),
             max: settings.max_iterations_per_sample,
         }
     }
 }
 
-impl Sampler for FlatSampler {
+impl SampleLength for FlatSampleLength {
     fn next_sample_iterations(&mut self, _iteration_no: usize, estimate: usize) -> usize {
         estimate.clamp(self.min, self.max)
     }
 }
 
-struct LinearSampler {
+struct LinearSampleLength {
     min: usize,
     max: usize,
 }
 
-impl LinearSampler {
+impl LinearSampleLength {
     fn new(settings: &MeasurementSettings) -> Self {
         Self {
             min: settings.min_iterations_per_sample.max(1),
@@ -638,7 +640,7 @@ impl LinearSampler {
     }
 }
 
-impl Sampler for LinearSampler {
+impl SampleLength for LinearSampleLength {
     fn next_sample_iterations(&mut self, iteration_no: usize, estimate: usize) -> usize {
         let estimate = estimate.clamp(self.min, self.max);
         (iteration_no % estimate) + 1
@@ -648,13 +650,13 @@ impl Sampler for LinearSampler {
 /// Sampler that randomly determines the number of iterations to run for each sample
 ///
 /// This sampler uses a random number generator to decide the number of iterations for each sample.
-struct RandomSampler {
+struct RandomSampleLength {
     rng: SmallRng,
     min: usize,
     max: usize,
 }
 
-impl RandomSampler {
+impl RandomSampleLength {
     pub fn new(settings: &MeasurementSettings, seed: u64) -> Self {
         Self {
             rng: SmallRng::seed_from_u64(seed),
@@ -664,7 +666,7 @@ impl RandomSampler {
     }
 }
 
-impl Sampler for RandomSampler {
+impl SampleLength for RandomSampleLength {
     fn next_sample_iterations(&mut self, _iteration_no: usize, estimate: usize) -> usize {
         let estimate = estimate.clamp(self.min, self.max);
         self.rng.gen_range(1..=estimate)

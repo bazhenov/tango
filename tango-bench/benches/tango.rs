@@ -34,17 +34,17 @@ impl<H: Clone, N: Copy> Generator for StaticValue<H, N> {
 
 fn summary_benchmarks() -> impl IntoBenchmarks {
     let mut generator = RandomVec::<i64>::new(1_000);
-    [benchmark_fn_with_setup("summary", move |_| {
+    [benchmark_fn_with_setup("summary", move |b| {
         let input = generator.next_haystack();
-        move || Summary::from(&input)
+        b.iter(move || Summary::from(&input))
     })]
 }
 
 fn iqr_interquartile_range_benchmarks() -> impl IntoBenchmarks {
     let mut generator = RandomVec::<f64>::new(1_000);
-    [benchmark_fn_with_setup("iqr", move |_| {
+    [benchmark_fn_with_setup("iqr", move |b| {
         let input = generator.next_haystack();
-        move || iqr_variance_thresholds(input.clone())
+        b.iter(move || iqr_variance_thresholds(input.clone()))
     })]
 }
 
@@ -54,7 +54,7 @@ fn empty_benchmarks() -> impl IntoBenchmarks {
         move |p| {
             let mut bench = benchmark_fn("_", || 42);
             bench.prepare_state(p.seed);
-            move || bench.measure(1)
+            p.iter(move || bench.measure(1))
         },
     )]
 }

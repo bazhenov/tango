@@ -301,7 +301,8 @@ mod commands {
     use crate::{
         calculate_run_result,
         dylib::{FunctionIdx, Spi},
-        CacheFirewall, FlatSampler, LinearSampler, RandomSampler, RunResult, Sampler, SamplerType,
+        CacheFirewall, FlatSampleLength, LinearSampleLength, RandomSampleLength, RunResult,
+        SampleLength, SamplerType,
     };
     use std::{
         fs::{self, File},
@@ -518,11 +519,11 @@ mod commands {
         }
     }
 
-    fn create_sampler(settings: &MeasurementSettings, seed: u64) -> Box<dyn Sampler> {
+    fn create_sampler(settings: &MeasurementSettings, seed: u64) -> Box<dyn SampleLength> {
         match settings.sampler_type {
-            SamplerType::Flat => Box::new(FlatSampler::new(settings)),
-            SamplerType::Linear => Box::new(LinearSampler::new(settings)),
-            SamplerType::Random => Box::new(RandomSampler::new(settings, seed)),
+            SamplerType::Flat => Box::new(FlatSampleLength::new(settings)),
+            SamplerType::Linear => Box::new(LinearSampleLength::new(settings)),
+            SamplerType::Random => Box::new(RandomSampleLength::new(settings, seed)),
         }
     }
 

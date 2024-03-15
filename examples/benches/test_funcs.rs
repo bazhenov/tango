@@ -12,10 +12,10 @@ pub(crate) fn create_str_benchmark(
     f: fn(&str) -> usize,
 ) -> Box<dyn MeasureTarget> {
     let input = Rc::clone(input);
-    benchmark_fn_with_setup(name, move |p| {
-        let mut rng = SmallRng::seed_from_u64(p.seed);
+    benchmark_fn_with_setup(name, move |b| {
+        let mut rng = SmallRng::seed_from_u64(b.seed);
         let input = Rc::clone(&input);
-        move || f(random_substring(&input, &mut rng))
+        b.iter(move || f(random_substring(&input, &mut rng)))
     })
 }
 
