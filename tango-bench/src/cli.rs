@@ -6,7 +6,7 @@ use self::{
 };
 use crate::{
     dylib::{Spi, SpiMode},
-    Error, MeasurementSettings, Reporter, SamplerType,
+    Error, MeasurementSettings, Reporter, SampleLengthKind,
 };
 use anyhow::{bail, Context};
 use clap::Parser;
@@ -54,7 +54,7 @@ enum BenchmarkMode {
 
         /// The strategy to decide the number of iterations to run for each sample (values: flat, linear, random)
         #[arg(long = "sampler")]
-        sampler: Option<SamplerType>,
+        sampler: Option<SampleLengthKind>,
 
         /// Duration of each sample in seconds
         #[arg(short = 't', long = "time")]
@@ -118,14 +118,14 @@ struct Opts {
     coloring_mode: String,
 }
 
-impl FromStr for SamplerType {
+impl FromStr for SampleLengthKind {
     type Err = Error;
 
     fn from_str(s: &str) -> StdResult<Self, Self::Err> {
         match s {
-            "flat" => Ok(SamplerType::Flat),
-            "linear" => Ok(SamplerType::Linear),
-            "random" => Ok(SamplerType::Random),
+            "flat" => Ok(SampleLengthKind::Flat),
+            "linear" => Ok(SampleLengthKind::Linear),
+            "random" => Ok(SampleLengthKind::Random),
             _ => Err(Error::UnknownSamplerType),
         }
     }
@@ -302,7 +302,7 @@ mod commands {
         calculate_run_result,
         dylib::{FunctionIdx, Spi},
         CacheFirewall, FlatSampleLength, LinearSampleLength, RandomSampleLength, RunResult,
-        SampleLength, SamplerType,
+        SampleLength, SampleLengthKind,
     };
     use std::{
         fs::{self, File},
@@ -521,9 +521,9 @@ mod commands {
 
     fn create_sampler(settings: &MeasurementSettings, seed: u64) -> Box<dyn SampleLength> {
         match settings.sampler_type {
-            SamplerType::Flat => Box::new(FlatSampleLength::new(settings)),
-            SamplerType::Linear => Box::new(LinearSampleLength::new(settings)),
-            SamplerType::Random => Box::new(RandomSampleLength::new(settings, seed)),
+            SampleLengthKind::Flat => Box::new(FlatSampleLength::new(settings)),
+            SampleLengthKind::Linear => Box::new(LinearSampleLength::new(settings)),
+            SampleLengthKind::Random => Box::new(RandomSampleLength::new(settings, seed)),
         }
     }
 

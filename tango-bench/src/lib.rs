@@ -519,7 +519,7 @@ pub struct MeasurementSettings {
     /// The number of iterations in a sample for each of 2 tested functions
     pub max_iterations_per_sample: usize,
 
-    pub sampler_type: SamplerType,
+    pub sampler_type: SampleLengthKind,
 
     /// If true scheduler performs warmup iterations before measuring function
     pub warmup_enabled: bool,
@@ -539,7 +539,7 @@ pub struct MeasurementSettings {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub enum SamplerType {
+pub enum SampleLengthKind {
     Flat,
     Linear,
     Random,
@@ -578,7 +578,7 @@ pub const DEFAULT_SETTINGS: MeasurementSettings = MeasurementSettings {
     samples_per_haystack: 1,
     min_iterations_per_sample: 1,
     max_iterations_per_sample: 5000,
-    sampler_type: SamplerType::Random,
+    sampler_type: SampleLengthKind::Random,
     cache_firewall: None,
     yield_before_sample: false,
     warmup_enabled: true,
