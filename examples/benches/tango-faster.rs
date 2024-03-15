@@ -1,11 +1,11 @@
 #![cfg_attr(feature = "align", feature(fn_align))]
 
 use crate::test_funcs::{factorial, sum};
-use rand::{distributions::Standard, rngs::SmallRng, Rng, SeedableRng};
 use std::rc::Rc;
 use tango_bench::{benchmark_fn, tango_benchmarks, tango_main, IntoBenchmarks};
 use test_funcs::{
-    create_str_benchmark, sort_unstable, str_count, str_take, IndexedString, INPUT_TEXT,
+    create_str_benchmark, sort_unstable, str_count, str_take, vec_benchmarks, IndexedString,
+    INPUT_TEXT,
 };
 
 mod test_funcs;
@@ -17,19 +17,6 @@ fn num_benchmarks() -> impl IntoBenchmarks {
     ]
 }
 
-/// TODO remove duplication
-fn vec_benchmarks() -> impl IntoBenchmarks {
-    let mut benches = vec![];
-    for size in [100, 1_000, 10_000, 100_000] {
-        benches.push(benchmark_fn(format!("sort/{}", size), move |b| {
-            let rnd = SmallRng::seed_from_u64(b.seed);
-            let input: Vec<u64> = rnd.sample_iter(Standard).take(1000).collect();
-            b.iter(move || sort_unstable(&input, &()))
-        }))
-    }
-    benches
-}
-
 fn str_benchmarks() -> impl IntoBenchmarks {
     let input = Rc::new(IndexedString::from(INPUT_TEXT));
     [
@@ -38,5 +25,9 @@ fn str_benchmarks() -> impl IntoBenchmarks {
     ]
 }
 
-tango_benchmarks!(str_benchmarks(), num_benchmarks(), vec_benchmarks());
+tango_benchmarks!(
+    str_benchmarks(),
+    num_benchmarks(),
+    vec_benchmarks(sort_unstable)
+);
 tango_main!();

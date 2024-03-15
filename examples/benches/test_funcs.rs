@@ -1,6 +1,6 @@
-use rand::{rngs::SmallRng, Rng, SeedableRng};
+use rand::{distributions::Standard, rngs::SmallRng, Rng, SeedableRng};
 use std::{hint::black_box, rc::Rc};
-use tango_bench::{benchmark_fn, Benchmark};
+use tango_bench::{benchmark_fn, Benchmark, IntoBenchmarks};
 
 /// HTML page with a lot of chinese text to test UTF8 decoding speed
 pub const INPUT_TEXT: &str = include_str!("./input.txt");
@@ -103,7 +103,7 @@ pub fn str_take(n: usize, s: &str) -> usize {
 #[cfg_attr(feature = "align", repr(align(32)))]
 #[cfg_attr(feature = "align", inline(never))]
 #[allow(unused)]
-pub fn sort_unstable<T: Ord + Copy, N>(input: &Vec<T>, _: &N) -> T {
+pub fn sort_unstable<T: Ord + Copy>(input: &Vec<T>) -> T {
     let mut input = input.clone();
     input.sort_unstable();
     input[input.len() / 2]
@@ -112,8 +112,22 @@ pub fn sort_unstable<T: Ord + Copy, N>(input: &Vec<T>, _: &N) -> T {
 #[cfg_attr(feature = "align", repr(align(32)))]
 #[cfg_attr(feature = "align", inline(never))]
 #[allow(unused)]
-pub fn sort_stable<T: Ord + Copy, N>(input: &Vec<T>, _: &N) -> T {
+pub fn sort_stable<T: Ord + Copy>(input: &Vec<T>) -> T {
     let mut input = input.clone();
     input.sort();
     input[input.len() / 2]
+}
+
+pub fn vec_benchmarks(f: impl Fn(&Vec<u64>) -> u64 + Copy + 'static) -> impl IntoBenchmarks {
+    let mut benches = vec![];
+    for size in [100, 1_000, 10_000, 100_000] {
+        benches.push(benchmark_fn(format!("sort/{}", size), move |b| {
+            let input: Vec<u64> = SmallRng::seed_from_u64(b.seed)
+                .sample_iter(Standard)
+                .take(1000)
+                .collect();
+            b.iter(move || f(&input))
+        }))
+    }
+    benches
 }
