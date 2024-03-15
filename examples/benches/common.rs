@@ -29,9 +29,9 @@ impl<C: FromSortedVec> RandomCollection<C>
 where
     C::Item: Ord + Copy + TryFrom<usize>,
 {
-    pub fn new(size: usize, value_dup_factor: usize) -> Self {
+    pub fn new(size: usize, value_dup_factor: usize, seed: u64) -> Self {
         Self {
-            rng: Lcg(0),
+            rng: Lcg(seed as usize),
             size,
             value_dup_factor,
             phantom: PhantomData,
@@ -44,7 +44,7 @@ where
     C::Item: Ord + Copy + TryFrom<usize> + Debug,
     usize: TryFrom<C::Item>,
 {
-    fn next_haystack(&mut self) -> Sample<C> {
+    fn random_collection(&mut self) -> Sample<C> {
         let vec = generate_sorted_vec(self.size, self.value_dup_factor);
         let max = usize::try_from(*vec.last().unwrap()).ok().unwrap();
 
@@ -56,10 +56,6 @@ where
 
     fn next_needle(&mut self, sample: &Sample<C>) -> C::Item {
         self.rng.next(sample.max_value + 1)
-    }
-
-    fn sync(&mut self, seed: u64) {
-        self.rng = Lcg(seed as usize);
     }
 }
 
@@ -104,23 +100,18 @@ impl<T> FromSortedVec for Vec<T> {
 pub fn search_benchmarks<C, F>(f: F) -> impl IntoBenchmarks
 where
     C: FromSortedVec + 'static,
-    F: Fn(&Sample<C>, &C::Item) -> Option<C::Item> + Copy + 'static,
+    F: Fn(&C, C::Item) -> Option<C::Item> + Copy + 'static,
     C::Item: Copy + Ord + TryFrom<usize> + Debug,
     usize: TryFrom<C::Item>,
 {
     let mut benchmarks = vec![];
     for size in SIZES {
         let name = format!("{}/{}/nodup", type_name::<C::Item>(), size);
-        let bench = benchmark_fn(name, move |b| {
-            let mut coll = RandomCollection::<C>::new(size, 1);
-            coll.sync(b.seed);
-            let c = coll.next_haystack();
-            b.iter(move || {
-                let query = coll.next_needle(&c);
-                f(&c, &query)
-            })
-        });
-        benchmarks.push(bench);
+        benchmarks.push(benchmark_fn(name, move |b| {
+            let mut rnd = RandomCollection::<C>::new(size, 1, b.seed);
+            let input = rnd.random_collection();
+            b.iter(move || f(&input.collection, rnd.next_needle(&input)))
+        }));
     }
     benchmarks
 }

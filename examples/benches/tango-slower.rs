@@ -1,7 +1,6 @@
 #![cfg_attr(feature = "align", feature(fn_align))]
 
 use crate::test_funcs::{factorial, sum};
-use rand::{distributions::Standard, rngs::SmallRng, Rng, SeedableRng};
 use std::rc::Rc;
 use tango_bench::{benchmark_fn, tango_benchmarks, tango_main, IntoBenchmarks};
 use test_funcs::{

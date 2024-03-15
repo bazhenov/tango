@@ -15,8 +15,8 @@ impl<T: Ord> FromSortedVec for OrderedCollection<T> {
 
 #[cfg_attr(feature = "align", repr(align(32)))]
 #[cfg_attr(feature = "align", inline(never))]
-fn search_ord<T: Copy + Ord>(haystack: &impl AsRef<OrderedCollection<T>>, needle: &T) -> Option<T> {
-    haystack.as_ref().find_gte(*needle).copied()
+fn search_ord<T: Copy + Ord>(haystack: &OrderedCollection<T>, needle: T) -> Option<T> {
+    haystack.find_gte(needle).copied()
 }
 
 tango_benchmarks!(

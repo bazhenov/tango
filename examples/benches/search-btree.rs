@@ -16,9 +16,8 @@ impl<T: Ord> FromSortedVec for BTreeSet<T> {
 
 #[cfg_attr(feature = "align", repr(align(32)))]
 #[cfg_attr(feature = "align", inline(never))]
-fn search_btree<T: Copy + Ord>(haystack: &impl AsRef<BTreeSet<T>>, needle: &T) -> Option<T> {
+fn search_btree<T: Copy + Ord>(haystack: &BTreeSet<T>, needle: T) -> Option<T> {
     haystack
-        .as_ref()
         .range((Bound::Included(needle), Bound::Unbounded))
         .next()
         .copied()

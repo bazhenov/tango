@@ -1,16 +1,15 @@
 #![cfg_attr(feature = "align", feature(fn_align))]
 
-use common::{search_benchmarks, Sample};
+use common::search_benchmarks;
 use tango_bench::{tango_benchmarks, tango_main};
 
 mod common;
 
 #[cfg_attr(feature = "align", repr(align(32)))]
 #[cfg_attr(feature = "align", inline(never))]
-fn search_vec<T: Copy + Ord>(haystack: &Sample<Vec<T>>, needle: &T) -> Option<T> {
-    let haystack = haystack.as_ref();
+fn search_vec<T: Copy + Ord>(haystack: &Vec<T>, needle: T) -> Option<T> {
     haystack
-        .binary_search(needle)
+        .binary_search(&needle)
         .ok()
         .and_then(|idx| haystack.get(idx))
         .copied()
