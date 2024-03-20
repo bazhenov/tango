@@ -198,7 +198,7 @@ pub fn run(mut settings: MeasurementSettings) -> Result<ExitCode> {
             };
 
             let mut spi_self = Spi::for_self(mode).ok_or(Error::SpiSelfWasMoved)?;
-            let mut spi_lib = Spi::for_library(&path, mode);
+            let mut spi_lib = Spi::for_library(path, mode);
 
             settings.filter_outliers = filter_outliers;
             settings.cache_firewall = cache_firewall;
@@ -440,7 +440,7 @@ mod commands {
                 std::thread::yield_now();
             }
 
-            let prepare_state_seed = (i % settings.samples_per_haystack == 0).then(|| seed);
+            let prepare_state_seed = (i % settings.samples_per_haystack == 0).then_some(seed);
             let mut sample_time = 0;
 
             prepare_func(
