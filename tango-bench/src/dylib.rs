@@ -26,36 +26,36 @@ pub struct NamedFunction {
 pub(crate) struct Spi {
     tests: Vec<NamedFunction>,
     selected_function: Option<FunctionIdx>,
-    mode: SpiImpl,
+    mode: SpiMode,
 }
 
 #[derive(PartialEq, Eq, Clone, Copy)]
-pub enum SpiMode {
+pub enum SpiModeKind {
     Synchronous,
     Asynchronous,
 }
 
-enum SpiImpl {
+enum SpiMode {
     Synchronous {
         vt: Box<dyn VTable>,
         last_measurement: u64,
     },
     Asynchronous {
-        worker: JoinHandle<()>,
+        worker: Option<JoinHandle<()>>,
         tx: Sender<SpiRequest>,
         rx: Receiver<SpiReply>,
     },
 }
 
 impl Spi {
-    pub(crate) fn for_library(path: impl AsRef<Path>, mode: SpiMode) -> Spi {
+    pub(crate) fn for_library(path: impl AsRef<Path>, mode: SpiModeKind) -> Spi {
         let lib = unsafe { Library::new(path.as_ref()) }
             .with_context(|| format!("Unable to open library: {}", path.as_ref().display()))
             .unwrap();
         spi_handle_for_vtable(ffi::LibraryVTable::new(lib).unwrap(), mode)
     }
 
-    pub(crate) fn for_self(mode: SpiMode) -> Option<Spi> {
+    pub(crate) fn for_self(mode: SpiModeKind) -> Option<Spi> {
         unsafe { SELF_VTABLE.take() }.map(|vt| spi_handle_for_vtable(vt, mode))
     }
 
@@ -70,8 +70,8 @@ impl Spi {
     pub(crate) fn run(&mut self, func: FunctionIdx, iterations: usize) -> u64 {
         self.select(func);
         match &self.mode {
-            SpiImpl::Synchronous { vt, .. } => vt.run(iterations),
-            SpiImpl::Asynchronous { worker: _, tx, rx } => {
+            SpiMode::Synchronous { vt, .. } => vt.run(iterations),
+            SpiMode::Asynchronous { worker: _, tx, rx } => {
                 tx.send(SpiRequest::Run { iterations }).unwrap();
                 match rx.recv().unwrap() {
                     SpiReply::Run(time) => time,
@@ -84,13 +84,13 @@ impl Spi {
     pub(crate) fn measure(&mut self, func: FunctionIdx, iterations: usize) {
         self.select(func);
         match &mut self.mode {
-            SpiImpl::Synchronous {
+            SpiMode::Synchronous {
                 vt,
                 last_measurement,
             } => {
                 *last_measurement = vt.run(iterations);
             }
-            SpiImpl::Asynchronous { tx, .. } => {
+            SpiMode::Asynchronous { tx, .. } => {
                 tx.send(SpiRequest::Measure { iterations }).unwrap();
             }
         }
@@ -98,10 +98,10 @@ impl Spi {
 
     pub(crate) fn read_sample(&mut self) -> u64 {
         match &self.mode {
-            SpiImpl::Synchronous {
+            SpiMode::Synchronous {
                 last_measurement, ..
             } => *last_measurement,
-            SpiImpl::Asynchronous { rx, .. } => match rx.recv().unwrap() {
+            SpiMode::Asynchronous { rx, .. } => match rx.recv().unwrap() {
                 SpiReply::Measure(time) => time,
                 r @ _ => panic!("Unexpected response: {:?}", r),
             },
@@ -111,8 +111,8 @@ impl Spi {
     pub(crate) fn estimate_iterations(&mut self, func: FunctionIdx, time_ms: u32) -> usize {
         self.select(func);
         match &self.mode {
-            SpiImpl::Synchronous { vt, .. } => vt.estimate_iterations(time_ms),
-            SpiImpl::Asynchronous { tx, rx, .. } => {
+            SpiMode::Synchronous { vt, .. } => vt.estimate_iterations(time_ms),
+            SpiMode::Asynchronous { tx, rx, .. } => {
                 tx.send(SpiRequest::EstimateIterations { time_ms }).unwrap();
                 match rx.recv().unwrap() {
                     SpiReply::EstimateIterations(iters) => iters,
@@ -125,8 +125,8 @@ impl Spi {
     pub(crate) fn prepare_state(&mut self, func: FunctionIdx, seed: u64) -> bool {
         self.select(func);
         match &self.mode {
-            SpiImpl::Synchronous { vt, .. } => vt.prepare_state(seed),
-            SpiImpl::Asynchronous { tx, rx, .. } => {
+            SpiMode::Synchronous { vt, .. } => vt.prepare_state(seed),
+            SpiMode::Asynchronous { tx, rx, .. } => {
                 tx.send(SpiRequest::PrepareState { seed }).unwrap();
                 match rx.recv().unwrap() {
                     SpiReply::PrepareState(ret) => ret,
@@ -140,8 +140,8 @@ impl Spi {
         let different_function = self.selected_function.map(|v| v != idx).unwrap_or(true);
         if different_function {
             match &self.mode {
-                SpiImpl::Synchronous { vt, .. } => vt.select(idx),
-                SpiImpl::Asynchronous { tx, rx, .. } => {
+                SpiMode::Synchronous { vt, .. } => vt.select(idx),
+                SpiMode::Asynchronous { tx, rx, .. } => {
                     tx.send(SpiRequest::Select { idx }).unwrap();
                     match rx.recv().unwrap() {
                         SpiReply::Select(_) => {
@@ -151,6 +151,17 @@ impl Spi {
                         r @ _ => panic!("Unexpected response: {:?}", r),
                     }
                 }
+            }
+        }
+    }
+}
+
+impl Drop for Spi {
+    fn drop(&mut self) {
+        if let SpiMode::Asynchronous { worker, tx, .. } = &mut self.mode {
+            if let Some(worker) = worker.take() {
+                tx.send(SpiRequest::Shutdown).unwrap();
+                worker.join().unwrap();
             }
         }
     }
@@ -169,17 +180,18 @@ fn spi_worker(vt: &dyn VTable, rx: Receiver<SpiRequest>, tx: Sender<SpiReply>) {
             Rq::Select { idx } => Rp::Select(vt.select(idx)),
             Rq::Run { iterations } => Rp::Run(vt.run(iterations)),
             Rq::Measure { iterations } => Rp::Measure(vt.run(iterations)),
+            Rq::Shutdown => break,
         };
         tx.send(reply).unwrap();
     }
 }
 
-fn spi_handle_for_vtable(vtable: impl VTable + Send + 'static, mode: SpiMode) -> Spi {
+fn spi_handle_for_vtable(vtable: impl VTable + Send + 'static, mode: SpiModeKind) -> Spi {
     vtable.init();
     let tests = enumerate_tests(&vtable).unwrap();
 
     match mode {
-        SpiMode::Asynchronous => {
+        SpiModeKind::Asynchronous => {
             let (request_tx, request_rx) = channel();
             let (reply_tx, reply_rx) = channel();
             let worker = thread::spawn(move || {
@@ -189,17 +201,17 @@ fn spi_handle_for_vtable(vtable: impl VTable + Send + 'static, mode: SpiMode) ->
             Spi {
                 tests,
                 selected_function: None,
-                mode: SpiImpl::Asynchronous {
-                    worker,
+                mode: SpiMode::Asynchronous {
+                    worker: Some(worker),
                     tx: request_tx,
                     rx: reply_rx,
                 },
             }
         }
-        SpiMode::Synchronous => Spi {
+        SpiModeKind::Synchronous => Spi {
             tests,
             selected_function: None,
-            mode: SpiImpl::Synchronous {
+            mode: SpiMode::Synchronous {
                 vt: Box::new(vtable),
                 last_measurement: 0,
             },
@@ -233,6 +245,7 @@ enum SpiRequest {
     Select { idx: usize },
     Run { iterations: usize },
     Measure { iterations: usize },
+    Shutdown,
 }
 
 #[derive(Debug)]
@@ -443,7 +456,8 @@ pub mod ffi {
 
     impl LibraryVTable {
         pub(super) fn new(library: Library) -> Result<Self, Error> {
-            // SAFETY: library is pinned, therefore we can safley construct self-referential struct here
+            // SAFETY: library is boxed and not moved here, therefore we can safley construct self-referential
+            // struct here
             let library = Box::new(library);
             let init_fn = lookup_symbol::<InitFn>(&*library, "tango_init")?;
             let count_fn = lookup_symbol::<CountFn>(&*library, "tango_count")?;

@@ -5,7 +5,7 @@ use self::{
     reporting::{ConsoleReporter, VerboseReporter},
 };
 use crate::{
-    dylib::{Spi, SpiMode},
+    dylib::{Spi, SpiModeKind},
     Error, MeasurementSettings, Reporter, SampleLengthKind,
 };
 use anyhow::{bail, Context};
@@ -152,7 +152,7 @@ pub fn run(mut settings: MeasurementSettings) -> Result<ExitCode> {
 
     match subcommand {
         BenchmarkMode::List { bench_flags: _ } => {
-            let spi = Spi::for_self(SpiMode::Synchronous).ok_or(Error::SpiSelfWasMoved)?;
+            let spi = Spi::for_self(SpiModeKind::Synchronous).ok_or(Error::SpiSelfWasMoved)?;
             for func in spi.tests() {
                 println!("{}", func.name);
             }
@@ -192,9 +192,9 @@ pub fn run(mut settings: MeasurementSettings) -> Result<ExitCode> {
             let path = crate::linux::patch_pie_binary_if_needed(&path)?.unwrap_or(path);
 
             let mode = if parallel {
-                SpiMode::Asynchronous
+                SpiModeKind::Asynchronous
             } else {
-                SpiMode::Synchronous
+                SpiModeKind::Synchronous
             };
 
             let mut spi_self = Spi::for_self(mode).ok_or(Error::SpiSelfWasMoved)?;
