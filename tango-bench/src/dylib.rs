@@ -5,7 +5,7 @@ use crate::{Benchmark, Error};
 use anyhow::Context;
 use libloading::{Library, Symbol};
 use std::{
-    ffi::c_char,
+    ffi::{c_char, c_ulong},
     path::Path,
     ptr::{addr_of, null},
     slice, str,
@@ -70,7 +70,7 @@ impl Spi {
     pub(crate) fn run(&mut self, func: FunctionIdx, iterations: usize) -> u64 {
         self.select(func);
         match &self.mode {
-            SpiMode::Synchronous { vt, .. } => vt.run(iterations),
+            SpiMode::Synchronous { vt, .. } => vt.run(iterations as c_ulong),
             SpiMode::Asynchronous { worker: _, tx, rx } => {
                 tx.send(SpiRequest::Run { iterations }).unwrap();
                 match rx.recv().unwrap() {
@@ -88,7 +88,7 @@ impl Spi {
                 vt,
                 last_measurement,
             } => {
-                *last_measurement = vt.run(iterations);
+                *last_measurement = vt.run(iterations as c_ulong);
             }
             SpiMode::Asynchronous { tx, .. } => {
                 tx.send(SpiRequest::Measure { iterations }).unwrap();
@@ -111,7 +111,7 @@ impl Spi {
     pub(crate) fn estimate_iterations(&mut self, func: FunctionIdx, time_ms: u32) -> usize {
         self.select(func);
         match &self.mode {
-            SpiMode::Synchronous { vt, .. } => vt.estimate_iterations(time_ms),
+            SpiMode::Synchronous { vt, .. } => vt.estimate_iterations(time_ms) as usize,
             SpiMode::Asynchronous { tx, rx, .. } => {
                 tx.send(SpiRequest::EstimateIterations { time_ms }).unwrap();
                 match rx.recv().unwrap() {
@@ -140,7 +140,7 @@ impl Spi {
         let different_function = self.selected_function.map(|v| v != idx).unwrap_or(true);
         if different_function {
             match &self.mode {
-                SpiMode::Synchronous { vt, .. } => vt.select(idx),
+                SpiMode::Synchronous { vt, .. } => vt.select(idx as c_ulong),
                 SpiMode::Asynchronous { tx, rx, .. } => {
                     tx.send(SpiRequest::Select { idx }).unwrap();
                     match rx.recv().unwrap() {
@@ -174,12 +174,12 @@ fn spi_worker(vt: &dyn VTable, rx: Receiver<SpiRequest>, tx: Sender<SpiReply>) {
     while let Ok(req) = rx.recv() {
         let reply = match req {
             Rq::EstimateIterations { time_ms } => {
-                Rp::EstimateIterations(vt.estimate_iterations(time_ms))
+                Rp::EstimateIterations(vt.estimate_iterations(time_ms) as usize)
             }
             Rq::PrepareState { seed } => Rp::PrepareState(vt.prepare_state(seed)),
-            Rq::Select { idx } => Rp::Select(vt.select(idx)),
-            Rq::Run { iterations } => Rp::Run(vt.run(iterations)),
-            Rq::Measure { iterations } => Rp::Measure(vt.run(iterations)),
+            Rq::Select { idx } => Rp::Select(vt.select(idx as c_ulong)),
+            Rq::Run { iterations } => Rp::Run(vt.run(iterations as c_ulong)),
+            Rq::Measure { iterations } => Rp::Measure(vt.run(iterations as c_ulong)),
             Rq::Shutdown => break,
         };
         tx.send(reply).unwrap();
@@ -224,16 +224,17 @@ fn enumerate_tests(vt: &dyn VTable) -> Result<Vec<NamedFunction>, Error> {
     for idx in 0..vt.count() {
         vt.select(idx);
 
-        let mut length = 0usize;
+        let mut length = 0;
         let name_ptr: *const c_char = null();
         vt.get_test_name(addr_of!(name_ptr) as _, &mut length);
         if length == 0 {
             continue;
         }
-        let slice = unsafe { slice::from_raw_parts(name_ptr as *const u8, length) };
+        let slice = unsafe { slice::from_raw_parts(name_ptr as *const u8, length as usize) };
         let name = str::from_utf8(slice)
             .map_err(Error::InvalidFFIString)?
             .to_string();
+        let idx = idx as usize;
         tests.push(NamedFunction { name, idx });
     }
     Ok(tests)
@@ -298,16 +299,22 @@ pub unsafe fn __tango_init(benchmarks: Vec<Benchmark>) {
 /// way two executables can coexist in the single process at the same time.
 pub mod ffi {
     use super::*;
-    use std::{mem, os::raw::c_char, ptr::null, usize};
+    use std::{
+        ffi::{c_uint, c_ulong},
+        mem,
+        os::raw::c_char,
+        ptr::null,
+        usize,
+    };
 
     /// Signature types of all FFI API functions
     pub type InitFn = unsafe extern "C" fn();
-    type CountFn = unsafe extern "C" fn() -> usize;
-    type GetTestNameFn = unsafe extern "C" fn(*mut *const c_char, *mut usize);
-    type SelectFn = unsafe extern "C" fn(usize);
-    type RunFn = unsafe extern "C" fn(usize) -> u64;
-    type EstimateIterationsFn = unsafe extern "C" fn(u32) -> usize;
-    type PrepareStateFn = unsafe extern "C" fn(u64) -> bool;
+    type CountFn = unsafe extern "C" fn() -> c_ulong;
+    type GetTestNameFn = unsafe extern "C" fn(*mut *const c_char, *mut c_ulong);
+    type SelectFn = unsafe extern "C" fn(c_ulong);
+    type RunFn = unsafe extern "C" fn(c_ulong) -> u64;
+    type EstimateIterationsFn = unsafe extern "C" fn(c_uint) -> c_ulong;
+    type PrepareStateFn = unsafe extern "C" fn(c_ulong) -> bool;
     type FreeFn = unsafe extern "C" fn();
 
     /// This block of constants is checking that all exported tango functions are of valid type according to the API.
@@ -325,23 +332,26 @@ pub mod ffi {
     }
 
     #[no_mangle]
-    unsafe extern "C" fn tango_count() -> usize {
-        STATE.as_ref().map(|s| s.benchmarks.len()).unwrap_or(0)
+    unsafe extern "C" fn tango_count() -> c_ulong {
+        STATE
+            .as_ref()
+            .map(|s| s.benchmarks.len() as c_ulong)
+            .unwrap_or(0)
     }
 
     #[no_mangle]
-    unsafe extern "C" fn tango_select(idx: usize) {
+    unsafe extern "C" fn tango_select(idx: c_ulong) {
         if let Some(s) = STATE.as_mut() {
-            s.selected_function = idx.min(s.benchmarks.len() - 1);
+            s.selected_function = idx.min((s.benchmarks.len() - 1) as c_ulong) as usize;
         }
     }
 
     #[no_mangle]
-    unsafe extern "C" fn tango_get_test_name(name: *mut *const c_char, length: *mut usize) {
+    unsafe extern "C" fn tango_get_test_name(name: *mut *const c_char, length: *mut c_ulong) {
         if let Some(s) = STATE.as_ref() {
             let n = s.selected().name();
             *name = n.as_ptr() as _;
-            *length = n.len();
+            *length = n.len() as c_ulong;
         } else {
             *name = null();
             *length = 0;
@@ -349,25 +359,25 @@ pub mod ffi {
     }
 
     #[no_mangle]
-    unsafe extern "C" fn tango_run(iterations: usize) -> u64 {
+    unsafe extern "C" fn tango_run(iterations: c_ulong) -> u64 {
         if let Some(s) = STATE.as_mut() {
-            s.selected_mut().measure(iterations)
+            s.selected_mut().measure(iterations as usize)
         } else {
             0
         }
     }
 
     #[no_mangle]
-    unsafe extern "C" fn tango_estimate_iterations(time_ms: u32) -> usize {
+    unsafe extern "C" fn tango_estimate_iterations(time_ms: c_uint) -> c_ulong {
         if let Some(s) = STATE.as_mut() {
-            s.selected_mut().estimate_iterations(time_ms)
+            s.selected_mut().estimate_iterations(time_ms as u32) as c_ulong
         } else {
             0
         }
     }
 
     #[no_mangle]
-    unsafe extern "C" fn tango_prepare_state(seed: u64) -> bool {
+    unsafe extern "C" fn tango_prepare_state(seed: c_ulong) -> bool {
         if let Some(s) = STATE.as_mut() {
             s.selected_mut().prepare_state(seed)
         } else {
@@ -382,12 +392,12 @@ pub mod ffi {
 
     pub(super) trait VTable {
         fn init(&self);
-        fn count(&self) -> usize;
-        fn select(&self, func_idx: usize);
-        fn get_test_name(&self, ptr: *mut *const c_char, len: *mut usize);
-        fn run(&self, iterations: usize) -> u64;
-        fn estimate_iterations(&self, time_ms: u32) -> usize;
-        fn prepare_state(&self, seed: u64) -> bool;
+        fn count(&self) -> c_ulong;
+        fn select(&self, func_idx: c_ulong);
+        fn get_test_name(&self, ptr: *mut *const c_char, len: *mut c_ulong);
+        fn run(&self, iterations: c_ulong) -> c_ulong;
+        fn estimate_iterations(&self, time_ms: c_uint) -> c_ulong;
+        fn prepare_state(&self, seed: c_ulong) -> bool;
     }
 
     pub(super) static mut SELF_VTABLE: Option<SelfVTable> = Some(SelfVTable);
@@ -404,23 +414,23 @@ pub mod ffi {
             // In executable mode `tango_init` is already called by the main function
         }
 
-        fn count(&self) -> usize {
+        fn count(&self) -> c_ulong {
             unsafe { tango_count() }
         }
 
-        fn select(&self, func_idx: usize) {
+        fn select(&self, func_idx: c_ulong) {
             unsafe { tango_select(func_idx) }
         }
 
-        fn get_test_name(&self, ptr: *mut *const c_char, len: *mut usize) {
+        fn get_test_name(&self, ptr: *mut *const c_char, len: *mut c_ulong) {
             unsafe { tango_get_test_name(ptr, len) }
         }
 
-        fn run(&self, iterations: usize) -> u64 {
+        fn run(&self, iterations: c_ulong) -> u64 {
             unsafe { tango_run(iterations) }
         }
 
-        fn estimate_iterations(&self, time_ms: u32) -> usize {
+        fn estimate_iterations(&self, time_ms: c_uint) -> c_ulong {
             unsafe { tango_estimate_iterations(time_ms) }
         }
 
@@ -489,27 +499,27 @@ pub mod ffi {
             unsafe { (self.init_fn)() }
         }
 
-        fn count(&self) -> usize {
+        fn count(&self) -> c_ulong {
             unsafe { (self.count_fn)() }
         }
 
-        fn select(&self, func_idx: usize) {
+        fn select(&self, func_idx: c_ulong) {
             unsafe { (self.select_fn)(func_idx) }
         }
 
-        fn get_test_name(&self, ptr: *mut *const c_char, len: *mut usize) {
+        fn get_test_name(&self, ptr: *mut *const c_char, len: *mut c_ulong) {
             unsafe { (self.get_test_name_fn)(ptr, len) }
         }
 
-        fn run(&self, iterations: usize) -> u64 {
+        fn run(&self, iterations: c_ulong) -> u64 {
             unsafe { (self.run_fn)(iterations) }
         }
 
-        fn estimate_iterations(&self, time_ms: u32) -> usize {
+        fn estimate_iterations(&self, time_ms: c_uint) -> c_ulong {
             unsafe { (self.estimate_iterations_fn)(time_ms) }
         }
 
-        fn prepare_state(&self, seed: u64) -> bool {
+        fn prepare_state(&self, seed: c_ulong) -> bool {
             unsafe { (self.prepare_state_fn)(seed) }
         }
     }
