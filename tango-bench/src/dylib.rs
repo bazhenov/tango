@@ -357,15 +357,9 @@ pub mod ffi {
             assert!(idx < s.benchmarks.len());
 
             s.selected_function = Some(match s.selected_function.take() {
-                Some((selected, state)) => {
-                    if selected == idx {
-                        // Preserving state if the same function is selected
-                        (selected, state)
-                    } else {
-                        (idx, None)
-                    }
-                }
-                None => (idx, None),
+                // Preserving state if the same function is selected
+                Some((selected, state)) if selected == idx => (selected, state),
+                _ => (idx, None),
             });
         }
     }
