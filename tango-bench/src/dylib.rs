@@ -261,21 +261,26 @@ enum SpiReply {
 /// State which holds the information about list of benchmarks and which one is selected.
 /// Used in FFI API (`tango_*` functions).
 pub struct State {
-    pub benchmarks: Vec<(Benchmark, Option<BenchmarkState>)>,
-    pub selected_function: usize,
+    pub benchmarks: Vec<Benchmark>,
+    pub selected_function: Option<(usize, Option<BenchmarkState>)>,
 }
 
 impl State {
     fn selected(&self) -> &Benchmark {
-        &self.benchmarks[self.selected_function].0
+        &self.benchmarks[self.ensure_selected()]
     }
 
-    fn selected_mut(&mut self) -> &mut (Benchmark, Option<BenchmarkState>) {
-        &mut self.benchmarks[self.selected_function]
+    fn ensure_selected(&self) -> usize {
+        self.selected_function
+            .as_ref()
+            .map(|(idx, _)| *idx)
+            .expect("No function was selected. Call tango_select() first")
     }
 
     fn selected_state_mut(&mut self) -> Option<&mut BenchmarkState> {
-        self.benchmarks[self.selected_function].1.as_mut()
+        self.selected_function
+            .as_mut()
+            .and_then(|(_, state)| state.as_mut())
     }
 }
 
@@ -289,10 +294,9 @@ static mut STATE: Option<State> = None;
 pub fn __tango_init(benchmarks: Vec<Benchmark>) {
     unsafe {
         if STATE.is_none() {
-            let benchmarks = benchmarks.into_iter().map(|i| (i, None)).collect();
             STATE = Some(State {
                 benchmarks,
-                selected_function: 0,
+                selected_function: None,
             });
         }
     }
@@ -349,7 +353,20 @@ pub mod ffi {
     #[no_mangle]
     unsafe extern "C" fn tango_select(idx: c_ulong) {
         if let Some(s) = STATE.as_mut() {
-            s.selected_function = idx.min((s.benchmarks.len() - 1) as c_ulong) as usize;
+            let idx = idx as usize;
+            assert!(idx < s.benchmarks.len());
+
+            s.selected_function = Some(match s.selected_function.take() {
+                Some((selected, state)) => {
+                    if selected == idx {
+                        // Preserving state if the same function is selected
+                        (selected, state)
+                    } else {
+                        (idx, None)
+                    }
+                }
+                None => (idx, None),
+            });
         }
     }
 
@@ -369,7 +386,7 @@ pub mod ffi {
     unsafe extern "C" fn tango_run(iterations: c_ulong) -> u64 {
         if let Some(s) = STATE.as_mut() {
             s.selected_state_mut()
-                .expect("no tango_prepare() was called")
+                .expect("no tango_prepare_state() was called")
                 .measure(iterations as usize)
         } else {
             0
@@ -380,7 +397,7 @@ pub mod ffi {
     unsafe extern "C" fn tango_estimate_iterations(time_ms: c_uint) -> c_ulong {
         if let Some(s) = STATE.as_mut() {
             s.selected_state_mut()
-                .expect("no tango_prepare() was called")
+                .expect("no tango_prepare_state() was called")
                 .estimate_iterations(time_ms) as c_ulong
         } else {
             0
@@ -390,8 +407,10 @@ pub mod ffi {
     #[no_mangle]
     unsafe extern "C" fn tango_prepare_state(seed: c_ulong) -> bool {
         if let Some(s) = STATE.as_mut() {
-            let (b, state) = s.selected_mut();
-            *state = Some(b.prepare_state(seed));
+            let Some((idx, state)) = &mut s.selected_function else {
+                panic!("No tango_select() was called")
+            };
+            *state = Some(s.benchmarks[*idx].prepare_state(seed));
             true
         } else {
             false
