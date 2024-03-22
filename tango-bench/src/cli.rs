@@ -313,21 +313,20 @@ mod commands {
 
     struct TestedFunction<'a> {
         spi: &'a mut Spi,
-        func: FunctionIdx,
         samples: Vec<u64>,
     }
 
     impl<'a> TestedFunction<'a> {
         fn new(spi: &'a mut Spi, func: FunctionIdx) -> Self {
+            spi.select(func);
             TestedFunction {
                 spi,
-                func,
                 samples: Vec::new(),
             }
         }
 
         fn measure(&mut self, iterations: usize) {
-            self.spi.measure(self.func, iterations);
+            self.spi.measure(iterations);
         }
 
         fn read_sample(&mut self) -> u64 {
@@ -337,15 +336,15 @@ mod commands {
         }
 
         fn run(&mut self, iterations: usize) -> u64 {
-            self.spi.run(self.func, iterations)
+            self.spi.run(iterations)
         }
 
         fn prepare_state(&mut self, seed: u64) {
-            self.spi.prepare_state(self.func, seed);
+            self.spi.prepare_state(seed);
         }
 
         fn estimate_iterations(&mut self, time_ms: u32) -> usize {
-            self.spi.estimate_iterations(self.func, time_ms)
+            self.spi.estimate_iterations(time_ms)
         }
     }
 

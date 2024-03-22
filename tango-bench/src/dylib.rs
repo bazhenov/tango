@@ -67,8 +67,8 @@ impl Spi {
         self.tests.iter().find(|f| f.name == name)
     }
 
-    pub(crate) fn run(&mut self, func: FunctionIdx, iterations: usize) -> u64 {
-        self.select(func);
+    pub(crate) fn run(&mut self, iterations: usize) -> u64 {
+        // self.select(func);
         match &self.mode {
             SpiMode::Synchronous { vt, .. } => vt.run(iterations as c_ulong),
             SpiMode::Asynchronous { worker: _, tx, rx } => {
@@ -81,8 +81,8 @@ impl Spi {
         }
     }
 
-    pub(crate) fn measure(&mut self, func: FunctionIdx, iterations: usize) {
-        self.select(func);
+    pub(crate) fn measure(&mut self, iterations: usize) {
+        // self.select(func);
         match &mut self.mode {
             SpiMode::Synchronous {
                 vt,
@@ -108,8 +108,8 @@ impl Spi {
         }
     }
 
-    pub(crate) fn estimate_iterations(&mut self, func: FunctionIdx, time_ms: u32) -> usize {
-        self.select(func);
+    pub(crate) fn estimate_iterations(&mut self, time_ms: u32) -> usize {
+        // self.select(func);
         match &self.mode {
             SpiMode::Synchronous { vt, .. } => vt.estimate_iterations(time_ms) as usize,
             SpiMode::Asynchronous { tx, rx, .. } => {
@@ -122,8 +122,8 @@ impl Spi {
         }
     }
 
-    pub(crate) fn prepare_state(&mut self, func: FunctionIdx, seed: u64) -> bool {
-        self.select(func);
+    pub(crate) fn prepare_state(&mut self, seed: u64) -> bool {
+        // self.select(func);
         match &self.mode {
             SpiMode::Synchronous { vt, .. } => vt.prepare_state(seed),
             SpiMode::Asynchronous { tx, rx, .. } => {
@@ -137,16 +137,13 @@ impl Spi {
     }
 
     pub(crate) fn select(&mut self, idx: usize) {
-        let different_function = self.selected_function.map(|v| v != idx).unwrap_or(true);
-        if different_function {
-            match &self.mode {
-                SpiMode::Synchronous { vt, .. } => vt.select(idx as c_ulong),
-                SpiMode::Asynchronous { tx, rx, .. } => {
-                    tx.send(SpiRequest::Select { idx }).unwrap();
-                    match rx.recv().unwrap() {
-                        SpiReply::Select => self.selected_function = Some(idx),
-                        r => panic!("Unexpected response: {:?}", r),
-                    }
+        match &self.mode {
+            SpiMode::Synchronous { vt, .. } => vt.select(idx as c_ulong),
+            SpiMode::Asynchronous { tx, rx, .. } => {
+                tx.send(SpiRequest::Select { idx }).unwrap();
+                match rx.recv().unwrap() {
+                    SpiReply::Select => self.selected_function = Some(idx),
+                    r => panic!("Unexpected response: {:?}", r),
                 }
             }
         }
