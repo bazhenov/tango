@@ -1,7 +1,7 @@
 //! Loading and resolving symbols from .dylib/.so libraries
 
 use self::ffi::{VTable, SELF_VTABLE};
-use crate::{Benchmark, Error};
+use crate::{Benchmark, BenchmarkState, Error};
 use anyhow::Context;
 use libloading::{Library, Symbol};
 use std::{
@@ -261,17 +261,21 @@ enum SpiReply {
 /// State which holds the information about list of benchmarks and which one is selected.
 /// Used in FFI API (`tango_*` functions).
 pub struct State {
-    pub benchmarks: Vec<Benchmark>,
+    pub benchmarks: Vec<(Benchmark, Option<BenchmarkState>)>,
     pub selected_function: usize,
 }
 
 impl State {
     fn selected(&self) -> &Benchmark {
-        &self.benchmarks[self.selected_function]
+        &self.benchmarks[self.selected_function].0
     }
 
-    fn selected_mut(&mut self) -> &mut Benchmark {
+    fn selected_mut(&mut self) -> &mut (Benchmark, Option<BenchmarkState>) {
         &mut self.benchmarks[self.selected_function]
+    }
+
+    fn selected_state_mut(&mut self) -> Option<&mut BenchmarkState> {
+        self.benchmarks[self.selected_function].1.as_mut()
     }
 }
 
@@ -285,6 +289,7 @@ static mut STATE: Option<State> = None;
 pub fn __tango_init(benchmarks: Vec<Benchmark>) {
     unsafe {
         if STATE.is_none() {
+            let benchmarks = benchmarks.into_iter().map(|i| (i, None)).collect();
             STATE = Some(State {
                 benchmarks,
                 selected_function: 0,
@@ -363,7 +368,9 @@ pub mod ffi {
     #[no_mangle]
     unsafe extern "C" fn tango_run(iterations: c_ulong) -> u64 {
         if let Some(s) = STATE.as_mut() {
-            s.selected_mut().measure(iterations as usize)
+            s.selected_state_mut()
+                .expect("no tango_prepare() was called")
+                .measure(iterations as usize)
         } else {
             0
         }
@@ -372,7 +379,9 @@ pub mod ffi {
     #[no_mangle]
     unsafe extern "C" fn tango_estimate_iterations(time_ms: c_uint) -> c_ulong {
         if let Some(s) = STATE.as_mut() {
-            s.selected_mut().estimate_iterations(time_ms) as c_ulong
+            s.selected_state_mut()
+                .expect("no tango_prepare() was called")
+                .estimate_iterations(time_ms) as c_ulong
         } else {
             0
         }
@@ -381,7 +390,9 @@ pub mod ffi {
     #[no_mangle]
     unsafe extern "C" fn tango_prepare_state(seed: c_ulong) -> bool {
         if let Some(s) = STATE.as_mut() {
-            s.selected_mut().prepare_state(seed)
+            let (b, state) = s.selected_mut();
+            *state = Some(b.prepare_state(seed));
+            true
         } else {
             false
         }

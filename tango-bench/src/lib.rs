@@ -131,7 +131,10 @@ impl<O, F: FnMut() -> O> Sampler for SimpleSampler<F> {
 pub struct Benchmark {
     name: String,
     sampler_factory: Box<dyn SamplerFactory>,
-    sampler: Option<Box<dyn Sampler>>,
+}
+
+pub struct BenchmarkState {
+    sampler: Box<dyn Sampler>,
 }
 
 pub fn benchmark_fn<F: SamplerFactory + 'static>(
@@ -143,7 +146,6 @@ pub fn benchmark_fn<F: SamplerFactory + 'static>(
     Benchmark {
         name,
         sampler_factory: Box::new(sampler_factory),
-        sampler: None,
     }
 }
 
@@ -159,6 +161,23 @@ pub trait SamplerFactory: FnMut(Bencher) -> Box<dyn Sampler> {
 impl<T: FnMut(Bencher) -> Box<dyn Sampler>> SamplerFactory for T {}
 
 impl Benchmark {
+    /// Generates next haystack for the measurement
+    ///
+    /// Calling this method should update internal haystack used for measurement. Returns `true` if update happend,
+    /// `false` if implementation doesn't support haystack generation.
+    /// Haystack/Needle distinction is described in [`Generator`] trait.
+    pub fn prepare_state(&mut self, seed: u64) -> BenchmarkState {
+        let sampler = self.sampler_factory.create_sampler(Bencher { seed });
+        BenchmarkState { sampler }
+    }
+
+    /// Name of the benchmark
+    pub fn name(&self) -> &str {
+        self.name.as_str()
+    }
+}
+
+impl BenchmarkState {
     /// Measures the performance if the function
     ///
     /// Returns the cumulative execution time (all iterations) with nanoseconds precision,
@@ -171,22 +190,7 @@ impl Benchmark {
     ///
     /// [`prepare_state()`]: Self::prepare_state()
     pub fn measure(&mut self, iterations: usize) -> u64 {
-        let sampler = self
-            .sampler
-            .as_mut()
-            .expect("No prepare_state() was called before measure()");
-
-        sampler.measure(iterations)
-    }
-
-    /// Generates next haystack for the measurement
-    ///
-    /// Calling this method should update internal haystack used for measurement. Returns `true` if update happend,
-    /// `false` if implementation doesn't support haystack generation.
-    /// Haystack/Needle distinction is described in [`Generator`] trait.
-    pub fn prepare_state(&mut self, seed: u64) -> bool {
-        self.sampler = Some(self.sampler_factory.create_sampler(Bencher { seed }));
-        true
+        self.sampler.as_mut().measure(iterations)
     }
 
     /// Estimates the number of iterations achievable within given time.
@@ -216,11 +220,6 @@ impl Benchmark {
         }
 
         iters
-    }
-
-    /// Name of the benchmark
-    pub fn name(&self) -> &str {
-        self.name.as_str()
     }
 }
 
@@ -925,7 +924,8 @@ mod tests {
 
     fn median_execution_time(target: &mut Benchmark, iterations: u32) -> Duration {
         assert!(iterations >= 1);
-        let measures: Vec<_> = (0..iterations).map(|_| target.measure(1)).collect();
+        let mut state = target.prepare_state(0);
+        let measures: Vec<_> = (0..iterations).map(|_| state.measure(1)).collect();
         let time = median(measures).max(1);
         Duration::from_nanos(time)
     }
