@@ -122,14 +122,14 @@ impl Spi {
         }
     }
 
-    pub(crate) fn prepare_state(&mut self, seed: u64) -> bool {
+    pub(crate) fn prepare_state(&mut self, seed: u64) {
         // self.select(func);
         match &self.mode {
             SpiMode::Synchronous { vt, .. } => vt.prepare_state(seed),
             SpiMode::Asynchronous { tx, rx, .. } => {
                 tx.send(SpiRequest::PrepareState { seed }).unwrap();
                 match rx.recv().unwrap() {
-                    SpiReply::PrepareState(ret) => ret,
+                    SpiReply::PrepareState => {}
                     r => panic!("Unexpected response: {:?}", r),
                 }
             }
@@ -170,7 +170,10 @@ fn spi_worker(vt: &dyn VTable, rx: Receiver<SpiRequest>, tx: Sender<SpiReply>) {
             Rq::EstimateIterations { time_ms } => {
                 Rp::EstimateIterations(vt.estimate_iterations(time_ms) as usize)
             }
-            Rq::PrepareState { seed } => Rp::PrepareState(vt.prepare_state(seed)),
+            Rq::PrepareState { seed } => {
+                vt.prepare_state(seed);
+                Rp::PrepareState
+            }
             Rq::Select { idx } => {
                 vt.select(idx as c_ulong);
                 Rp::Select
@@ -249,7 +252,7 @@ enum SpiRequest {
 #[derive(Debug)]
 enum SpiReply {
     EstimateIterations(usize),
-    PrepareState(bool),
+    PrepareState,
     Select,
     Run(u64),
     Measure(u64),
@@ -322,7 +325,7 @@ pub mod ffi {
     type SelectFn = unsafe extern "C" fn(c_ulong);
     type RunFn = unsafe extern "C" fn(c_ulong) -> u64;
     type EstimateIterationsFn = unsafe extern "C" fn(c_uint) -> c_ulong;
-    type PrepareStateFn = unsafe extern "C" fn(c_ulong) -> bool;
+    type PrepareStateFn = unsafe extern "C" fn(c_ulong);
     type FreeFn = unsafe extern "C" fn();
 
     /// This block of constants is checking that all exported tango functions are of valid type according to the API.
@@ -402,15 +405,12 @@ pub mod ffi {
     }
 
     #[no_mangle]
-    unsafe extern "C" fn tango_prepare_state(seed: c_ulong) -> bool {
+    unsafe extern "C" fn tango_prepare_state(seed: c_ulong) {
         if let Some(s) = STATE.as_mut() {
             let Some((idx, state)) = &mut s.selected_function else {
                 panic!("No tango_select() was called")
             };
             *state = Some(s.benchmarks[*idx].prepare_state(seed));
-            true
-        } else {
-            false
         }
     }
 
@@ -426,7 +426,7 @@ pub mod ffi {
         fn get_test_name(&self, ptr: *mut *const c_char, len: *mut c_ulong);
         fn run(&self, iterations: c_ulong) -> c_ulong;
         fn estimate_iterations(&self, time_ms: c_uint) -> c_ulong;
-        fn prepare_state(&self, seed: c_ulong) -> bool;
+        fn prepare_state(&self, seed: c_ulong);
     }
 
     pub(super) static mut SELF_VTABLE: Option<SelfVTable> = Some(SelfVTable);
@@ -463,7 +463,7 @@ pub mod ffi {
             unsafe { tango_estimate_iterations(time_ms) }
         }
 
-        fn prepare_state(&self, seed: u64) -> bool {
+        fn prepare_state(&self, seed: u64) {
             unsafe { tango_prepare_state(seed) }
         }
     }
@@ -547,7 +547,7 @@ pub mod ffi {
             unsafe { (self.estimate_iterations_fn)(time_ms) }
         }
 
-        fn prepare_state(&self, seed: c_ulong) -> bool {
+        fn prepare_state(&self, seed: c_ulong) {
             unsafe { (self.prepare_state_fn)(seed) }
         }
     }
