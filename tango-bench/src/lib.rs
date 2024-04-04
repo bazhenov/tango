@@ -1,6 +1,6 @@
 use core::ptr;
 use num_traits::ToPrimitive;
-use rand::{rngs::SmallRng, Rng, SeedableRng};
+use rand::{distributions::uniform::UniformSampler, rngs::SmallRng, Rng, SeedableRng};
 use std::{
     any::type_name,
     cell::RefCell,
@@ -162,19 +162,30 @@ struct SimpleFunc<F> {
 
 impl<O, F: Fn() -> O> MeasureTarget for SimpleFunc<F> {
     fn measure(&mut self, iterations: usize) -> u64 {
+        let random_stack_offsets: Vec<usize> = rand::thread_rng()
+            .sample_iter(&rand::distributions::Uniform::new(0, 4096))
+            .take(iterations)
+            .collect();
         if mem::needs_drop::<O>() {
             let mut result = Vec::with_capacity(iterations);
             let start = ActiveTimer::start();
-            for _ in 0..iterations {
-                result.push(black_box((self.func)()));
+
+            for i in 0..iterations {
+                let stack_offset = random_stack_offsets[i];
+                alloca::with_alloca(stack_offset, |_shifting_stack_space| {
+                    result.push(black_box((self.func)()));
+                })
             }
             let time = ActiveTimer::stop(start);
             drop(result);
             time
         } else {
             let start = ActiveTimer::start();
-            for _ in 0..iterations {
-                black_box((self.func)());
+            for i in 0..iterations {
+                let stack_offset = random_stack_offsets[i];
+                alloca::with_alloca(stack_offset, |_shifting_stack_space| {
+                    black_box((self.func)());
+                })
             }
             ActiveTimer::stop(start)
         }
@@ -236,21 +247,32 @@ where
         let haystack = &*self.haystack.get_or_insert_with(|| g.next_haystack());
         let f = self.f.borrow_mut();
 
+        let random_stack_offsets: Vec<usize> = rand::thread_rng()
+            .sample_iter(&rand::distributions::Uniform::new(0, 4096))
+            .take(iterations)
+            .collect();
+
         if mem::needs_drop::<O>() {
             let mut result = Vec::with_capacity(iterations);
             let start = ActiveTimer::start();
-            for _ in 0..iterations {
-                let needle = g.next_needle(haystack);
-                result.push(black_box((f)(haystack, &needle)));
+            for i in 0..iterations {
+                let stack_offset = random_stack_offsets[i];
+                alloca::with_alloca(stack_offset, |_shifting_stack_space| {
+                    let needle = g.next_needle(haystack);
+                    result.push(black_box((f)(haystack, &needle)));
+                });
             }
             let time = ActiveTimer::stop(start);
             drop(result);
             time
         } else {
             let start = ActiveTimer::start();
-            for _ in 0..iterations {
-                let needle = g.next_needle(haystack);
-                black_box((f)(haystack, &needle));
+            for i in 0..iterations {
+                let stack_offset = random_stack_offsets[i];
+                alloca::with_alloca(stack_offset, |_shifting_stack_space| {
+                    let needle = g.next_needle(haystack);
+                    black_box((f)(haystack, &needle));
+                });
             }
             ActiveTimer::stop(start)
         }
