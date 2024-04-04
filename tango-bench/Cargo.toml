@@ -23,8 +23,8 @@ rand = { version = "0.8", features = ["small_rng"] }
 thiserror = "1.0.50"
 
 [target.'cfg(target_os = "linux")'.dependencies]
-goblin = "0.7.1"
-scroll = "0.11"
+goblin = "0.8"
+scroll = "0.12"
 tempfile = "3.8"
 
 [features]
