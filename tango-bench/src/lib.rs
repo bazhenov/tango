@@ -287,6 +287,12 @@ pub struct MeasurementSettings {
     ///
     /// Yielding control to the OS is a way to reduce the impact of OS scheduler on the benchmarking process.
     pub yield_before_sample: bool,
+
+    /// If set, use alloca to allocate a random offset for the stack each sample.
+    /// This to reduce memory alignment effects on the benchmarking process.
+    ///
+    /// May cause UB if the allocation is larger then the thread stack size.
+    pub randomize_stack: Option<usize>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -333,6 +339,7 @@ pub const DEFAULT_SETTINGS: MeasurementSettings = MeasurementSettings {
     cache_firewall: None,
     yield_before_sample: false,
     warmup_enabled: true,
+    randomize_stack: None,
 };
 
 impl Default for MeasurementSettings {

@@ -21,6 +21,7 @@ log = "0.4.20"
 num-traits = "0.2"
 rand = { version = "0.8", features = ["small_rng"] }
 thiserror = "1.0.50"
+alloca = "0.4"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 goblin = "0.7.1"
