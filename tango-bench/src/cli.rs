@@ -73,6 +73,11 @@ enum BenchmarkMode {
         #[arg(long = "cache-firewall")]
         cache_firewall: Option<usize>,
 
+        /// Perform a randomized offset to the stack frame for each sample.
+        /// (size in bytes)
+        #[arg(long = "randomize-stack")]
+        randomize_stack: Option<usize>,
+
         /// Delegate control back to the OS before each sample
         #[arg(long = "yield-before-sample")]
         yield_before_sample: Option<bool>,
@@ -177,6 +182,7 @@ pub fn run(mut settings: MeasurementSettings) -> Result<ExitCode> {
             warmup_enabled,
             parallel,
             quiet,
+            randomize_stack,
         } => {
             let mut reporter: Box<dyn Reporter> = if verbose {
                 Box::<VerboseReporter>::default()
@@ -202,6 +208,7 @@ pub fn run(mut settings: MeasurementSettings) -> Result<ExitCode> {
 
             settings.filter_outliers = filter_outliers;
             settings.cache_firewall = cache_firewall;
+            settings.randomize_stack = randomize_stack;
 
             if let Some(warmup_enabled) = warmup_enabled {
                 settings.warmup_enabled = warmup_enabled;
@@ -296,6 +303,9 @@ impl LoopMode {
 }
 
 mod commands {
+
+    use num_traits::AsPrimitive;
+    use rand::{distributions::uniform::UniformSampler, Rng};
 
     use super::*;
     use crate::{
@@ -455,8 +465,19 @@ mod commands {
                 firewall.as_ref(),
             );
 
-            a_func.measure(iterations);
-            b_func.measure(iterations);
+            // Allocate a custom stack frame during runtime, to try to offset alignment of the stack.
+            if let Some(offset) = settings.randomize_stack {
+                let stack_offset: usize =
+                    rand::thread_rng().sample(&rand::distributions::Uniform::new(0, offset));
+                alloca::with_alloca(stack_offset, |_allocated_stack_offset| {
+                    a_func.measure(iterations);
+                    b_func.measure(iterations);
+                });
+            } else {
+                a_func.measure(iterations);
+                b_func.measure(iterations);
+            }
+
             let a_sample_time = a_func.read_sample();
             let b_sample_time = b_func.read_sample();
             sample_time += a_sample_time.max(b_sample_time);
