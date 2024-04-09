@@ -68,7 +68,6 @@ impl Spi {
     }
 
     pub(crate) fn run(&mut self, iterations: usize) -> u64 {
-        // self.select(func);
         match &self.mode {
             SpiMode::Synchronous { vt, .. } => vt.run(iterations as c_ulonglong),
             SpiMode::Asynchronous { worker: _, tx, rx } => {
@@ -82,7 +81,6 @@ impl Spi {
     }
 
     pub(crate) fn measure(&mut self, iterations: usize) {
-        // self.select(func);
         match &mut self.mode {
             SpiMode::Synchronous {
                 vt,
@@ -109,7 +107,6 @@ impl Spi {
     }
 
     pub(crate) fn estimate_iterations(&mut self, time_ms: u32) -> usize {
-        // self.select(func);
         match &self.mode {
             SpiMode::Synchronous { vt, .. } => vt.estimate_iterations(time_ms) as usize,
             SpiMode::Asynchronous { tx, rx, .. } => {
@@ -123,7 +120,6 @@ impl Spi {
     }
 
     pub(crate) fn prepare_state(&mut self, seed: u64) {
-        // self.select(func);
         match &self.mode {
             SpiMode::Synchronous { vt, .. } => vt.prepare_state(seed),
             SpiMode::Asynchronous { tx, rx, .. } => {
