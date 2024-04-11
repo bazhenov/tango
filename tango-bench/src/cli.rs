@@ -304,9 +304,6 @@ impl LoopMode {
 
 mod commands {
 
-    use num_traits::AsPrimitive;
-    use rand::{distributions::uniform::UniformSampler, Rng};
-
     use super::*;
     use crate::{
         calculate_run_result,
@@ -314,6 +311,8 @@ mod commands {
         CacheFirewall, FlatSampleLength, LinearSampleLength, RandomSampleLength, RunResult,
         SampleLength, SampleLengthKind,
     };
+    use alloca::with_alloca;
+    use rand::{distributions, rngs::SmallRng, Rng, SeedableRng};
     use std::{
         fs::{self, File},
         io::{self, BufWriter},
@@ -409,6 +408,11 @@ mod commands {
         let mut iterations_per_sample = a_estimate.min(b_estimate);
         let mut sampler = create_sampler(&settings, seed);
 
+        let mut rng = SmallRng::seed_from_u64(seed);
+        let stack_offset_distr = settings
+            .randomize_stack
+            .map(|offset| distributions::Uniform::new(0, offset));
+
         let mut i = 0;
         let mut switch_counter = 0;
 
@@ -466,10 +470,8 @@ mod commands {
             );
 
             // Allocate a custom stack frame during runtime, to try to offset alignment of the stack.
-            if let Some(offset) = settings.randomize_stack {
-                let stack_offset: usize =
-                    rand::thread_rng().sample(&rand::distributions::Uniform::new(0, offset));
-                alloca::with_alloca(stack_offset, |_allocated_stack_offset| {
+            if let Some(distr) = stack_offset_distr {
+                with_alloca(rng.sample(distr), |_| {
                     a_func.measure(iterations);
                     b_func.measure(iterations);
                 });
