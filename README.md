@@ -32,7 +32,7 @@ Tango is designed to have the capability to detect a 1% change in performance wi
 
    ```toml
    [dev-dependencies]
-   tango-bench = "0.4"
+   tango-bench = "0.5"
 
    [[bench]]
    name = "factorial"
