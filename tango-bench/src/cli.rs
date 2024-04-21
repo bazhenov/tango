@@ -14,7 +14,7 @@ use colorz::mode::{self, Mode};
 use core::fmt;
 use glob_match::glob_match;
 use std::{
-    env::args,
+    env::{self, args},
     fmt::Display,
     io::{stderr, Write},
     num::NonZeroUsize,
@@ -190,9 +190,15 @@ pub fn run(mut settings: MeasurementSettings) -> Result<ExitCode> {
                 Box::<ConsoleReporter>::default()
             };
 
-            let path = path
+            let mut path = path
                 .or_else(|| args().next().map(PathBuf::from))
                 .expect("No path given");
+            if path.is_relative() {
+                // Resolving paths relative to PWD if given
+                if let Ok(pwd) = env::var("PWD") {
+                    path = PathBuf::from(pwd).join(path)
+                }
+            };
 
             #[cfg(target_os = "linux")]
             let path = crate::linux::patch_pie_binary_if_needed(&path)?.unwrap_or(path);
