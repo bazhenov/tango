@@ -118,6 +118,7 @@ There are several arguments you can pass to the `compare` command to change it b
   - `o`, `--filter-outliers` – additionally filter outliers
   - `--fail-threshold` – do fail if new version is slower than baseline on a given percentage
   - `--fail-fast` - do fail after first benchmark exceeding fail threshold, not after the whole suite
+  - `-p`, `--parallel` - run base/candidate functions in 2 different threads instead of interleaving in a single thread
 
 ## Contributing
 
