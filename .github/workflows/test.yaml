@@ -20,7 +20,7 @@ jobs:
       matrix:
         include:
           - os: ubuntu-22.04
-          - os: macos-11
+          - os: macos-12
           - os: windows-2019
     runs-on: ${{ matrix.os }}
     steps:
