@@ -1,7 +1,7 @@
 //! Loading and resolving symbols from .dylib/.so libraries
 
 use self::ffi::{VTable, SELF_VTABLE};
-use crate::{Benchmark, BenchmarkState, Error};
+use crate::{Benchmark, ErasedSampler, Error};
 use anyhow::Context;
 use libloading::{Library, Symbol};
 use std::{
@@ -263,9 +263,9 @@ enum SpiReply {
 
 /// State which holds the information about list of benchmarks and which one is selected.
 /// Used in FFI API (`tango_*` functions).
-pub struct State {
-    pub benchmarks: Vec<Benchmark>,
-    pub selected_function: Option<(usize, Option<BenchmarkState>)>,
+struct State {
+    benchmarks: Vec<Benchmark>,
+    selected_function: Option<(usize, Option<Box<dyn ErasedSampler>>)>,
 }
 
 impl State {
@@ -280,7 +280,7 @@ impl State {
             .expect("No function was selected. Call tango_select() first")
     }
 
-    fn selected_state_mut(&mut self) -> Option<&mut BenchmarkState> {
+    fn selected_state_mut(&mut self) -> Option<&mut Box<dyn ErasedSampler>> {
         self.selected_function
             .as_mut()
             .and_then(|(_, state)| state.as_mut())
@@ -394,6 +394,7 @@ pub mod ffi {
         if let Some(s) = STATE.as_mut() {
             s.selected_state_mut()
                 .expect("no tango_prepare_state() was called")
+                .as_mut()
                 .estimate_iterations(time_ms) as c_ulonglong
         } else {
             0

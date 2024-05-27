@@ -1,8 +1,15 @@
+#[cfg(feature = "async")]
+pub use asynchronous::async_benchmark_fn;
 use core::ptr;
 use num_traits::ToPrimitive;
 use rand::{rngs::SmallRng, Rng, SeedableRng};
 use std::{
-    cmp::Ordering, hint::black_box, io, mem, ops::RangeInclusive, str::Utf8Error, time::Duration,
+    cmp::Ordering,
+    hint::black_box,
+    io, mem,
+    ops::{Deref, RangeInclusive},
+    str::Utf8Error,
+    time::Duration,
 };
 use thiserror::Error;
 use timer::{ActiveTimer, Timer};
@@ -100,84 +107,31 @@ macro_rules! tango_main {
     };
 }
 
-pub struct Bencher {
+pub struct BenchmarkParams {
     pub seed: u64,
 }
 
+pub struct Bencher {
+    params: BenchmarkParams,
+}
+
+impl Deref for Bencher {
+    type Target = BenchmarkParams;
+
+    fn deref(&self) -> &Self::Target {
+        &self.params
+    }
+}
+
 impl Bencher {
-    pub fn iter<O: 'static, F: FnMut() -> O + 'static>(self, func: F) -> Box<dyn Sampler> {
-        Box::new(SimpleSampler { func })
+    pub fn iter<O: 'static, F: FnMut() -> O + 'static>(self, func: F) -> Box<dyn ErasedSampler> {
+        Box::new(Sampler(func))
     }
 }
 
-struct SimpleSampler<F> {
-    func: F,
-}
+struct Sampler<F>(F);
 
-pub trait Sampler {
-    fn measure(&mut self, iterations: usize) -> u64;
-}
-
-impl<O, F: FnMut() -> O> Sampler for SimpleSampler<F> {
-    fn measure(&mut self, iterations: usize) -> u64 {
-        let start = ActiveTimer::start();
-        for _ in 0..iterations {
-            black_box((self.func)());
-        }
-        ActiveTimer::stop(start)
-    }
-}
-
-pub struct Benchmark {
-    name: String,
-    sampler_factory: Box<dyn SamplerFactory>,
-}
-
-pub struct BenchmarkState {
-    sampler: Box<dyn Sampler>,
-}
-
-pub fn benchmark_fn<F: SamplerFactory + 'static>(
-    name: impl Into<String>,
-    sampler_factory: F,
-) -> Benchmark {
-    let name = name.into();
-    assert!(!name.is_empty());
-    Benchmark {
-        name,
-        sampler_factory: Box::new(sampler_factory),
-    }
-}
-
-pub trait BenchmarkIteration<T>: FnMut() -> T {}
-impl<T: FnMut() -> O, O> BenchmarkIteration<O> for T {}
-
-pub trait SamplerFactory: FnMut(Bencher) -> Box<dyn Sampler> {
-    fn create_sampler(&mut self, params: Bencher) -> Box<dyn Sampler> {
-        (self)(params)
-    }
-}
-
-impl<T: FnMut(Bencher) -> Box<dyn Sampler>> SamplerFactory for T {}
-
-impl Benchmark {
-    /// Generates next haystack for the measurement
-    ///
-    /// Calling this method should update internal haystack used for measurement. Returns `true` when update happens,
-    /// `false` if implementation doesn't support haystack generation.
-    /// Haystack/Needle distinction is described in [`Generator`] trait.
-    pub fn prepare_state(&mut self, seed: u64) -> BenchmarkState {
-        let sampler = self.sampler_factory.create_sampler(Bencher { seed });
-        BenchmarkState { sampler }
-    }
-
-    /// Name of the benchmark
-    pub fn name(&self) -> &str {
-        self.name.as_str()
-    }
-}
-
-impl BenchmarkState {
+pub trait ErasedSampler {
     /// Measures the performance if the function
     ///
     /// Returns the cumulative execution time (all iterations) with nanoseconds precision,
@@ -189,9 +143,7 @@ impl BenchmarkState {
     /// to call this method without first calling [`prepare_state()`].
     ///
     /// [`prepare_state()`]: Self::prepare_state()
-    pub fn measure(&mut self, iterations: usize) -> u64 {
-        self.sampler.as_mut().measure(iterations)
-    }
+    fn measure(&mut self, iterations: usize) -> u64;
 
     /// Estimates the number of iterations achievable within given time.
     ///
@@ -199,7 +151,7 @@ impl BenchmarkState {
     /// for implementation to be fast (in the order of 10 ms).
     /// If possible the same input arguments should be used when building the estimate.
     /// If the single call of a function is longer than provided timespan the implementation should return 0.
-    pub fn estimate_iterations(&mut self, time_ms: u32) -> usize {
+    fn estimate_iterations(&mut self, time_ms: u32) -> usize {
         let mut iters = 1;
         let time_ns = Duration::from_millis(time_ms as u64).as_nanos() as u64;
 
@@ -220,6 +172,62 @@ impl BenchmarkState {
         }
 
         iters
+    }
+}
+
+impl<O, F: FnMut() -> O> ErasedSampler for Sampler<F> {
+    fn measure(&mut self, iterations: usize) -> u64 {
+        let start = ActiveTimer::start();
+        for _ in 0..iterations {
+            black_box((self.0)());
+        }
+        ActiveTimer::stop(start)
+    }
+}
+
+pub struct Benchmark {
+    name: String,
+    sampler_factory: Box<dyn SamplerFactory>,
+}
+
+pub fn benchmark_fn<F: FnMut(Bencher) -> Box<dyn ErasedSampler> + 'static>(
+    name: impl Into<String>,
+    sampler_factory: F,
+) -> Benchmark {
+    let name = name.into();
+    assert!(!name.is_empty());
+    Benchmark {
+        name,
+        sampler_factory: Box::new(SyncSampleFactory(sampler_factory)),
+    }
+}
+
+pub trait SamplerFactory {
+    fn create_sampler(&mut self, params: BenchmarkParams) -> Box<dyn ErasedSampler>;
+}
+
+struct SyncSampleFactory<F>(F);
+
+impl<F: FnMut(Bencher) -> Box<dyn ErasedSampler>> SamplerFactory for SyncSampleFactory<F> {
+    fn create_sampler(&mut self, params: BenchmarkParams) -> Box<dyn ErasedSampler> {
+        (self.0)(Bencher { params })
+    }
+}
+
+impl Benchmark {
+    /// Generates next haystack for the measurement
+    ///
+    /// Calling this method should update internal haystack used for measurement. Returns `true` if update happend,
+    /// `false` if implementation doesn't support haystack generation.
+    /// Haystack/Needle distinction is described in [`Generator`] trait.
+    pub fn prepare_state(&mut self, seed: u64) -> Box<dyn ErasedSampler> {
+        self.sampler_factory
+            .create_sampler(BenchmarkParams { seed })
+    }
+
+    /// Name of the benchmark
+    pub fn name(&self) -> &str {
+        self.name.as_str()
     }
 }
 
@@ -757,6 +765,86 @@ mod timer {
                     _mm_mfence();
                     end - start
                 }
+            }
+        }
+    }
+}
+
+#[cfg(feature = "async")]
+pub mod asynchronous {
+    use super::{Benchmark, BenchmarkParams, ErasedSampler, Sampler, SamplerFactory};
+    use std::{future::Future, ops::Deref};
+
+    pub fn async_benchmark_fn<R, F>(
+        name: impl Into<String>,
+        runtime: R,
+        sampler_factory: F,
+    ) -> Benchmark
+    where
+        R: AsyncRuntime + 'static,
+        F: FnMut(AsyncBencher<R>) -> Box<dyn ErasedSampler> + 'static,
+    {
+        let name = name.into();
+        assert!(!name.is_empty());
+        Benchmark {
+            name,
+            sampler_factory: Box::new(AsyncSampleFactory(sampler_factory, runtime)),
+        }
+    }
+
+    pub struct AsyncSampleFactory<F, R>(pub F, pub R);
+
+    impl<R: AsyncRuntime, F: FnMut(AsyncBencher<R>) -> Box<dyn ErasedSampler>> SamplerFactory
+        for AsyncSampleFactory<F, R>
+    {
+        fn create_sampler(&mut self, params: BenchmarkParams) -> Box<dyn ErasedSampler> {
+            (self.0)(AsyncBencher {
+                params,
+                runtime: self.1,
+            })
+        }
+    }
+
+    pub struct AsyncBencher<R> {
+        params: BenchmarkParams,
+        runtime: R,
+    }
+
+    impl<R: AsyncRuntime + 'static> AsyncBencher<R> {
+        pub fn iter<O, Fut, F>(self, func: F) -> Box<dyn ErasedSampler>
+        where
+            O: 'static,
+            Fut: Future<Output = O>,
+            F: FnMut() -> Fut + Copy + 'static,
+        {
+            Box::new(Sampler(move || self.runtime.block_on(func)))
+        }
+    }
+
+    impl<R> Deref for AsyncBencher<R> {
+        type Target = BenchmarkParams;
+
+        fn deref(&self) -> &Self::Target {
+            &self.params
+        }
+    }
+
+    pub trait AsyncRuntime: Copy {
+        fn block_on<O, Fut: Future<Output = O>, F: FnMut() -> Fut>(&self, f: F) -> O;
+    }
+
+    #[cfg(feature = "async-tokio")]
+    pub mod tokio {
+        use super::*;
+        use ::tokio::runtime::Builder;
+
+        #[derive(Copy, Clone)]
+        pub struct TokioRuntime;
+
+        impl AsyncRuntime for TokioRuntime {
+            fn block_on<O, Fut: Future<Output = O>, F: FnMut() -> Fut>(&self, mut f: F) -> O {
+                let runtime = Builder::new_current_thread().build().unwrap();
+                runtime.block_on(f())
             }
         }
     }
