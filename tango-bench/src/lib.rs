@@ -137,7 +137,7 @@ pub struct BenchmarkState {
     sampler: Box<dyn Sampler>,
 }
 
-pub fn benchmark_fn<F: SamplerFactory + 'static>(
+pub fn benchmark_fn<F: FnMut(Bencher) -> Box<dyn Sampler> + 'static>(
     name: impl Into<String>,
     sampler_factory: F,
 ) -> Benchmark {
@@ -145,20 +145,57 @@ pub fn benchmark_fn<F: SamplerFactory + 'static>(
     assert!(!name.is_empty());
     Benchmark {
         name,
-        sampler_factory: Box::new(sampler_factory),
+        sampler_factory: Box::new(SyncSampleFactory(sampler_factory)),
+    }
+}
+
+#[cfg(feature = "async")]
+pub fn async_benchmark_fn<
+    R: asynchronous::AsyncRuntime + 'static,
+    F: FnMut(asynchronous::AsyncBencher<R>) -> Box<dyn Sampler> + 'static,
+>(
+    name: impl Into<String>,
+    runtime: R,
+    sampler_factory: F,
+) -> Benchmark {
+    let name = name.into();
+    assert!(!name.is_empty());
+    Benchmark {
+        name,
+        sampler_factory: Box::new(AsyncSampleFactory(sampler_factory, runtime)),
     }
 }
 
 pub trait BenchmarkIteration<T>: FnMut() -> T {}
 impl<T: FnMut() -> O, O> BenchmarkIteration<O> for T {}
 
-pub trait SamplerFactory: FnMut(Bencher) -> Box<dyn Sampler> {
+pub trait SamplerFactory {
+    fn create_sampler(&mut self, params: Bencher) -> Box<dyn Sampler>;
+}
+
+struct SyncSampleFactory<F>(F);
+
+impl<F: FnMut(Bencher) -> Box<dyn Sampler>> SamplerFactory for SyncSampleFactory<F> {
     fn create_sampler(&mut self, params: Bencher) -> Box<dyn Sampler> {
-        (self)(params)
+        (self.0)(params)
     }
 }
 
-impl<T: FnMut(Bencher) -> Box<dyn Sampler>> SamplerFactory for T {}
+struct AsyncSampleFactory<F, R>(F, R);
+
+impl<
+        R: asynchronous::AsyncRuntime,
+        F: FnMut(asynchronous::AsyncBencher<R>) -> Box<dyn Sampler>,
+    > SamplerFactory for AsyncSampleFactory<F, R>
+{
+    fn create_sampler(&mut self, params: Bencher) -> Box<dyn Sampler> {
+        use asynchronous::AsyncBencher;
+        (self.0)(AsyncBencher {
+            bencher: params,
+            runtime: self.1,
+        })
+    }
+}
 
 impl Benchmark {
     /// Generates next haystack for the measurement
@@ -709,7 +746,7 @@ mod timer {
     #[cfg(all(feature = "hw-timer", target_arch = "x86_64"))]
     pub(super) type ActiveTimer = x86::RdtscpTimer;
 
-    #[cfg(not(feature = "hw-timer"))]
+    #[cfg(not(all(feature = "hw-timer", target_arch = "x86_64")))]
     pub(super) type ActiveTimer = PlatformTimer;
 
     pub(super) trait Timer<T> {
@@ -761,6 +798,49 @@ mod timer {
                     _mm_mfence();
                     end - start
                 }
+            }
+        }
+    }
+}
+
+#[cfg(feature = "async")]
+pub mod asynchronous {
+    use super::{Bencher, Sampler, SimpleSampler};
+    use std::future::Future;
+
+    pub struct AsyncBencher<R> {
+        pub(super) bencher: Bencher,
+        pub(super) runtime: R,
+    }
+
+    impl<R: AsyncRuntime> AsyncBencher<R> {
+        pub fn iter<O, Fut, F>(self, func: F) -> Box<dyn Sampler>
+        where
+            O: 'static,
+            Fut: Future<Output = O>,
+            F: FnMut() -> Fut + 'static + Copy,
+        {
+            let f = move || R::block_on(func);
+            Box::new(SimpleSampler { func: f })
+        }
+    }
+
+    pub trait AsyncRuntime: Copy {
+        fn block_on<O, Fut: Future<Output = O>, F: FnMut() -> Fut>(f: F) -> O;
+    }
+
+    #[cfg(feature = "async-tokio")]
+    pub mod tokio {
+        use super::*;
+        use ::tokio::runtime::Builder;
+
+        #[derive(Copy, Clone)]
+        pub struct TokioRuntime;
+
+        impl AsyncRuntime for TokioRuntime {
+            fn block_on<O, Fut: Future<Output = O>, F: FnMut() -> Fut>(mut f: F) -> O {
+                let runtime = Builder::new_current_thread().build().unwrap();
+                runtime.block_on(f())
             }
         }
     }

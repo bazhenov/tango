@@ -1,5 +1,3 @@
-#![cfg_attr(feature = "align", feature(fn_align))]
-
 extern crate tango_bench;
 
 use std::{any::type_name, convert::TryFrom, fmt::Debug, iter, marker::PhantomData};

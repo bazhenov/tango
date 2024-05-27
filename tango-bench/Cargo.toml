@@ -22,6 +22,7 @@ num-traits = "0.2"
 rand = { version = "0.8", features = ["small_rng"] }
 thiserror = "1.0.50"
 alloca = "0.4"
+tokio = { version = "1.37.0", features = ["rt"], optional = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 goblin = "0.7.1"
@@ -30,6 +31,8 @@ tempfile = "3.8"
 
 [features]
 hw-timer = []
+async = []
+async-tokio = ['async', 'dep:tokio']
 
 [[bench]]
 name = "tango"

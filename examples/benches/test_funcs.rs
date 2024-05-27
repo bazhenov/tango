@@ -1,3 +1,5 @@
+#![cfg_attr(feature = "align", feature(fn_align))]
+
 use rand::{distributions::Standard, rngs::SmallRng, Rng, SeedableRng};
 use std::{hint::black_box, rc::Rc};
 use tango_bench::{benchmark_fn, Benchmark, IntoBenchmarks};
