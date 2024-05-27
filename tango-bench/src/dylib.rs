@@ -311,7 +311,6 @@ pub mod ffi {
         mem,
         os::raw::c_char,
         ptr::null,
-        usize,
     };
 
     /// Signature types of all FFI API functions

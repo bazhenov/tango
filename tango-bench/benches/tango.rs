@@ -1,5 +1,3 @@
-#![cfg_attr(feature = "align", feature(fn_align))]
-
 use rand::{distributions::Standard, rngs::SmallRng, Rng, SeedableRng};
 use tango_bench::{
     benchmark_fn, iqr_variance_thresholds, tango_benchmarks, tango_main, IntoBenchmarks, Summary,
