@@ -13,6 +13,7 @@ Features:
 
 - very high sensitivity to changes which allows to converge on results quicker than traditional (pointwise) approach. Often the fraction of a second is enough;
 - ability to compare different versions of the same code from different VCS commits (A/B-benchmarking);
+- async support using tokio.rs;
 - macOS, Linux and Windows support;
 
 ## 1 second, 1 percent, 1 error
@@ -107,6 +108,55 @@ Tango is designed to have the capability to detect a 1% change in performance wi
 The result shows that indeed there is indeed ~1% difference between `factorial(500)` and `factorial(495)`.
 
 Additional examples are available in `examples` directory.
+
+## Async support
+
+To use Tango.rs in an asynchronous setup, follow these steps:
+
+1. Add `tokio` and `tango-bench` dependencies to your `Cargo.toml`:
+
+    ```toml
+    [dev-dependencies]
+    tango-bench = { version = "0.5", features = ["async-tokio"] }
+
+    [[bench]]
+    name = "async_factorial"
+    harness = false
+    ```
+
+2. Create `benches/async_factorial.rs` with the following content:
+
+    ```rust,no_run
+    use std::hint::black_box;
+    use tango_bench::{
+        async_benchmark_fn, asynchronous::tokio::TokioRuntime, tango_benchmarks, tango_main,
+        IntoBenchmarks,
+    };
+
+    pub async fn factorial(mut n: usize) -> usize {
+        let mut result = 1usize;
+        while n > 0 {
+            result = result.wrapping_mul(black_box(n));
+            n -= 1;
+        }
+        result
+    }
+
+    fn benchmarks() -> impl IntoBenchmarks {
+        [async_benchmark_fn("async_factorial", TokioRuntime, |b| {
+            b.iter(|| async { factorial(500).await })
+        })]
+    }
+
+    tango_benchmarks!(benchmarks());
+    tango_main!();
+    ```
+
+3. Build and use benchmarks as you do in synchronous case
+
+    ```console
+    $ cargo bench -q --bench=async_factorial -- compare
+    ```
 
 ## Runner arguments
 
