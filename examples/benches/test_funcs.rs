@@ -1,10 +1,9 @@
-#![cfg_attr(feature = "align", feature(fn_align))]
-
 use rand::{distributions::Standard, rngs::SmallRng, Rng, SeedableRng};
 use std::{hint::black_box, rc::Rc};
 use tango_bench::{benchmark_fn, Benchmark, IntoBenchmarks};
 
 /// HTML page with a lot of chinese text to test UTF8 decoding speed
+#[allow(unused)]
 pub const INPUT_TEXT: &str = include_str!("./input.txt");
 
 #[allow(unused)]
@@ -120,6 +119,7 @@ pub fn sort_stable<T: Ord + Copy>(input: &Vec<T>) -> T {
     input[input.len() / 2]
 }
 
+#[allow(unused)]
 pub fn vec_benchmarks(f: impl Fn(&Vec<u64>) -> u64 + Copy + 'static) -> impl IntoBenchmarks {
     let mut benches = vec![];
     for size in [100, 1_000, 10_000, 100_000] {

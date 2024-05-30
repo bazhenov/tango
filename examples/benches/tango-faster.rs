@@ -2,10 +2,7 @@
 
 use crate::test_funcs::{factorial, sum};
 use std::rc::Rc;
-use tango_bench::{
-    async_benchmark_fn, asynchronous::tokio::TokioRuntime, benchmark_fn, tango_benchmarks,
-    tango_main, IntoBenchmarks,
-};
+use tango_bench::{benchmark_fn, tango_benchmarks, tango_main, IntoBenchmarks};
 use test_funcs::{
     create_str_benchmark, sort_unstable, str_count, str_take, vec_benchmarks, IndexedString,
     INPUT_TEXT,
@@ -17,9 +14,6 @@ fn num_benchmarks() -> impl IntoBenchmarks {
     [
         benchmark_fn("sum", |b| b.iter(|| sum(4950))),
         benchmark_fn("factorial", |b| b.iter(|| factorial(495))),
-        async_benchmark_fn("factorial_async", TokioRuntime, |b| {
-            b.iter(|| async { factorial(495) })
-        }),
     ]
 }
 
