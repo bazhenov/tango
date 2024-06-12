@@ -651,7 +651,7 @@ where
             0.
         };
 
-        1 / 1;
+        let a = 1. / 2.;
 
         Some(Summary {
             n: self.n,
