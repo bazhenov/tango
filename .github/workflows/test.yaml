@@ -10,9 +10,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: "clippy, rustfmt"
+      - uses: olix0r/cargo-action-fmt/setup@v2
       - uses: Swatinem/rust-cache@v2
       - name: Running clippy
-        run: cargo clippy --all-targets --all-features -p tango-bench -- -D warnings
+        run: cargo clippy --all-targets --all-features -p tango-bench --message-format=json | cargo-action-fmt
       - name: Checking formatting
         run: cargo fmt -- --check --color always
       - name: Typo

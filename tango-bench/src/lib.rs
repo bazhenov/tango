@@ -651,6 +651,8 @@ where
             0.
         };
 
+        1 / 1;
+
         Some(Summary {
             n: self.n,
             min: self.min,
