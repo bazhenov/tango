@@ -1,0 +1,2 @@
+[files]
+extend-exclude = ["examples/benches/input.txt", "notebooks/*.ipynb"]
