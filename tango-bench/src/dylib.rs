@@ -301,7 +301,7 @@ pub fn __tango_init(benchmarks: Vec<Benchmark>) {
 /// Defines all the foundation types and exported symbols for the FFI communication API between two
 /// executables.
 ///
-/// Tango execution model implies simultaneous exectution of the code from two binaries. To achive that
+/// Tango execution model implies simultaneous execution of the code from two binaries. To achieve that
 /// Tango benchmark is compiled in a way that executable is also a shared library (.dll, .so, .dylib). This
 /// way two executables can coexist in the single process at the same time.
 pub mod ffi {
@@ -324,7 +324,7 @@ pub mod ffi {
     type FreeFn = unsafe extern "C" fn();
 
     /// This block of constants is checking that all exported tango functions are of valid type according to the API.
-    /// Those constants are not ment to be used at runtime in any way
+    /// Those constants are not meant to be used at runtime in any way
     #[allow(unused)]
     mod type_check {
         use super::*;
@@ -424,7 +424,7 @@ pub mod ffi {
     ///
     /// Used to communicate with FFI API of the executable bypassing dynamic linking.
     /// # Safety
-    /// Instances of this type should not be created directory. The single instance [`SELF_SPI`] shoud be used instead
+    /// Instances of this type should not be created directory. The single instance [`SELF_SPI`] should be used instead
     pub(super) struct SelfVTable;
 
     impl VTable for SelfVTable {
@@ -552,10 +552,10 @@ pub mod ffi {
         name: &'static str,
     ) -> Result<Symbol<'static, T>, Error> {
         unsafe {
-            let symbol: Symbol<'l, T> = library
+            let symbol = library
                 .get(name.as_bytes())
                 .map_err(Error::UnableToLoadSymbol)?;
-            Ok(mem::transmute(symbol))
+            Ok(mem::transmute::<Symbol<'l, T>, Symbol<'static, T>>(symbol))
         }
     }
 }

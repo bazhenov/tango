@@ -10,11 +10,14 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: "clippy, rustfmt"
+      - uses: olix0r/cargo-action-fmt/setup@v2
       - uses: Swatinem/rust-cache@v2
+      - name: Running clippy
+        run: cargo clippy --all-targets --all-features -p tango-bench --message-format=json | cargo-action-fmt
       - name: Checking formatting
         run: cargo fmt -- --check --color always
-      - name: Running clippy
-        run: cargo clippy --all-targets --all-features -p tango-bench
+      - name: Typo
+        uses: crate-ci/typos@master
   test:
     strategy:
       matrix:
@@ -32,7 +35,7 @@ jobs:
         run: cargo test
 
   bench:
-    needs: [test, lint]
+    needs: [test]
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v3

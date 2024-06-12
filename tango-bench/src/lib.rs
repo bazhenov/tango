@@ -163,7 +163,7 @@ impl<T: FnMut(Bencher) -> Box<dyn Sampler>> SamplerFactory for T {}
 impl Benchmark {
     /// Generates next haystack for the measurement
     ///
-    /// Calling this method should update internal haystack used for measurement. Returns `true` if update happend,
+    /// Calling this method should update internal haystack used for measurement. Returns `true` when update happens,
     /// `false` if implementation doesn't support haystack generation.
     /// Haystack/Needle distinction is described in [`Generator`] trait.
     pub fn prepare_state(&mut self, seed: u64) -> BenchmarkState {
@@ -356,7 +356,7 @@ impl Default for MeasurementSettings {
 trait SampleLength {
     /// Returns the number of iterations to run for the next sample
     ///
-    /// Accepts the number of iteration being run starting from 0 and cummulative time spent by both functions
+    /// Accepts the number of iteration being run starting from 0 and cumulative time spent by both functions
     fn next_sample_iterations(&mut self, iteration_no: usize, estimate: usize) -> usize;
 }
 
@@ -471,7 +471,7 @@ pub(crate) fn calculate_run_result<N: Into<String>>(
         .map(|(&v, &iters)| (v as f64) / (iters as f64))
         .collect::<Vec<_>>();
 
-    // Calculating measurements range. All measurements outside this interval concidered outliers
+    // Calculating measurements range. All measurements outside this interval considered outliers
     let range = if filter_outliers {
         iqr_variance_thresholds(diff.to_vec())
     } else {
@@ -680,7 +680,7 @@ pub fn iqr_variance_thresholds(mut input: Vec<f64>) -> Option<RangeInclusive<f64
     let low_threshold = input[q1] - iqr * 1.5;
     let high_threshold = input[q3] + iqr * 1.5;
 
-    // Calculating the indicies of the thresholds in an dataset
+    // Calculating the indices of the thresholds in an dataset
     let low_threshold_idx =
         match input[0..q1].binary_search_by(|probe| probe.total_cmp(&low_threshold)) {
             Ok(idx) => idx,
@@ -709,7 +709,7 @@ mod timer {
     #[cfg(all(feature = "hw-timer", target_arch = "x86_64"))]
     pub(super) type ActiveTimer = x86::RdtscpTimer;
 
-    #[cfg(not(feature = "hw-timer"))]
+    #[cfg(not(all(feature = "hw-timer", target_arch = "x86_64")))]
     pub(super) type ActiveTimer = PlatformTimer;
 
     pub(super) trait Timer<T> {
@@ -783,7 +783,7 @@ mod tests {
 
         // Generate 20 random values in range [-50, 50]
         // and add 10 outliers in each of two ranges [-1000, -200] and [200, 1000]
-        // This way IQR is no more than 100 and thresholds should be withing [-50, 50] range
+        // This way IQR is no more than 100 and thresholds should be within [-50, 50] range
         let mut values = vec![];
         values.extend((0..20).map(|_| rng.gen_range(-50.0..=50.)));
         values.extend((0..10).map(|_| rng.gen_range(-1000.0..=-200.0)));
@@ -825,7 +825,7 @@ mod tests {
             let stat = Summary::from(&values).unwrap();
 
             let sum = (i * (i + 1)) as f64 / 2.;
-            let expected_mean = sum as f64 / i as f64;
+            let expected_mean = sum / i as f64;
             let expected_variance = naive_variance(values.as_slice());
 
             assert_eq!(stat.min, 1);
@@ -923,7 +923,7 @@ mod tests {
         let n = values.len() as f64;
         let mean = f64::from(values.iter().copied().sum::<T>()) / n;
         let mut sum_of_squares = 0.;
-        for value in values.into_iter().copied() {
+        for value in values.iter().copied() {
             sum_of_squares += (f64::from(value) - mean).powi(2);
         }
         sum_of_squares / (n - 1.)

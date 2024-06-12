@@ -36,12 +36,12 @@ impl From<&str> for IndexedString {
     fn from(value: &str) -> Self {
         Self {
             string: value.to_owned(),
-            indices: build_char_indicies(value),
+            indices: build_char_indices(value),
         }
     }
 }
 
-pub fn build_char_indicies(text: &str) -> Vec<usize> {
+fn build_char_indices(text: &str) -> Vec<usize> {
     text.char_indices().map(|(idx, _)| idx).collect()
 }
 
@@ -103,6 +103,7 @@ pub fn str_take(n: usize, s: &str) -> usize {
 #[cfg_attr(feature = "align", repr(align(32)))]
 #[cfg_attr(feature = "align", inline(never))]
 #[allow(unused)]
+#[allow(clippy::ptr_arg)]
 pub fn sort_unstable<T: Ord + Copy>(input: &Vec<T>) -> T {
     let mut input = input.clone();
     input.sort_unstable();
@@ -112,6 +113,7 @@ pub fn sort_unstable<T: Ord + Copy>(input: &Vec<T>) -> T {
 #[cfg_attr(feature = "align", repr(align(32)))]
 #[cfg_attr(feature = "align", inline(never))]
 #[allow(unused)]
+#[allow(clippy::ptr_arg)]
 pub fn sort_stable<T: Ord + Copy>(input: &Vec<T>) -> T {
     let mut input = input.clone();
     input.sort();

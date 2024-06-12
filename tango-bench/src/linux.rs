@@ -46,7 +46,7 @@ pub enum Error {
 /// From 2.29 [dynamic loader throws an error](glibc) if `DF_1_PIE` flag is set in
 /// `DT_FLAG_1` tag on the `PT_DYNAMIC` section. Although the loading of executable
 /// files as a shared library was never an intended use case, through the years
-/// some applications adopted this technique and it is very convinient in the context
+/// some applications adopted this technique and it is very convenient in the context
 /// of paired benchmarking.
 ///
 /// Following method check if this flag is set and patch binary at runtime

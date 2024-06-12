@@ -37,7 +37,7 @@ enum BenchmarkMode {
         #[command(flatten)]
         bench_flags: CargoBenchFlags,
 
-        /// Path to the executable to test agains. Tango will test agains itself if no executable given
+        /// Path to the executable to test against. Tango will test against itself if no executable given
         path: Option<PathBuf>,
 
         /// write CSV dumps of all the measurements in a given location
