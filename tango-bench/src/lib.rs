@@ -651,8 +651,6 @@ where
             0.
         };
 
-        let a = 1. / 2.;
-
         Some(Summary {
             n: self.n,
             min: self.min,
