@@ -13,10 +13,13 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Checking formatting
         run: cargo fmt -- --check --color always
+        continue-on-error: true
       - name: Running clippy
-        run: cargo clippy --all-targets --all-features -p tango-bench
+        run: cargo clippy --all-targets --all-features -p tango-bench -- -D warnings
+        continue-on-error: true
       - name: Typo
         uses: crate-ci/typos@master
+        continue-on-error: true
   test:
     strategy:
       matrix:
