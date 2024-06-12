@@ -36,12 +36,12 @@ impl From<&str> for IndexedString {
     fn from(value: &str) -> Self {
         Self {
             string: value.to_owned(),
-            indices: build_char_indicies(value),
+            indices: build_char_indices(value),
         }
     }
 }
 
-pub fn build_char_indicies(text: &str) -> Vec<usize> {
+fn build_char_indices(text: &str) -> Vec<usize> {
     text.char_indices().map(|(idx, _)| idx).collect()
 }
 
