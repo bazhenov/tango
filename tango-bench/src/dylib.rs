@@ -301,7 +301,7 @@ pub fn __tango_init(benchmarks: Vec<Benchmark>) {
 /// Defines all the foundation types and exported symbols for the FFI communication API between two
 /// executables.
 ///
-/// Tango execution model implies simultaneous execution of the code from two binaries. To achive that
+/// Tango execution model implies simultaneous execution of the code from two binaries. To achieve that
 /// Tango benchmark is compiled in a way that executable is also a shared library (.dll, .so, .dylib). This
 /// way two executables can coexist in the single process at the same time.
 pub mod ffi {
