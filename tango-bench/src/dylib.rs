@@ -552,10 +552,10 @@ pub mod ffi {
         name: &'static str,
     ) -> Result<Symbol<'static, T>, Error> {
         unsafe {
-            let symbol: Symbol<'l, T> = library
+            let symbol = library
                 .get(name.as_bytes())
                 .map_err(Error::UnableToLoadSymbol)?;
-            Ok(mem::transmute(symbol))
+            Ok(mem::transmute::<Symbol<'l, T>, Symbol<'static, T>>(symbol))
         }
     }
 }

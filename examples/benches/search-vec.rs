@@ -7,6 +7,7 @@ mod common;
 
 #[cfg_attr(feature = "align", repr(align(32)))]
 #[cfg_attr(feature = "align", inline(never))]
+#[allow(clippy::ptr_arg)]
 fn search_vec<T: Copy + Ord>(haystack: &Vec<T>, needle: T) -> Option<T> {
     haystack
         .binary_search(&needle)

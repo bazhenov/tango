@@ -825,7 +825,7 @@ mod tests {
             let stat = Summary::from(&values).unwrap();
 
             let sum = (i * (i + 1)) as f64 / 2.;
-            let expected_mean = sum as f64 / i as f64;
+            let expected_mean = sum / i as f64;
             let expected_variance = naive_variance(values.as_slice());
 
             assert_eq!(stat.min, 1);
@@ -923,7 +923,7 @@ mod tests {
         let n = values.len() as f64;
         let mean = f64::from(values.iter().copied().sum::<T>()) / n;
         let mut sum_of_squares = 0.;
-        for value in values.into_iter().copied() {
+        for value in values.iter().copied() {
             sum_of_squares += (f64::from(value) - mean).powi(2);
         }
         sum_of_squares / (n - 1.)
