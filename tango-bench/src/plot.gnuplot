@@ -1,4 +1,4 @@
-set term svg enhanced size 1000,400 lw 1.5
+set term svg enhanced size 1000,400 lw 1.5 background rgb 'white'
 set output ARG2
 set grid
 

@@ -9,6 +9,8 @@ It used to be that benchmarking required a significant amount of time and numero
 
 Introducing Tango.rs, a novel benchmarking framework that employs [paired benchmarking](https://www.bazhenov.me/posts/paired-benchmarking/) to assess code performance. This approach capitalizes on the fact that it's far more efficient to measure the performance difference between two simultaneously executing functions compared to two functions executed consecutively.
 
+![](assets/sample.png)
+
 Features:
 
 - very high sensitivity to changes which allows to converge on results quicker than traditional (pointwise) approach. Often the fraction of a second is enough;

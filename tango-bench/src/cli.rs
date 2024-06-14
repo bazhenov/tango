@@ -14,12 +14,13 @@ use colorz::mode::{self, Mode};
 use core::fmt;
 use glob_match::glob_match;
 use std::{
-    env::{self, args},
+    env::{self, args, temp_dir},
     fmt::Display,
+    fs,
     io::{stderr, Write},
     num::NonZeroUsize,
-    path::PathBuf,
-    process::ExitCode,
+    path::{Path, PathBuf},
+    process::{Command, ExitCode, Stdio},
     str::FromStr,
     time::Duration,
 };
@@ -43,6 +44,10 @@ enum BenchmarkMode {
         /// write CSV dumps of all the measurements in a given location
         #[arg(short = 'd', long = "dump")]
         path_to_dump: Option<PathBuf>,
+
+        /// generate gnuplot graphs for each test (requires --dump [path] to be specified)
+        #[arg(short = 'g', long = "gnuplot")]
+        gnuplot: bool,
 
         /// seed for the random number generator or omit to use a random seed
         #[arg(long = "seed")]
@@ -172,6 +177,7 @@ pub fn run(mut settings: MeasurementSettings) -> Result<ExitCode> {
             time,
             filter_outliers,
             path_to_dump,
+            gnuplot,
             fail_threshold,
             fail_fast,
             significant_only,
@@ -231,6 +237,17 @@ pub fn run(mut settings: MeasurementSettings) -> Result<ExitCode> {
 
             let mut exit_code = ExitCode::SUCCESS;
 
+            if let Some(path) = &path_to_dump {
+                if !path.exists() {
+                    fs::create_dir_all(path)?;
+                }
+            }
+            if gnuplot && path_to_dump.is_none() {
+                eprintln!("warn: --gnuplot requires -d to be specified. No plots will be generated")
+            }
+
+            let mut sample_dumps = vec![];
+
             let test_names = spi_self
                 .tests()
                 .iter()
@@ -249,7 +266,7 @@ pub fn run(mut settings: MeasurementSettings) -> Result<ExitCode> {
                     continue;
                 }
 
-                let result = run_paired_test(
+                let (result, sample_dump) = run_paired_test(
                     &mut spi_lib,
                     &mut spi_self,
                     &func_name,
@@ -277,8 +294,62 @@ pub fn run(mut settings: MeasurementSettings) -> Result<ExitCode> {
                         }
                     }
                 }
+
+                if let Some(dump) = sample_dump {
+                    sample_dumps.push(dump);
+                }
             }
+
+            if let Some(path_to_dump) = path_to_dump {
+                if gnuplot && !sample_dumps.is_empty() {
+                    generate_plots(&path_to_dump, sample_dumps.as_slice())?;
+                }
+            }
+
             Ok(exit_code)
+        }
+    }
+}
+
+fn generate_plots(path: &Path, sample_dumps: &[PathBuf]) -> Result<()> {
+    let gnuplot_file = AutoDelete(temp_dir().join("tango-plot.gnuplot"));
+    fs::write(&*gnuplot_file, include_bytes!("plot.gnuplot"))?;
+    let gnuplot_file_str = gnuplot_file.to_str().unwrap();
+
+    for input in sample_dumps {
+        let csv_input = input.to_str().unwrap();
+        let svg_path = path.join(input.with_extension("svg"));
+        let svg_path = svg_path.to_str().unwrap();
+        let cmd = Command::new("gnuplot")
+            .args(["-c", gnuplot_file_str, csv_input, svg_path])
+            .stdin(Stdio::null())
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .status()
+            .context("Failed to execute gnuplot")?;
+
+        if !cmd.success() {
+            bail!("gnuplot command failed");
+        }
+    }
+    Ok(())
+}
+
+// Automatically removes a file when goes out of scope
+struct AutoDelete(PathBuf);
+
+impl std::ops::Deref for AutoDelete {
+    type Target = PathBuf;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl Drop for AutoDelete {
+    fn drop(&mut self) {
+        if let Err(e) = fs::remove_file(&self.0) {
+            eprintln!("Failed to delete file {}: {}", self.0.display(), e);
         }
     }
 }
@@ -320,7 +391,7 @@ mod commands {
     use alloca::with_alloca;
     use rand::{distributions, rngs::SmallRng, Rng, SeedableRng};
     use std::{
-        fs::{self, File},
+        fs::File,
         io::{self, BufWriter},
         mem,
         path::Path,
@@ -377,8 +448,7 @@ mod commands {
     /// where `b_1..b_n` are baseline absolute time (in nanoseconds) measurements
     /// and `c_1..c_n` are candidate time measurements
     ///
-    /// Returns a percentage difference in performance of two functions if this change is
-    /// statistically significant
+    /// Returns a statistical results of a test run and path to raw samples of sample dump was requested
     pub fn run_paired_test(
         baseline: &mut Spi,
         candidate: &mut Spi,
@@ -387,7 +457,7 @@ mod commands {
         seed: Option<u64>,
         loop_mode: LoopMode,
         samples_dump_path: Option<&PathBuf>,
-    ) -> Result<RunResult> {
+    ) -> Result<(RunResult, Option<PathBuf>)> {
         const TIME_SLICE_MS: u32 = 10;
 
         let firewall = settings
@@ -510,24 +580,33 @@ mod commands {
         )
         .ok_or(Error::NoMeasurements)?;
 
-        if let Some(path) = samples_dump_path {
-            if !path.exists() {
-                fs::create_dir_all(path)?;
-            }
-            let file_name = format!("{}.csv", test_name.replace('/', "-"));
-            let file_path = path.join(file_name);
-            let values = a_func
-                .samples
-                .iter()
-                .copied()
-                .zip(b_func.samples.iter().copied())
-                .zip(sample_iterations.iter().copied())
-                .map(|((a, b), c)| (a, b, c));
-            write_raw_measurements(file_path, values)
-                .context("Unable to write raw measurements")?;
-        }
+        let samples_path = if let Some(path) = samples_dump_path {
+            let file_path = write_samples(path, test_name, a_func, b_func, sample_iterations)?;
+            Some(file_path)
+        } else {
+            None
+        };
 
-        Ok(run_result)
+        Ok((run_result, samples_path))
+    }
+
+    fn write_samples(
+        path: &Path,
+        test_name: &str,
+        a_func: &TestedFunction,
+        b_func: &TestedFunction,
+        iterations: Vec<usize>,
+    ) -> Result<PathBuf> {
+        let file_name = format!("{}.csv", test_name.replace('/', "-"));
+        let file_path = path.join(file_name);
+        let s_samples = a_func.samples.iter().copied();
+        let b_samples = b_func.samples.iter().copied();
+        let values = s_samples
+            .zip(b_samples)
+            .zip(iterations.iter().copied())
+            .map(|((a, b), c)| (a, b, c));
+        write_csv(&file_path, values).context("Unable to write raw measurements")?;
+        Ok(file_path)
     }
 
     fn prepare_func(
@@ -555,12 +634,11 @@ mod commands {
         }
     }
 
-    fn write_raw_measurements<A: Display, B: Display, C: Display>(
+    fn write_csv<A: Display, B: Display, C: Display>(
         path: impl AsRef<Path>,
         values: impl IntoIterator<Item = (A, B, C)>,
     ) -> io::Result<()> {
         let mut file = BufWriter::new(File::create(path)?);
-
         for (a, b, c) in values {
             writeln!(&mut file, "{},{},{}", a, b, c)?;
         }
