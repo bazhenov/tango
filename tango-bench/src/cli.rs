@@ -19,7 +19,7 @@ use std::{
     fs,
     io::{stderr, Write},
     num::NonZeroUsize,
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::{Command, ExitCode, Stdio},
     str::FromStr,
     time::Duration,
@@ -311,7 +311,7 @@ pub fn run(mut settings: MeasurementSettings) -> Result<ExitCode> {
     }
 }
 
-fn generate_plots(path: &PathBuf, sample_dumps: &[PathBuf]) -> Result<()> {
+fn generate_plots(path: &Path, sample_dumps: &[PathBuf]) -> Result<()> {
     let gnuplot_file = AutoDelete(temp_dir().join("tango-plot.gnuplot"));
     fs::write(&*gnuplot_file, include_bytes!("plot.gnuplot"))?;
     let gnuplot_file_str = gnuplot_file.to_str().unwrap();
@@ -391,7 +391,7 @@ mod commands {
     use alloca::with_alloca;
     use rand::{distributions, rngs::SmallRng, Rng, SeedableRng};
     use std::{
-        fs::{self, File},
+        fs::File,
         io::{self, BufWriter},
         mem,
         path::Path,
@@ -448,8 +448,7 @@ mod commands {
     /// where `b_1..b_n` are baseline absolute time (in nanoseconds) measurements
     /// and `c_1..c_n` are candidate time measurements
     ///
-    /// Returns a statistical results of a test run and path to raw samples of sample dumo
-    /// was requested
+    /// Returns a statistical results of a test run and path to raw samples of sample dump was requested
     pub fn run_paired_test(
         baseline: &mut Spi,
         candidate: &mut Spi,
@@ -592,7 +591,7 @@ mod commands {
     }
 
     fn write_samples(
-        path: &PathBuf,
+        path: &Path,
         test_name: &str,
         a_func: &TestedFunction,
         b_func: &TestedFunction,
