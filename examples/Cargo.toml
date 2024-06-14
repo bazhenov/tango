@@ -33,3 +33,4 @@ harness = false
 
 [features]
 align = []
+prefetch = ["ordsearch/nightly"]
