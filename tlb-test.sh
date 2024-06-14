@@ -2,8 +2,8 @@
 
 set -eo pipefail
 
-cargo export target/benchmarks -t no_prefetch -- bench --bench='search-ord'
-cargo export target/benchmarks -t prefetch -- bench --bench='search-ord' --features=prefetch
+cargo +nightly export target/benchmarks -t no_prefetch -- bench --bench='search-ord'
+cargo +nightly export target/benchmarks -t prefetch -- bench --bench='search-ord' --features=prefetch
 
 sudo ./hw_perf/hw_perf -- \
     target/benchmarks/search_ord-prefetch compare target/benchmarks/search_ord-no_prefetch \
