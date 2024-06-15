@@ -1,9 +1,8 @@
 //! Contains functionality of a `cargo bench` harness
-
-use self::commands::run_paired_test;
 use crate::{
-    dylib::{Spi, SpiModeKind},
-    Error, MeasurementSettings, SampleLengthKind,
+    dylib::{FunctionIdx, Spi, SpiModeKind},
+    CacheFirewall, Error, FlatSampleLength, LinearSampleLength, MeasurementSettings,
+    RandomSampleLength, SampleLength, SampleLengthKind,
 };
 use anyhow::{bail, Context};
 use clap::Parser;
@@ -31,85 +30,140 @@ enum BenchmarkMode {
         #[command(flatten)]
         bench_flags: CargoBenchFlags,
     },
-    Compare {
-        #[command(flatten)]
-        bench_flags: CargoBenchFlags,
+    Compare(PairedOpts),
+    Solo(SoloOpts),
+}
 
-        /// Path to the executable to test against. Tango will test against itself if no executable given
-        path: Option<PathBuf>,
+#[derive(Parser, Debug)]
+struct PairedOpts {
+    #[command(flatten)]
+    bench_flags: CargoBenchFlags,
 
-        /// write CSV dumps of all the measurements in a given location
-        #[arg(short = 'd', long = "dump")]
-        path_to_dump: Option<PathBuf>,
+    /// Path to the executable to test against. Tango will test against itself if no executable given
+    path: Option<PathBuf>,
 
-        /// generate gnuplot graphs for each test (requires --dump [path] to be specified)
-        #[arg(short = 'g', long = "gnuplot")]
-        gnuplot: bool,
+    /// write CSV dumps of all the measurements in a given location
+    #[arg(short = 'd', long = "dump")]
+    path_to_dump: Option<PathBuf>,
 
-        /// seed for the random number generator or omit to use a random seed
-        #[arg(long = "seed")]
-        seed: Option<u64>,
+    /// generate gnuplot graphs for each test (requires --dump [path] to be specified)
+    #[arg(short = 'g', long = "gnuplot")]
+    gnuplot: bool,
 
-        /// Number of samples to take for each test
-        #[arg(short = 's', long = "samples")]
-        samples: Option<NonZeroUsize>,
+    /// seed for the random number generator or omit to use a random seed
+    #[arg(long = "seed")]
+    seed: Option<u64>,
 
-        /// The strategy to decide the number of iterations to run for each sample (values: flat, linear, random)
-        #[arg(long = "sampler")]
-        sampler: Option<SampleLengthKind>,
+    /// Number of samples to take for each test
+    #[arg(short = 's', long = "samples")]
+    samples: Option<NonZeroUsize>,
 
-        /// Duration of each sample in seconds
-        #[arg(short = 't', long = "time")]
-        time: Option<f64>,
+    /// The strategy to decide the number of iterations to run for each sample (values: flat, linear, random)
+    #[arg(long = "sampler")]
+    sampler: Option<SampleLengthKind>,
 
-        /// Fail if the difference between the two measurements is greater than the given threshold in percent
-        #[arg(long = "fail-threshold")]
-        fail_threshold: Option<f64>,
+    /// Duration of each sample in seconds
+    #[arg(short = 't', long = "time")]
+    time: Option<f64>,
 
-        /// Should we terminate early if --fail-threshold is exceed
-        #[arg(long = "fail-fast")]
-        fail_fast: bool,
+    /// Fail if the difference between the two measurements is greater than the given threshold in percent
+    #[arg(long = "fail-threshold")]
+    fail_threshold: Option<f64>,
 
-        /// Perform a read of a dummy data between samsples to minimize the effect of cache on the performance
-        /// (size in Kbytes)
-        #[arg(long = "cache-firewall")]
-        cache_firewall: Option<usize>,
+    /// Should we terminate early if --fail-threshold is exceed
+    #[arg(long = "fail-fast")]
+    fail_fast: bool,
 
-        /// Perform a randomized offset to the stack frame for each sample.
-        /// (size in bytes)
-        #[arg(long = "randomize-stack")]
-        randomize_stack: Option<usize>,
+    /// Perform a read of a dummy data between samsples to minimize the effect of cache on the performance
+    /// (size in Kbytes)
+    #[arg(long = "cache-firewall")]
+    cache_firewall: Option<usize>,
 
-        /// Delegate control back to the OS before each sample
-        #[arg(long = "yield-before-sample")]
-        yield_before_sample: Option<bool>,
+    /// Perform a randomized offset to the stack frame for each sample.
+    /// (size in bytes)
+    #[arg(long = "randomize-stack")]
+    randomize_stack: Option<usize>,
 
-        /// Filter tests by name (eg. '*/{sorted,unsorted}/[0-9]*')
-        #[arg(short = 'f', long = "filter")]
-        filter: Option<String>,
+    /// Delegate control back to the OS before each sample
+    #[arg(long = "yield-before-sample")]
+    yield_before_sample: Option<bool>,
 
-        /// Report only statistically significant results
-        #[arg(short = 'g', long = "significant-only", default_value_t = false)]
-        significant_only: bool,
+    /// Filter tests by name (eg. '*/{sorted,unsorted}/[0-9]*')
+    #[arg(short = 'f', long = "filter")]
+    filter: Option<String>,
 
-        /// Enable outlier detection
-        #[arg(short = 'o', long = "filter-outliers")]
-        filter_outliers: bool,
+    /// Report only statistically significant results
+    #[arg(short = 'g', long = "significant-only", default_value_t = false)]
+    significant_only: bool,
 
-        /// Perform warmup iterations before taking measurements (1/10 of sample iterations)
-        #[arg(long = "warmup")]
-        warmup_enabled: Option<bool>,
+    /// Enable outlier detection
+    #[arg(short = 'o', long = "filter-outliers")]
+    filter_outliers: bool,
 
-        #[arg(short = 'p', long = "parallel")]
-        parallel: bool,
+    /// Perform warmup iterations before taking measurements (1/10 of sample iterations)
+    #[arg(long = "warmup")]
+    warmup_enabled: Option<bool>,
 
-        /// Quiet mode
-        #[arg(short = 'q')]
-        quiet: bool,
+    #[arg(short = 'p', long = "parallel")]
+    parallel: bool,
 
-        #[arg(short = 'v', long = "verbose", default_value_t = false)]
-        verbose: bool,
-    },
+    /// Quiet mode
+    #[arg(short = 'q')]
+    quiet: bool,
+
+    #[arg(short = 'v', long = "verbose", default_value_t = false)]
+    verbose: bool,
+}
+
+#[derive(Parser, Debug)]
+struct SoloOpts {
+    #[command(flatten)]
+    bench_flags: CargoBenchFlags,
+
+    /// seed for the random number generator or omit to use a random seed
+    #[arg(long = "seed")]
+    seed: Option<u64>,
+
+    /// Number of samples to take for each test
+    #[arg(short = 's', long = "samples")]
+    samples: Option<NonZeroUsize>,
+
+    /// The strategy to decide the number of iterations to run for each sample (values: flat, linear, random)
+    #[arg(long = "sampler")]
+    sampler: Option<SampleLengthKind>,
+
+    /// Duration of each sample in seconds
+    #[arg(short = 't', long = "time")]
+    time: Option<f64>,
+
+    /// Perform a read of a dummy data between samsples to minimize the effect of cache on the performance
+    /// (size in Kbytes)
+    #[arg(long = "cache-firewall")]
+    cache_firewall: Option<usize>,
+
+    /// Perform a randomized offset to the stack frame for each sample.
+    /// (size in bytes)
+    #[arg(long = "randomize-stack")]
+    randomize_stack: Option<usize>,
+
+    /// Delegate control back to the OS before each sample
+    #[arg(long = "yield-before-sample")]
+    yield_before_sample: Option<bool>,
+
+    /// Filter tests by name (eg. '*/{sorted,unsorted}/[0-9]*')
+    #[arg(short = 'f', long = "filter")]
+    filter: Option<String>,
+
+    /// Perform warmup iterations before taking measurements (1/10 of sample iterations)
+    #[arg(long = "warmup")]
+    warmup_enabled: Option<bool>,
+
+    /// Quiet mode
+    #[arg(short = 'q')]
+    quiet: bool,
+
+    #[arg(short = 'v', long = "verbose", default_value_t = false)]
+    verbose: bool,
 }
 
 #[derive(Parser, Debug)]
@@ -145,7 +199,7 @@ struct CargoBenchFlags {
     bench: bool,
 }
 
-pub fn run(mut settings: MeasurementSettings) -> Result<ExitCode> {
+pub fn run(settings: MeasurementSettings) -> Result<ExitCode> {
     let opts = Opts::parse();
 
     match Mode::from_str(&opts.coloring_mode) {
@@ -165,170 +219,9 @@ pub fn run(mut settings: MeasurementSettings) -> Result<ExitCode> {
             }
             Ok(ExitCode::SUCCESS)
         }
-        BenchmarkMode::Compare {
-            bench_flags: _,
-            path,
-            verbose,
-            filter,
-            samples,
-            time,
-            filter_outliers,
-            path_to_dump,
-            gnuplot,
-            fail_threshold,
-            fail_fast,
-            significant_only,
-            seed,
-            sampler,
-            cache_firewall,
-            yield_before_sample,
-            warmup_enabled,
-            parallel,
-            quiet,
-            randomize_stack,
-        } => {
-            let mut path = path
-                .or_else(|| args().next().map(PathBuf::from))
-                .expect("No path given");
-            if path.is_relative() {
-                // Resolving paths relative to PWD if given
-                if let Ok(pwd) = env::var("PWD") {
-                    path = PathBuf::from(pwd).join(path)
-                }
-            };
-
-            #[cfg(target_os = "linux")]
-            let path = crate::linux::patch_pie_binary_if_needed(&path)?.unwrap_or(path);
-
-            let mode = if parallel {
-                SpiModeKind::Asynchronous
-            } else {
-                SpiModeKind::Synchronous
-            };
-
-            let mut spi_self = Spi::for_self(mode).ok_or(Error::SpiSelfWasMoved)?;
-            let mut spi_lib = Spi::for_library(path, mode);
-
-            settings.filter_outliers = filter_outliers;
-            settings.cache_firewall = cache_firewall;
-            settings.randomize_stack = randomize_stack;
-
-            if let Some(warmup_enabled) = warmup_enabled {
-                settings.warmup_enabled = warmup_enabled;
-            }
-            if let Some(yield_before_sample) = yield_before_sample {
-                settings.yield_before_sample = yield_before_sample;
-            }
-            if let Some(sampler) = sampler {
-                settings.sampler_type = sampler;
-            }
-
-            let filter = filter.as_deref().unwrap_or("");
-            let loop_mode = create_loop_mode(samples, time)?;
-
-            let mut exit_code = ExitCode::SUCCESS;
-
-            if let Some(path) = &path_to_dump {
-                if !path.exists() {
-                    fs::create_dir_all(path)?;
-                }
-            }
-            if gnuplot && path_to_dump.is_none() {
-                eprintln!("warn: --gnuplot requires -d to be specified. No plots will be generated")
-            }
-
-            let mut sample_dumps = vec![];
-
-            let test_names = spi_self
-                .tests()
-                .iter()
-                .map(|t| &t.name)
-                .cloned()
-                .collect::<Vec<_>>();
-            for func_name in test_names {
-                if !filter.is_empty() && !glob_match(filter, &func_name) {
-                    continue;
-                }
-
-                if spi_lib.lookup(&func_name).is_none() {
-                    if !quiet {
-                        writeln!(stderr(), "{} skipped...", &func_name)?;
-                    }
-                    continue;
-                }
-
-                let (result, sample_dump) = run_paired_test(
-                    &mut spi_lib,
-                    &mut spi_self,
-                    &func_name,
-                    settings,
-                    seed,
-                    loop_mode,
-                    path_to_dump.as_ref(),
-                )?;
-
-                if let Some(dump) = sample_dump {
-                    sample_dumps.push(dump);
-                }
-
-                if result.diff_estimate.significant || !significant_only {
-                    if verbose {
-                        reporting::verbose_reporter(&result);
-                    } else {
-                        reporting::default_reporter(&result);
-                    }
-                }
-
-                if result.diff_estimate.significant {
-                    if let Some(threshold) = fail_threshold {
-                        if result.diff_estimate.pct >= threshold {
-                            eprintln!(
-                                "[ERROR] Performance regressed {:+.1}% >= {:.1}%  -  test: {}",
-                                result.diff_estimate.pct, threshold, func_name
-                            );
-                            if fail_fast {
-                                return Ok(ExitCode::FAILURE);
-                            } else {
-                                exit_code = ExitCode::FAILURE;
-                            }
-                        }
-                    }
-                }
-            }
-
-            if let Some(path_to_dump) = path_to_dump {
-                if gnuplot && !sample_dumps.is_empty() {
-                    generate_plots(&path_to_dump, sample_dumps.as_slice())?;
-                }
-            }
-
-            Ok(exit_code)
-        }
+        BenchmarkMode::Compare(opts) => paired_test::run_test(opts, settings),
+        BenchmarkMode::Solo(opts) => solo_test::run_test(opts, settings),
     }
-}
-
-fn generate_plots(path: &Path, sample_dumps: &[PathBuf]) -> Result<()> {
-    let gnuplot_file = AutoDelete(temp_dir().join("tango-plot.gnuplot"));
-    fs::write(&*gnuplot_file, include_bytes!("plot.gnuplot"))?;
-    let gnuplot_file_str = gnuplot_file.to_str().unwrap();
-
-    for input in sample_dumps {
-        let csv_input = input.to_str().unwrap();
-        let svg_path = path.join(input.with_extension("svg"));
-        let svg_path = svg_path.to_str().unwrap();
-        let cmd = Command::new("gnuplot")
-            .args(["-c", gnuplot_file_str, csv_input, svg_path])
-            .stdin(Stdio::null())
-            .stdout(Stdio::inherit())
-            .stderr(Stdio::inherit())
-            .status()
-            .context("Failed to execute gnuplot")?;
-
-        if !cmd.success() {
-            bail!("gnuplot command failed");
-        }
-    }
-    Ok(())
 }
 
 // Automatically removes a file when goes out of scope
@@ -375,59 +268,305 @@ impl LoopMode {
     }
 }
 
-mod commands {
-
+mod solo_test {
     use super::*;
-    use crate::{
-        calculate_run_result,
-        dylib::{FunctionIdx, Spi},
-        CacheFirewall, FlatSampleLength, LinearSampleLength, RandomSampleLength, RunResult,
-        SampleLength, SampleLengthKind,
-    };
+    use crate::{dylib::Spi, CacheFirewall, Summary};
     use alloca::with_alloca;
     use rand::{distributions, rngs::SmallRng, Rng, SeedableRng};
-    use std::{
-        fs::File,
-        io::{self, BufWriter},
-        mem,
-        path::Path,
-    };
+    use std::thread;
 
-    struct TestedFunction<'a> {
-        spi: &'a mut Spi,
-        samples: Vec<u64>,
+    pub(super) fn run_test(opts: SoloOpts, mut settings: MeasurementSettings) -> Result<ExitCode> {
+        let SoloOpts {
+            bench_flags: _,
+            quiet: _,
+            verbose: _,
+            filter,
+            samples,
+            time,
+            seed,
+            sampler,
+            cache_firewall,
+            yield_before_sample,
+            warmup_enabled,
+            randomize_stack,
+        } = opts;
+
+        let mut spi_self = Spi::for_self(SpiModeKind::Synchronous).ok_or(Error::SpiSelfWasMoved)?;
+
+        settings.cache_firewall = cache_firewall;
+        settings.randomize_stack = randomize_stack;
+
+        if let Some(warmup_enabled) = warmup_enabled {
+            settings.warmup_enabled = warmup_enabled;
+        }
+        if let Some(yield_before_sample) = yield_before_sample {
+            settings.yield_before_sample = yield_before_sample;
+        }
+        if let Some(sampler) = sampler {
+            settings.sampler_type = sampler;
+        }
+
+        let filter = filter.as_deref().unwrap_or("");
+        let loop_mode = create_loop_mode(samples, time)?;
+
+        let test_names = spi_self
+            .tests()
+            .iter()
+            .map(|t| &t.name)
+            .cloned()
+            .collect::<Vec<_>>();
+        for func_name in test_names {
+            if !filter.is_empty() && !glob_match(filter, &func_name) {
+                continue;
+            }
+
+            let result = run_solo_test(&mut spi_self, &func_name, settings, seed, loop_mode)?;
+
+            reporting::default_reporter_solo(&func_name, &result);
+        }
+
+        Ok(ExitCode::SUCCESS)
     }
 
-    impl<'a> TestedFunction<'a> {
-        fn new(spi: &'a mut Spi, func: FunctionIdx) -> Self {
-            spi.select(func);
-            TestedFunction {
-                spi,
-                samples: Vec::new(),
+    fn run_solo_test(
+        spi: &mut Spi,
+        test_name: &str,
+        settings: MeasurementSettings,
+        seed: Option<u64>,
+        loop_mode: LoopMode,
+    ) -> Result<Summary<f64>> {
+        const TIME_SLICE_MS: u32 = 10;
+
+        let firewall = settings
+            .cache_firewall
+            .map(|s| s * 1024)
+            .map(CacheFirewall::new);
+        let baseline_func = spi.lookup(test_name).ok_or(Error::InvalidTestName)?;
+
+        let mut spi_func = TestedFunction::new(spi, baseline_func.idx);
+
+        let seed = seed.unwrap_or_else(rand::random);
+
+        spi_func.prepare_state(seed);
+        let mut iterations_per_sample = (spi_func.estimate_iterations(TIME_SLICE_MS) / 2).max(1);
+        let mut sampler = create_sampler(&settings, seed);
+
+        let mut rng = SmallRng::seed_from_u64(seed);
+        let stack_offset_distr = settings
+            .randomize_stack
+            .map(|offset| distributions::Uniform::new(0, offset));
+
+        let mut i = 0;
+
+        let mut sample_iterations = vec![];
+
+        if let LoopMode::Samples(samples) = loop_mode {
+            sample_iterations.reserve(samples);
+            spi_func.samples.reserve(samples);
+        }
+
+        let mut loop_time = Duration::from_secs(0);
+        let mut loop_iterations = 0;
+        while loop_mode.should_continue(i, loop_time) {
+            if loop_time > Duration::from_millis(100) {
+                // correcting time slice estimates
+                iterations_per_sample =
+                    loop_iterations * TIME_SLICE_MS as usize / loop_time.as_millis() as usize;
+            }
+            let iterations = sampler.next_sample_iterations(i, iterations_per_sample);
+            loop_iterations += iterations;
+            let warmup_iterations = settings.warmup_enabled.then(|| (iterations / 10).max(1));
+
+            if settings.yield_before_sample {
+                thread::yield_now();
+            }
+
+            let prepare_state_seed = (i % settings.samples_per_haystack == 0).then_some(seed);
+
+            prepare_func(
+                prepare_state_seed,
+                &mut spi_func,
+                warmup_iterations,
+                firewall.as_ref(),
+            );
+
+            // Allocate a custom stack frame during runtime, to try to offset alignment of the stack.
+            if let Some(distr) = stack_offset_distr {
+                with_alloca(rng.sample(distr), |_| {
+                    spi_func.measure(iterations);
+                });
+            } else {
+                spi_func.measure(iterations);
+            }
+
+            loop_time += Duration::from_nanos(spi_func.read_sample());
+            sample_iterations.push(iterations);
+            i += 1;
+        }
+
+        let samples = spi_func
+            .samples
+            .iter()
+            .zip(sample_iterations.iter())
+            .map(|(sample, iterations)| *sample as f64 / *iterations as f64)
+            .collect::<Vec<_>>();
+        Ok(Summary::from(&samples).unwrap())
+    }
+}
+
+mod paired_test {
+    use super::*;
+    use crate::{calculate_run_result, CacheFirewall, RunResult};
+    use alloca::with_alloca;
+    use fs::File;
+    use rand::{distributions, rngs::SmallRng, Rng, SeedableRng};
+    use std::{
+        io::{self, BufWriter},
+        mem, thread,
+    };
+
+    pub(super) fn run_test(
+        opts: PairedOpts,
+        mut settings: MeasurementSettings,
+    ) -> Result<ExitCode> {
+        let PairedOpts {
+            bench_flags: _,
+            path,
+            verbose,
+            filter,
+            samples,
+            time,
+            filter_outliers,
+            path_to_dump,
+            gnuplot,
+            fail_threshold,
+            fail_fast,
+            significant_only,
+            seed,
+            sampler,
+            cache_firewall,
+            yield_before_sample,
+            warmup_enabled,
+            parallel,
+            quiet,
+            randomize_stack,
+        } = opts;
+        let mut path = path
+            .or_else(|| args().next().map(PathBuf::from))
+            .expect("No path given");
+        if path.is_relative() {
+            // Resolving paths relative to PWD if given
+            if let Ok(pwd) = env::var("PWD") {
+                path = PathBuf::from(pwd).join(path)
+            }
+        };
+
+        #[cfg(target_os = "linux")]
+        let path = crate::linux::patch_pie_binary_if_needed(&path)?.unwrap_or(path);
+
+        let mode = if parallel {
+            SpiModeKind::Asynchronous
+        } else {
+            SpiModeKind::Synchronous
+        };
+
+        let mut spi_self = Spi::for_self(mode).ok_or(Error::SpiSelfWasMoved)?;
+        let mut spi_lib = Spi::for_library(path, mode);
+
+        settings.filter_outliers = filter_outliers;
+        settings.cache_firewall = cache_firewall;
+        settings.randomize_stack = randomize_stack;
+
+        if let Some(warmup_enabled) = warmup_enabled {
+            settings.warmup_enabled = warmup_enabled;
+        }
+        if let Some(yield_before_sample) = yield_before_sample {
+            settings.yield_before_sample = yield_before_sample;
+        }
+        if let Some(sampler) = sampler {
+            settings.sampler_type = sampler;
+        }
+
+        let filter = filter.as_deref().unwrap_or("");
+        let loop_mode = create_loop_mode(samples, time)?;
+
+        let mut exit_code = ExitCode::SUCCESS;
+
+        if let Some(path) = &path_to_dump {
+            if !path.exists() {
+                fs::create_dir_all(path)?;
+            }
+        }
+        if gnuplot && path_to_dump.is_none() {
+            eprintln!("warn: --gnuplot requires -d to be specified. No plots will be generated")
+        }
+
+        let mut sample_dumps = vec![];
+
+        let test_names = spi_self
+            .tests()
+            .iter()
+            .map(|t| &t.name)
+            .cloned()
+            .collect::<Vec<_>>();
+        for func_name in test_names {
+            if !filter.is_empty() && !glob_match(filter, &func_name) {
+                continue;
+            }
+
+            if spi_lib.lookup(&func_name).is_none() {
+                if !quiet {
+                    writeln!(stderr(), "{} skipped...", &func_name)?;
+                }
+                continue;
+            }
+
+            let (result, sample_dump) = run_paired_test(
+                &mut spi_lib,
+                &mut spi_self,
+                &func_name,
+                settings,
+                seed,
+                loop_mode,
+                path_to_dump.as_ref(),
+            )?;
+
+            if let Some(dump) = sample_dump {
+                sample_dumps.push(dump);
+            }
+
+            if result.diff_estimate.significant || !significant_only {
+                if verbose {
+                    reporting::verbose_reporter(&result);
+                } else {
+                    reporting::default_reporter(&result);
+                }
+            }
+
+            if result.diff_estimate.significant {
+                if let Some(threshold) = fail_threshold {
+                    if result.diff_estimate.pct >= threshold {
+                        eprintln!(
+                            "[ERROR] Performance regressed {:+.1}% >= {:.1}%  -  test: {}",
+                            result.diff_estimate.pct, threshold, func_name
+                        );
+                        if fail_fast {
+                            return Ok(ExitCode::FAILURE);
+                        } else {
+                            exit_code = ExitCode::FAILURE;
+                        }
+                    }
+                }
             }
         }
 
-        fn measure(&mut self, iterations: usize) {
-            self.spi.measure(iterations);
+        if let Some(path_to_dump) = path_to_dump {
+            if gnuplot && !sample_dumps.is_empty() {
+                generate_plots(&path_to_dump, sample_dumps.as_slice())?;
+            }
         }
 
-        fn read_sample(&mut self) -> u64 {
-            let sample = self.spi.read_sample();
-            self.samples.push(sample);
-            sample
-        }
-
-        fn run(&mut self, iterations: usize) -> u64 {
-            self.spi.run(iterations)
-        }
-
-        fn prepare_state(&mut self, seed: u64) {
-            self.spi.prepare_state(seed);
-        }
-
-        fn estimate_iterations(&mut self, time_ms: u32) -> usize {
-            self.spi.estimate_iterations(time_ms)
-        }
+        Ok(exit_code)
     }
 
     /// Measure the difference in performance of two functions
@@ -445,7 +584,7 @@ mod commands {
     /// and `c_1..c_n` are candidate time measurements
     ///
     /// Returns a statistical results of a test run and path to raw samples of sample dump was requested
-    pub fn run_paired_test(
+    fn run_paired_test(
         baseline: &mut Spi,
         candidate: &mut Spi,
         test_name: &str,
@@ -522,7 +661,7 @@ mod commands {
             }
 
             if settings.yield_before_sample {
-                std::thread::yield_now();
+                thread::yield_now();
             }
 
             let prepare_state_seed = (i % settings.samples_per_haystack == 0).then_some(seed);
@@ -605,31 +744,6 @@ mod commands {
         Ok(file_path)
     }
 
-    fn prepare_func(
-        prepare_state_seed: Option<u64>,
-        f: &mut TestedFunction,
-        warmup_iterations: Option<usize>,
-        firewall: Option<&CacheFirewall>,
-    ) {
-        if let Some(seed) = prepare_state_seed {
-            f.prepare_state(seed);
-            if let Some(firewall) = firewall {
-                firewall.issue_read();
-            }
-        }
-        if let Some(warmup_iterations) = warmup_iterations {
-            f.run(warmup_iterations);
-        }
-    }
-
-    fn create_sampler(settings: &MeasurementSettings, seed: u64) -> Box<dyn SampleLength> {
-        match settings.sampler_type {
-            SampleLengthKind::Flat => Box::new(FlatSampleLength::new(settings)),
-            SampleLengthKind::Linear => Box::new(LinearSampleLength::new(settings)),
-            SampleLengthKind::Random => Box::new(RandomSampleLength::new(settings, seed)),
-        }
-    }
-
     fn write_csv<A: Display, B: Display, C: Display>(
         path: impl AsRef<Path>,
         values: impl IntoIterator<Item = (A, B, C)>,
@@ -640,11 +754,35 @@ mod commands {
         }
         Ok(())
     }
+
+    fn generate_plots(path: &Path, sample_dumps: &[PathBuf]) -> Result<()> {
+        let gnuplot_file = AutoDelete(temp_dir().join("tango-plot.gnuplot"));
+        fs::write(&*gnuplot_file, include_bytes!("plot.gnuplot"))?;
+        let gnuplot_file_str = gnuplot_file.to_str().unwrap();
+
+        for input in sample_dumps {
+            let csv_input = input.to_str().unwrap();
+            let svg_path = path.join(input.with_extension("svg"));
+            let svg_path = svg_path.to_str().unwrap();
+            let cmd = Command::new("gnuplot")
+                .args(["-c", gnuplot_file_str, csv_input, svg_path])
+                .stdin(Stdio::null())
+                .stdout(Stdio::inherit())
+                .stderr(Stdio::inherit())
+                .status()
+                .context("Failed to execute gnuplot")?;
+
+            if !cmd.success() {
+                bail!("gnuplot command failed");
+            }
+        }
+        Ok(())
+    }
 }
 
-pub mod reporting {
+mod reporting {
     use crate::cli::{colorize, HumanTime};
-    use crate::RunResult;
+    use crate::{RunResult, Summary};
     use colorz::{mode::Stream, Colorize};
 
     pub(super) fn verbose_reporter(results: &RunResult) {
@@ -731,6 +869,79 @@ pub mod reporting {
             colorize("%", significant, candidate_faster),
             if significant { "*" } else { "" },
         )
+    }
+
+    pub(super) fn default_reporter_solo(name: &str, results: &Summary<f64>) {
+        println!(
+            "{:50}  [ {:>8} ... {:>8} ... {:>8} ]  stddev: {:>8}",
+            name,
+            HumanTime(results.min),
+            HumanTime(results.mean),
+            HumanTime(results.max),
+            HumanTime(results.variance.sqrt()),
+        )
+    }
+}
+
+struct TestedFunction<'a> {
+    pub(crate) spi: &'a mut Spi,
+    pub(crate) samples: Vec<u64>,
+}
+
+impl<'a> TestedFunction<'a> {
+    pub(crate) fn new(spi: &'a mut Spi, func: FunctionIdx) -> Self {
+        spi.select(func);
+        TestedFunction {
+            spi,
+            samples: Vec::new(),
+        }
+    }
+
+    pub(crate) fn measure(&mut self, iterations: usize) {
+        self.spi.measure(iterations);
+    }
+
+    pub(crate) fn read_sample(&mut self) -> u64 {
+        let sample = self.spi.read_sample();
+        self.samples.push(sample);
+        sample
+    }
+
+    pub(crate) fn run(&mut self, iterations: usize) -> u64 {
+        self.spi.run(iterations)
+    }
+
+    pub(crate) fn prepare_state(&mut self, seed: u64) {
+        self.spi.prepare_state(seed);
+    }
+
+    pub(crate) fn estimate_iterations(&mut self, time_ms: u32) -> usize {
+        self.spi.estimate_iterations(time_ms)
+    }
+}
+
+fn prepare_func(
+    prepare_state_seed: Option<u64>,
+    f: &mut TestedFunction,
+    warmup_iterations: Option<usize>,
+    firewall: Option<&CacheFirewall>,
+) {
+    if let Some(seed) = prepare_state_seed {
+        f.prepare_state(seed);
+        if let Some(firewall) = firewall {
+            firewall.issue_read();
+        }
+    }
+    if let Some(warmup_iterations) = warmup_iterations {
+        f.run(warmup_iterations);
+    }
+}
+
+fn create_sampler(settings: &MeasurementSettings, seed: u64) -> Box<dyn SampleLength> {
+    match settings.sampler_type {
+        SampleLengthKind::Flat => Box::new(FlatSampleLength::new(settings)),
+        SampleLengthKind::Linear => Box::new(LinearSampleLength::new(settings)),
+        SampleLengthKind::Random => Box::new(RandomSampleLength::new(settings, seed)),
     }
 }
 
