@@ -115,12 +115,15 @@ Additional examples are available in `examples` directory.
 There are several arguments you can pass to the `compare` command to change it behavior
 
   - `-t`, `--time` – how long to run each benchmark (in seconds)
-  - `s`, `--samples` – how much samples to gather from each benchmark
+  - `-s`, `--samples` – how much samples to gather from each benchmark
   - `-f` – filter benchmarks by name. Glob patterns are supported (eg. `*/bench_name/{2,4,8}/**`)
-  - `o`, `--filter-outliers` – additionally filter outliers
+  - `-d [path]` – dump CSV with raw samples in a given directory
+  - `--gnuplot` – generate plot for each benchmark (requires gnuplot to be installed)
+  - `-o`, `--filter-outliers` – additionally filter outliers
+  - `-p`, `--parallel` - run base/candidate functions in 2 different threads instead of interleaving in a single thread
   - `--fail-threshold` – do fail if new version is slower than baseline on a given percentage
   - `--fail-fast` - do fail after first benchmark exceeding fail threshold, not after the whole suite
-  - `-p`, `--parallel` - run base/candidate functions in 2 different threads instead of interleaving in a single thread
+
 
 ## Contributing
 
