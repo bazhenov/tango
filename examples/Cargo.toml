@@ -2,6 +2,7 @@
 name = "tango-examples"
 version = "0.2.0"
 edition = "2021"
+autobenches = false
 
 [dependencies]
 tango-bench = { path = "../tango-bench" }
@@ -28,8 +29,10 @@ name = "tango-faster"
 harness = false
 
 [[bench]]
-name = "tango-slower"
+name = "tango-async"
 harness = false
+required-features = ["async-tokio"]
 
 [features]
 align = []
+async-tokio = []
