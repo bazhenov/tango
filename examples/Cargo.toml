@@ -34,5 +34,6 @@ harness = false
 required-features = ["async-tokio"]
 
 [features]
+prefetch = ["ordsearch/nightly"]
 align = []
 async-tokio = []
