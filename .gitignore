@@ -3,7 +3,6 @@ Cargo.lock
 **/*.rs.bk
 *.svg
 /graphs
-/rust-toolchain.toml
 /*.csv
 .ipynb_checkpoints
 /local

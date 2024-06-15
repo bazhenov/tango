@@ -31,7 +31,14 @@ pub(crate) struct Spi {
 
 #[derive(PartialEq, Eq, Clone, Copy)]
 pub enum SpiModeKind {
+    // Benchmarks are executed synchronously when calling SPI
+    //
+    // Dispatcher switches between baseline and candidate after each sample
     Synchronous,
+
+    // Benchmarks are executed in different threads
+    //
+    // Dispatcher creates a separate thread for baseline and candidate, but synchronize them after each benchmark
     Asynchronous,
 }
 
