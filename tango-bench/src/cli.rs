@@ -1,12 +1,9 @@
 //! Contains functionality of a `cargo bench` harness
 
-use self::{
-    commands::run_paired_test,
-    reporting::{ConsoleReporter, VerboseReporter},
-};
+use self::commands::run_paired_test;
 use crate::{
     dylib::{Spi, SpiModeKind},
-    Error, MeasurementSettings, Reporter, SampleLengthKind,
+    Error, MeasurementSettings, SampleLengthKind,
 };
 use anyhow::{bail, Context};
 use clap::Parser;
@@ -190,12 +187,6 @@ pub fn run(mut settings: MeasurementSettings) -> Result<ExitCode> {
             quiet,
             randomize_stack,
         } => {
-            let mut reporter: Box<dyn Reporter> = if verbose {
-                Box::<VerboseReporter>::default()
-            } else {
-                Box::<ConsoleReporter>::default()
-            };
-
             let mut path = path
                 .or_else(|| args().next().map(PathBuf::from))
                 .expect("No path given");
@@ -276,8 +267,16 @@ pub fn run(mut settings: MeasurementSettings) -> Result<ExitCode> {
                     path_to_dump.as_ref(),
                 )?;
 
+                if let Some(dump) = sample_dump {
+                    sample_dumps.push(dump);
+                }
+
                 if result.diff_estimate.significant || !significant_only {
-                    reporter.on_complete(&result);
+                    if verbose {
+                        reporting::verbose_reporter(&result);
+                    } else {
+                        reporting::default_reporter(&result);
+                    }
                 }
 
                 if result.diff_estimate.significant {
@@ -287,16 +286,13 @@ pub fn run(mut settings: MeasurementSettings) -> Result<ExitCode> {
                                 "[ERROR] Performance regressed {:+.1}% >= {:.1}%  -  test: {}",
                                 result.diff_estimate.pct, threshold, func_name
                             );
-                            exit_code = ExitCode::FAILURE;
                             if fail_fast {
                                 return Ok(ExitCode::FAILURE);
+                            } else {
+                                exit_code = ExitCode::FAILURE;
                             }
                         }
                     }
-                }
-
-                if let Some(dump) = sample_dump {
-                    sample_dumps.push(dump);
                 }
             }
 
@@ -648,103 +644,93 @@ mod commands {
 
 pub mod reporting {
     use crate::cli::{colorize, HumanTime};
-    use crate::{Reporter, RunResult};
+    use crate::RunResult;
     use colorz::{mode::Stream, Colorize};
 
-    #[derive(Default)]
-    pub(super) struct VerboseReporter;
+    pub(super) fn verbose_reporter(results: &RunResult) {
+        let base = results.baseline;
+        let candidate = results.candidate;
 
-    impl Reporter for VerboseReporter {
-        fn on_complete(&mut self, results: &RunResult) {
-            let base = results.baseline;
-            let candidate = results.candidate;
+        let significant = results.diff_estimate.significant;
 
-            let significant = results.diff_estimate.significant;
+        println!(
+            "{}  (n: {}, outliers: {})",
+            results.name.bold().stream(Stream::Stdout),
+            results.diff.n,
+            results.outliers
+        );
 
-            println!(
-                "{}  (n: {}, outliers: {})",
-                results.name.bold().stream(Stream::Stdout),
-                results.diff.n,
-                results.outliers
-            );
-
-            println!(
-                "    {:12}   {:>15} {:>15} {:>15}",
-                "",
-                "baseline".bold().stream(Stream::Stdout),
-                "candidate".bold().stream(Stream::Stdout),
-                "∆".bold().stream(Stream::Stdout),
-            );
-            println!(
-                "    {:12} ╭────────────────────────────────────────────────",
-                ""
-            );
-            println!(
-                "    {:12} │ {:>15} {:>15} {:>15}  {:+4.2}{}{}",
-                "mean",
-                HumanTime(base.mean),
-                HumanTime(candidate.mean),
-                colorize(
-                    HumanTime(results.diff.mean),
-                    significant,
-                    results.diff.mean < 0.
-                ),
-                colorize(
-                    results.diff_estimate.pct,
-                    significant,
-                    results.diff.mean < 0.
-                ),
-                colorize("%", significant, results.diff.mean < 0.),
-                if significant { "*" } else { "" },
-            );
-            println!(
-                "    {:12} │ {:>15} {:>15} {:>15}",
-                "min",
-                HumanTime(base.min),
-                HumanTime(candidate.min),
-                HumanTime(candidate.min - base.min)
-            );
-            println!(
-                "    {:12} │ {:>15} {:>15} {:>15}",
-                "max",
-                HumanTime(base.max),
-                HumanTime(candidate.max),
-                HumanTime(candidate.max - base.max),
-            );
-            println!(
-                "    {:12} │ {:>15} {:>15} {:>15}",
-                "std. dev.",
-                HumanTime(base.variance.sqrt()),
-                HumanTime(candidate.variance.sqrt()),
-                HumanTime(results.diff.variance.sqrt()),
-            );
-            println!();
-        }
+        println!(
+            "    {:12}   {:>15} {:>15} {:>15}",
+            "",
+            "baseline".bold().stream(Stream::Stdout),
+            "candidate".bold().stream(Stream::Stdout),
+            "∆".bold().stream(Stream::Stdout),
+        );
+        println!(
+            "    {:12} ╭────────────────────────────────────────────────",
+            ""
+        );
+        println!(
+            "    {:12} │ {:>15} {:>15} {:>15}  {:+4.2}{}{}",
+            "mean",
+            HumanTime(base.mean),
+            HumanTime(candidate.mean),
+            colorize(
+                HumanTime(results.diff.mean),
+                significant,
+                results.diff.mean < 0.
+            ),
+            colorize(
+                results.diff_estimate.pct,
+                significant,
+                results.diff.mean < 0.
+            ),
+            colorize("%", significant, results.diff.mean < 0.),
+            if significant { "*" } else { "" },
+        );
+        println!(
+            "    {:12} │ {:>15} {:>15} {:>15}",
+            "min",
+            HumanTime(base.min),
+            HumanTime(candidate.min),
+            HumanTime(candidate.min - base.min)
+        );
+        println!(
+            "    {:12} │ {:>15} {:>15} {:>15}",
+            "max",
+            HumanTime(base.max),
+            HumanTime(candidate.max),
+            HumanTime(candidate.max - base.max),
+        );
+        println!(
+            "    {:12} │ {:>15} {:>15} {:>15}",
+            "std. dev.",
+            HumanTime(base.variance.sqrt()),
+            HumanTime(candidate.variance.sqrt()),
+            HumanTime(results.diff.variance.sqrt()),
+        );
+        println!();
     }
 
-    #[derive(Default)]
-    pub(super) struct ConsoleReporter;
+    pub(super) fn default_reporter(results: &RunResult) {
+        let base = results.baseline;
+        let candidate = results.candidate;
+        let diff = results.diff;
 
-    impl Reporter for ConsoleReporter {
-        fn on_complete(&mut self, results: &RunResult) {
-            let base = results.baseline;
-            let candidate = results.candidate;
-            let diff = results.diff;
+        let significant = results.diff_estimate.significant;
 
-            let significant = results.diff_estimate.significant;
-
-            let speedup = results.diff_estimate.pct;
-            let candidate_faster = diff.mean < 0.;
-            println!(
-                "{:50} [ {:>8} ... {:>8} ]    {:>+7.2}{}{}",
-                colorize(&results.name, significant, candidate_faster),
-                HumanTime(base.mean),
-                colorize(HumanTime(candidate.mean), significant, candidate_faster),
-                colorize(speedup, significant, candidate_faster),
-                colorize("%", significant, candidate_faster),
-                if significant { "*" } else { "" },
-            )
-        }
+        let speedup = results.diff_estimate.pct;
+        let candidate_faster = diff.mean < 0.;
+        println!(
+            "{:50} [ {:>8} ... {:>8} ]    {:>+7.2}{}{}",
+            colorize(&results.name, significant, candidate_faster),
+            HumanTime(base.mean),
+            colorize(HumanTime(candidate.mean), significant, candidate_faster),
+            colorize(speedup, significant, candidate_faster),
+            colorize("%", significant, candidate_faster),
+            if significant { "*" } else { "" },
+        )
     }
 }
 

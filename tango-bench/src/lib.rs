@@ -240,10 +240,6 @@ impl IntoBenchmarks for Vec<Benchmark> {
     }
 }
 
-pub(crate) trait Reporter {
-    fn on_complete(&mut self, results: &RunResult);
-}
-
 /// Describes basic settings for the benchmarking process
 ///
 /// This structure is passed to [`cli::run()`].
