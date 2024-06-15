@@ -217,8 +217,8 @@ impl<F: FnMut(Bencher) -> Box<dyn ErasedSampler>> SamplerFactory for SyncSampleF
 impl Benchmark {
     /// Generates next haystack for the measurement
     ///
-    /// Calling this method should update internal haystack used for measurement. Returns `true` if update happend,
-    /// `false` if implementation doesn't support haystack generation.
+    /// Calling this method should update internal haystack used for measurement.
+    /// Returns `true` if update happens, `false` if implementation doesn't support haystack generation.
     /// Haystack/Needle distinction is described in [`Generator`] trait.
     pub fn prepare_state(&mut self, seed: u64) -> Box<dyn ErasedSampler> {
         self.sampler_factory
