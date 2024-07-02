@@ -22,7 +22,7 @@ use std::{
 };
 
 pub type Result<T> = anyhow::Result<T>;
-pub type StdResult<T, E> = std::result::Result<T, E>;
+pub(crate) type StdResult<T, E> = std::result::Result<T, E>;
 
 #[derive(Parser, Debug)]
 enum BenchmarkMode {
