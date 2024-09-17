@@ -762,10 +762,14 @@ mod paired_test {
 
         for input in sample_dumps {
             let csv_input = input.to_str().unwrap();
-            let svg_path = path.join(input.with_extension("svg"));
-            let svg_path = svg_path.to_str().unwrap();
+            let svg_path = input.with_extension("svg");
             let cmd = Command::new("gnuplot")
-                .args(["-c", gnuplot_file_str, csv_input, svg_path])
+                .args([
+                    "-c",
+                    gnuplot_file_str,
+                    csv_input,
+                    svg_path.to_str().unwrap(),
+                ])
                 .stdin(Stdio::null())
                 .stdout(Stdio::inherit())
                 .stderr(Stdio::inherit())

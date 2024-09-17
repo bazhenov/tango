@@ -29,6 +29,10 @@ name = "tango-faster"
 harness = false
 
 [[bench]]
+name = "tango-slower"
+harness = false
+
+[[bench]]
 name = "tango-async"
 harness = false
 required-features = ["async-tokio"]
