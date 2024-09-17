@@ -35,7 +35,7 @@ Tango is designed to have the capability to detect a 1% change in performance wi
 
    ```toml
    [dev-dependencies]
-   tango-bench = "0.5"
+   tango-bench = "0.6"
 
    [[bench]]
    name = "factorial"
@@ -119,7 +119,7 @@ To use Tango.rs in an asynchronous setup, follow these steps:
 
     ```toml
     [dev-dependencies]
-    tango-bench = { version = "0.5", features = ["async-tokio"] }
+    tango-bench = { version = "0.6", features = ["async-tokio"] }
 
     [[bench]]
     name = "async_factorial"
