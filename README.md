@@ -179,5 +179,6 @@ There are several arguments you can pass to the `compare` command to change it b
 
 The project is in its early stages so any help will be appreciated. Here are some ideas you might find interesting
 
-- find a way to provide a more user friendly API for registering functions in the system
 - if you're a library author, trying out tango and providing feedback will be very useful
+- take one of the [issues](https://github.com/bazhenov/tango/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22) and try to fix it
+- find a way to provide a more user friendly API for registering functions in the system
