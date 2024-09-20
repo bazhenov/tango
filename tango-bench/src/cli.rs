@@ -157,13 +157,6 @@ struct SoloOpts {
     /// Perform warmup iterations before taking measurements (1/10 of sample iterations)
     #[arg(long = "warmup")]
     warmup_enabled: Option<bool>,
-
-    /// Quiet mode
-    #[arg(short = 'q')]
-    quiet: bool,
-
-    #[arg(short = 'v', long = "verbose", default_value_t = false)]
-    verbose: bool,
 }
 
 #[derive(Parser, Debug)]
@@ -278,8 +271,6 @@ mod solo_test {
     pub(super) fn run_test(opts: SoloOpts, mut settings: MeasurementSettings) -> Result<ExitCode> {
         let SoloOpts {
             bench_flags: _,
-            quiet: _,
-            verbose: _,
             filter,
             samples,
             time,
