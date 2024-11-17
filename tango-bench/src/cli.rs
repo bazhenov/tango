@@ -551,10 +551,8 @@ mod paired_test {
             }
         }
 
-        if let Some(path_to_dump) = path_to_dump {
-            if gnuplot && !sample_dumps.is_empty() {
-                generate_plots(&path_to_dump, sample_dumps.as_slice())?;
-            }
+        if gnuplot && !sample_dumps.is_empty() {
+            generate_plots(sample_dumps.as_slice())?;
         }
 
         Ok(exit_code)
@@ -746,7 +744,7 @@ mod paired_test {
         Ok(())
     }
 
-    fn generate_plots(path: &Path, sample_dumps: &[PathBuf]) -> Result<()> {
+    fn generate_plots(sample_dumps: &[PathBuf]) -> Result<()> {
         let gnuplot_file = AutoDelete(temp_dir().join("tango-plot.gnuplot"));
         fs::write(&*gnuplot_file, include_bytes!("plot.gnuplot"))?;
         let gnuplot_file_str = gnuplot_file.to_str().unwrap();
