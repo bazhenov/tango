@@ -330,6 +330,7 @@ pub mod ffi {
         ffi::{c_uint, c_ulonglong},
         mem,
         os::raw::c_char,
+        panic::{catch_unwind, UnwindSafe},
         ptr::null,
     };
 
@@ -393,40 +394,66 @@ pub mod ffi {
 
     #[no_mangle]
     unsafe extern "C" fn tango_run(iterations: c_ulonglong) -> u64 {
-        if let Some(s) = STATE.as_mut() {
-            s.selected_state_mut()
-                .expect("no tango_prepare_state() was called")
-                .measure(iterations as usize)
-        } else {
-            0
-        }
+        catch(|| {
+            if let Some(s) = STATE.as_mut() {
+                s.selected_state_mut()
+                    .expect("no tango_prepare_state() was called")
+                    .measure(iterations as usize)
+            } else {
+                0
+            }
+        })
+        .unwrap_or(0)
     }
 
     #[no_mangle]
     unsafe extern "C" fn tango_estimate_iterations(time_ms: c_uint) -> c_ulonglong {
-        if let Some(s) = STATE.as_mut() {
-            s.selected_state_mut()
-                .expect("no tango_prepare_state() was called")
-                .as_mut()
-                .estimate_iterations(time_ms) as c_ulonglong
-        } else {
-            0
-        }
+        catch(|| {
+            if let Some(s) = STATE.as_mut() {
+                s.selected_state_mut()
+                    .expect("no tango_prepare_state() was called")
+                    .as_mut()
+                    .estimate_iterations(time_ms) as c_ulonglong
+            } else {
+                0
+            }
+        })
+        .unwrap_or(0)
     }
 
     #[no_mangle]
     unsafe extern "C" fn tango_prepare_state(seed: c_ulonglong) {
-        if let Some(s) = STATE.as_mut() {
-            let Some((idx, state)) = &mut s.selected_function else {
-                panic!("No tango_select() was called")
-            };
-            *state = Some(s.benchmarks[*idx].prepare_state(seed));
-        }
+        catch(|| {
+            if let Some(s) = STATE.as_mut() {
+                let Some((idx, state)) = &mut s.selected_function else {
+                    panic!("No tango_select() was called")
+                };
+                *state = Some(s.benchmarks[*idx].prepare_state(seed));
+            }
+        });
     }
 
     #[no_mangle]
     unsafe extern "C" fn tango_free() {
         unsafe { *STATE.0.get() = None }
+    }
+
+    /// Since unwinding cannot cross FFI boundaries, we catch all panics here
+    /// and print their message for debugging, while returning None to indicate failure.
+    fn catch<T>(f: impl FnOnce() -> T + UnwindSafe) -> Option<T> {
+        match catch_unwind(f) {
+            Ok(r) => Some(r),
+            Err(e) => {
+                if let Some(panic_msg) = e.downcast_ref::<&str>() {
+                    println!("Panic message: {}", panic_msg);
+                }
+                // Try to get panic message as String
+                else if let Some(panic_msg) = e.downcast_ref::<String>() {
+                    println!("Panic message: {}", panic_msg);
+                }
+                None
+            }
+        }
     }
 
     pub(super) trait VTable {
