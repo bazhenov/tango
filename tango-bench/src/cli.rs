@@ -338,8 +338,12 @@ mod solo_test {
 
         let seed = seed.unwrap_or_else(rand::random);
 
-        spi_func.prepare_state(seed);
-        let mut iterations_per_sample = (spi_func.estimate_iterations(TIME_SLICE_MS) / 2).max(1);
+        spi_func.spi.prepare_state(seed).map_err(Error::FFIError)?;
+        let iters = spi_func
+            .spi
+            .estimate_iterations(TIME_SLICE_MS)
+            .map_err(Error::FFIError)?;
+        let mut iterations_per_sample = (iters / 2).max(1);
         let mut sampler = create_sampler(&settings, seed);
 
         let mut rng = SmallRng::seed_from_u64(seed);
@@ -379,7 +383,7 @@ mod solo_test {
                 &mut spi_func,
                 warmup_iterations,
                 firewall.as_ref(),
-            );
+            )?;
 
             // Allocate a custom stack frame during runtime, to try to offset alignment of the stack.
             if let Some(distr) = stack_offset_distr {
@@ -599,11 +603,19 @@ mod paired_test {
 
         let seed = seed.unwrap_or_else(rand::random);
 
-        a_func.prepare_state(seed);
-        let a_estimate = (a_func.estimate_iterations(TIME_SLICE_MS) / 2).max(1);
+        a_func.spi.prepare_state(seed).map_err(Error::FFIError)?;
+        let a_iters = a_func
+            .spi
+            .estimate_iterations(TIME_SLICE_MS)
+            .map_err(Error::FFIError)?;
+        let a_estimate = (a_iters / 2).max(1);
 
-        b_func.prepare_state(seed);
-        let b_estimate = (b_func.estimate_iterations(TIME_SLICE_MS) / 2).max(1);
+        b_func.spi.prepare_state(seed).map_err(Error::FFIError)?;
+        let b_iters = b_func
+            .spi
+            .estimate_iterations(TIME_SLICE_MS)
+            .map_err(Error::FFIError)?;
+        let b_estimate = (b_iters / 2).max(1);
 
         let mut iterations_per_sample = a_estimate.min(b_estimate);
         let mut sampler = create_sampler(&settings, seed);
@@ -661,13 +673,13 @@ mod paired_test {
                 a_func,
                 warmup_iterations,
                 firewall.as_ref(),
-            );
+            )?;
             prepare_func(
                 prepare_state_seed,
                 b_func,
                 warmup_iterations,
                 firewall.as_ref(),
-            );
+            )?;
 
             // Allocate a custom stack frame during runtime, to try to offset alignment of the stack.
             if let Some(distr) = stack_offset_distr {
@@ -903,14 +915,6 @@ impl<'a> TestedFunction<'a> {
     pub(crate) fn run(&mut self, iterations: usize) -> u64 {
         self.spi.run(iterations)
     }
-
-    pub(crate) fn prepare_state(&mut self, seed: u64) {
-        self.spi.prepare_state(seed);
-    }
-
-    pub(crate) fn estimate_iterations(&mut self, time_ms: u32) -> usize {
-        self.spi.estimate_iterations(time_ms)
-    }
 }
 
 fn prepare_func(
@@ -918,9 +922,9 @@ fn prepare_func(
     f: &mut TestedFunction,
     warmup_iterations: Option<usize>,
     firewall: Option<&CacheFirewall>,
-) {
+) -> Result<()> {
     if let Some(seed) = prepare_state_seed {
-        f.prepare_state(seed);
+        f.spi.prepare_state(seed).map_err(Error::FFIError)?;
         if let Some(firewall) = firewall {
             firewall.issue_read();
         }
@@ -928,6 +932,7 @@ fn prepare_func(
     if let Some(warmup_iterations) = warmup_iterations {
         f.run(warmup_iterations);
     }
+    Ok(())
 }
 
 fn create_sampler(settings: &MeasurementSettings, seed: u64) -> Box<dyn SampleLength> {

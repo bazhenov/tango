@@ -114,9 +114,9 @@ impl Spi {
         }
     }
 
-    pub(crate) fn estimate_iterations(&mut self, time_ms: u32) -> usize {
+    pub(crate) fn estimate_iterations(&mut self, time_ms: u32) -> Result<usize, String> {
         match &self.mode {
-            SpiMode::Synchronous { vt, .. } => vt.estimate_iterations(time_ms) as usize,
+            SpiMode::Synchronous { vt, .. } => vt.estimate_iterations(time_ms),
             SpiMode::Asynchronous { tx, rx, .. } => {
                 tx.send(SpiRequest::EstimateIterations { time_ms }).unwrap();
                 match rx.recv().unwrap() {
@@ -127,13 +127,13 @@ impl Spi {
         }
     }
 
-    pub(crate) fn prepare_state(&mut self, seed: u64) {
+    pub(crate) fn prepare_state(&mut self, seed: u64) -> Result<(), String> {
         match &self.mode {
             SpiMode::Synchronous { vt, .. } => vt.prepare_state(seed),
             SpiMode::Asynchronous { tx, rx, .. } => {
                 tx.send(SpiRequest::PrepareState { seed }).unwrap();
                 match rx.recv().unwrap() {
-                    SpiReply::PrepareState => {}
+                    SpiReply::PrepareState(result) => result,
                     r => panic!("Unexpected response: {:?}", r),
                 }
             }
@@ -172,12 +172,9 @@ fn spi_worker(vt: &dyn VTable, rx: Receiver<SpiRequest>, tx: Sender<SpiReply>) {
     while let Ok(req) = rx.recv() {
         let reply = match req {
             Rq::EstimateIterations { time_ms } => {
-                Rp::EstimateIterations(vt.estimate_iterations(time_ms) as usize)
+                Rp::EstimateIterations(vt.estimate_iterations(time_ms))
             }
-            Rq::PrepareState { seed } => {
-                vt.prepare_state(seed);
-                Rp::PrepareState
-            }
+            Rq::PrepareState { seed } => Rp::PrepareState(vt.prepare_state(seed)),
             Rq::Select { idx } => {
                 vt.select(idx as c_ulonglong);
                 Rp::Select
@@ -255,8 +252,8 @@ enum SpiRequest {
 
 #[derive(Debug)]
 enum SpiReply {
-    EstimateIterations(usize),
-    PrepareState,
+    EstimateIterations(Result<usize, String>),
+    PrepareState(Result<(), String>),
     Select,
     Run(u64),
     Measure(u64),
@@ -267,6 +264,7 @@ enum SpiReply {
 struct State {
     benchmarks: Vec<Benchmark>,
     selected_function: Option<(usize, Option<Box<dyn ErasedSampler>>)>,
+    last_error: Option<String>,
 }
 
 impl State {
@@ -313,6 +311,7 @@ pub fn __tango_init(benchmarks: Vec<Benchmark>) {
         let state = Some(State {
             benchmarks,
             selected_function: None,
+            last_error: None,
         });
         unsafe { *STATE.0.get() = state }
     }
@@ -327,7 +326,7 @@ pub fn __tango_init(benchmarks: Vec<Benchmark>) {
 pub mod ffi {
     use super::*;
     use std::{
-        ffi::{c_uint, c_ulonglong},
+        ffi::{c_int, c_uint, c_ulonglong},
         mem,
         os::raw::c_char,
         panic::{catch_unwind, UnwindSafe},
@@ -341,7 +340,7 @@ pub mod ffi {
     type SelectFn = unsafe extern "C" fn(c_ulonglong);
     type RunFn = unsafe extern "C" fn(c_ulonglong) -> u64;
     type EstimateIterationsFn = unsafe extern "C" fn(c_uint) -> c_ulonglong;
-    type PrepareStateFn = unsafe extern "C" fn(c_ulonglong);
+    type PrepareStateFn = unsafe extern "C" fn(c_ulonglong) -> c_int;
     type FreeFn = unsafe extern "C" fn();
 
     /// This block of constants is checking that all exported tango functions are of valid type according to the API.
@@ -406,6 +405,9 @@ pub mod ffi {
         .unwrap_or(0)
     }
 
+    /// Returns an estimation of number of iterations needed to spent given amount of time
+    ///
+    /// Returns: the number of iterations (minimum of 1) or 0 if error happens during building the estimate.
     #[no_mangle]
     unsafe extern "C" fn tango_estimate_iterations(time_ms: c_uint) -> c_ulonglong {
         catch(|| {
@@ -413,7 +415,8 @@ pub mod ffi {
                 s.selected_state_mut()
                     .expect("no tango_prepare_state() was called")
                     .as_mut()
-                    .estimate_iterations(time_ms) as c_ulonglong
+                    .estimate_iterations(time_ms)
+                    .max(1) as c_ulonglong
             } else {
                 0
             }
@@ -421,8 +424,13 @@ pub mod ffi {
         .unwrap_or(0)
     }
 
+    /// Prepares benchmark internal state
+    ///
+    /// Should be called once benchmark was selected ([`tango_select`]) to initialize all needed state.
+    ///
+    /// Returns: 0 if success, otherwise preparing state was failed
     #[no_mangle]
-    unsafe extern "C" fn tango_prepare_state(seed: c_ulonglong) {
+    unsafe extern "C" fn tango_prepare_state(seed: c_ulonglong) -> c_int {
         catch(|| {
             if let Some(s) = STATE.as_mut() {
                 let Some((idx, state)) = &mut s.selected_function else {
@@ -430,7 +438,9 @@ pub mod ffi {
                 };
                 *state = Some(s.benchmarks[*idx].prepare_state(seed));
             }
-        });
+            0
+        })
+        .unwrap_or(-1)
     }
 
     #[no_mangle]
@@ -444,12 +454,12 @@ pub mod ffi {
         match catch_unwind(f) {
             Ok(r) => Some(r),
             Err(e) => {
-                if let Some(panic_msg) = e.downcast_ref::<&str>() {
-                    println!("Panic message: {}", panic_msg);
-                }
-                // Try to get panic message as String
-                else if let Some(panic_msg) = e.downcast_ref::<String>() {
-                    println!("Panic message: {}", panic_msg);
+                // Here we're assuming state is already initialized, because f was running some operations on it
+                let state = unsafe { STATE.as_mut().unwrap() };
+                if let Some(msg) = e.downcast_ref::<&str>() {
+                    state.last_error = Some(msg.to_string());
+                } else {
+                    state.last_error = e.downcast_ref::<String>().cloned();
                 }
                 None
             }
@@ -462,8 +472,8 @@ pub mod ffi {
         fn select(&self, func_idx: c_ulonglong);
         fn get_test_name(&self, ptr: *mut *const c_char, len: *mut c_ulonglong);
         fn run(&self, iterations: c_ulonglong) -> c_ulonglong;
-        fn estimate_iterations(&self, time_ms: c_uint) -> c_ulonglong;
-        fn prepare_state(&self, seed: c_ulonglong);
+        fn estimate_iterations(&self, time_ms: c_uint) -> Result<usize, String>;
+        fn prepare_state(&self, seed: c_ulonglong) -> Result<(), String>;
     }
 
     pub(super) static mut SELF_VTABLE: Option<SelfVTable> = Some(SelfVTable);
@@ -496,12 +506,21 @@ pub mod ffi {
             unsafe { tango_run(iterations) }
         }
 
-        fn estimate_iterations(&self, time_ms: c_uint) -> c_ulonglong {
-            unsafe { tango_estimate_iterations(time_ms) }
+        fn estimate_iterations(&self, time_ms: c_uint) -> Result<usize, String> {
+            let iterations = unsafe { tango_estimate_iterations(time_ms) };
+            if iterations == 0 {
+                Err("FFI Failed".to_string())
+            } else {
+                Ok(iterations as usize)
+            }
         }
 
-        fn prepare_state(&self, seed: u64) {
-            unsafe { tango_prepare_state(seed) }
+        fn prepare_state(&self, seed: u64) -> Result<(), String> {
+            if unsafe { tango_prepare_state(seed) } == 0 {
+                Err("FFI Failed".to_string())
+            } else {
+                Ok(())
+            }
         }
     }
 
@@ -580,12 +599,18 @@ pub mod ffi {
             unsafe { (self.run_fn)(iterations) }
         }
 
-        fn estimate_iterations(&self, time_ms: c_uint) -> c_ulonglong {
-            unsafe { (self.estimate_iterations_fn)(time_ms) }
+        fn estimate_iterations(&self, time_ms: c_uint) -> Result<usize, String> {
+            let iterations = unsafe { (self.estimate_iterations_fn)(time_ms) };
+            if iterations == 0 {
+                Err("FFI Error".to_string())
+            } else {
+                Ok(iterations as usize)
+            }
         }
 
-        fn prepare_state(&self, seed: c_ulonglong) {
-            unsafe { (self.prepare_state_fn)(seed) }
+        fn prepare_state(&self, seed: c_ulonglong) -> Result<(), String> {
+            unsafe { (self.prepare_state_fn)(seed) };
+            Ok(())
         }
     }
 

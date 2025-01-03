@@ -41,6 +41,9 @@ pub enum Error {
 
     #[error("IO Error")]
     IOError(#[from] io::Error),
+
+    #[error("FFI Error")]
+    FFIError(String),
 }
 
 /// Registers benchmark in the system
