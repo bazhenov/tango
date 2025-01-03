@@ -37,6 +37,10 @@ name = "tango-async"
 harness = false
 required-features = ["async-tokio"]
 
+[[bench]]
+name = "panicking"
+harness = false
+
 [features]
 prefetch = ["ordsearch/nightly"]
 align = []
