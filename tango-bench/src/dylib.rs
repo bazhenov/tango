@@ -1,8 +1,9 @@
 //! Loading and resolving symbols from .dylib/.so libraries
 
-use self::ffi::{VTable, SELF_VTABLE};
+use self::ffi::SELF_VTABLE;
 use crate::{Benchmark, ErasedSampler, Error};
 use anyhow::Context;
+use ffi::VTable;
 use libloading::{Library, Symbol};
 use std::{
     cell::UnsafeCell,
@@ -45,7 +46,7 @@ pub enum SpiModeKind {
 
 enum SpiMode {
     Synchronous {
-        vt: Box<dyn VTable>,
+        vt: VTable,
         last_measurement: u64,
     },
     Asynchronous {
@@ -60,7 +61,7 @@ impl Spi {
         let lib = unsafe { Library::new(path.as_ref()) }
             .with_context(|| format!("Unable to open library: {}", path.as_ref().display()))
             .unwrap();
-        spi_handle_for_vtable(ffi::LibraryVTable::new(lib).unwrap(), mode)
+        spi_handle_for_vtable(ffi::VTable::new(lib).unwrap(), mode)
     }
 
     pub(crate) fn for_self(mode: SpiModeKind) -> Option<Spi> {
@@ -165,7 +166,7 @@ impl Drop for Spi {
     }
 }
 
-fn spi_worker(vt: &dyn VTable, rx: Receiver<SpiRequest>, tx: Sender<SpiReply>) {
+fn spi_worker(vt: &VTable, rx: Receiver<SpiRequest>, tx: Sender<SpiReply>) {
     use SpiReply as Rp;
     use SpiRequest as Rq;
 
@@ -187,16 +188,16 @@ fn spi_worker(vt: &dyn VTable, rx: Receiver<SpiRequest>, tx: Sender<SpiReply>) {
     }
 }
 
-fn spi_handle_for_vtable(vtable: impl VTable + Send + 'static, mode: SpiModeKind) -> Spi {
-    vtable.init();
-    let tests = enumerate_tests(&vtable).unwrap();
+fn spi_handle_for_vtable(vt: VTable, mode: SpiModeKind) -> Spi {
+    vt.init();
+    let tests = enumerate_tests(&vt).unwrap();
 
     match mode {
         SpiModeKind::Asynchronous => {
             let (request_tx, request_rx) = channel();
             let (reply_tx, reply_rx) = channel();
             let worker = thread::spawn(move || {
-                spi_worker(&vtable, request_rx, reply_tx);
+                spi_worker(&vt, request_rx, reply_tx);
             });
 
             Spi {
@@ -213,14 +214,14 @@ fn spi_handle_for_vtable(vtable: impl VTable + Send + 'static, mode: SpiModeKind
             tests,
             selected_function: None,
             mode: SpiMode::Synchronous {
-                vt: Box::new(vtable),
+                vt,
                 last_measurement: 0,
             },
         },
     }
 }
 
-fn enumerate_tests(vt: &dyn VTable) -> Result<Vec<NamedFunction>, Error> {
+fn enumerate_tests(vt: &VTable) -> Result<Vec<NamedFunction>, Error> {
     let mut tests = vec![];
     for idx in 0..vt.count() {
         vt.select(idx);
@@ -343,21 +344,6 @@ pub mod ffi {
     type PrepareStateFn = unsafe extern "C" fn(c_ulonglong) -> c_int;
     type GetLastErrorFn = unsafe extern "C" fn(*mut *const c_char, *mut c_ulonglong) -> c_int;
     type FreeFn = unsafe extern "C" fn();
-
-    /// This block of constants is checking that all exported tango functions are of valid type according to the API.
-    /// Those constants are not meant to be used at runtime in any way
-    #[allow(unused)]
-    mod type_check {
-        use super::*;
-
-        const TANGO_COUNT: CountFn = tango_count;
-        const TANGO_SELECT: SelectFn = tango_select;
-        const TANGO_GET_TEST_NAME: GetTestNameFn = tango_get_test_name;
-        const TANGO_RUN: RunFn = tango_run;
-        const TANGO_ESTIMATE_ITERATIONS: EstimateIterationsFn = tango_estimate_iterations;
-        const TANGO_GET_LAST_ERROR: GetLastErrorFn = tango_get_last_error;
-        const TANGO_FREE: FreeFn = tango_free;
-    }
 
     #[no_mangle]
     unsafe extern "C" fn tango_count() -> c_ulonglong {
@@ -487,118 +473,49 @@ pub mod ffi {
         }
     }
 
-    pub(super) trait VTable {
-        fn init(&self);
-        fn count(&self) -> c_ulonglong;
-        fn select(&self, func_idx: c_ulonglong);
-        fn get_test_name(&self, ptr: *mut *const c_char, len: *mut c_ulonglong);
-        fn run(&self, iterations: c_ulonglong) -> c_ulonglong;
-        fn estimate_iterations(&self, time_ms: c_uint) -> Result<usize, String>;
-        fn prepare_state(&self, seed: c_ulonglong) -> Result<(), String>;
-    }
+    pub(super) static mut SELF_VTABLE: Option<VTable> = Some(VTable::for_self());
 
-    pub(super) static mut SELF_VTABLE: Option<SelfVTable> = Some(SelfVTable);
-
-    /// FFI implementation for the current executable.
-    ///
-    /// Used to communicate with FFI API of the executable bypassing dynamic linking.
-    /// # Safety
-    /// Instances of this type should not be created directory. The single instance [`SELF_SPI`] should be used instead
-    pub(super) struct SelfVTable;
-
-    impl VTable for SelfVTable {
-        fn init(&self) {
-            // In executable mode `tango_init` is already called by the main function
-        }
-
-        fn count(&self) -> c_ulonglong {
-            unsafe { tango_count() }
-        }
-
-        fn select(&self, func_idx: c_ulonglong) {
-            unsafe { tango_select(func_idx) }
-        }
-
-        fn get_test_name(&self, ptr: *mut *const c_char, len: *mut c_ulonglong) {
-            unsafe { tango_get_test_name(ptr, len) }
-        }
-
-        fn run(&self, iterations: c_ulonglong) -> u64 {
-            unsafe { tango_run(iterations) }
-        }
-
-        fn estimate_iterations(&self, time_ms: c_uint) -> Result<usize, String> {
-            match unsafe { tango_estimate_iterations(time_ms) } {
-                0 => Err(ffi_last_error()),
-                iters => Ok(iters as usize),
-            }
-        }
-
-        fn prepare_state(&self, seed: u64) -> Result<(), String> {
-            match unsafe { tango_prepare_state(seed) } {
-                0 => Ok(()),
-                _ => Err(ffi_last_error()),
-            }
-        }
-    }
-
-    fn ffi_last_error() -> String {
-        let mut length = 0;
-        let mut name = null();
-        if unsafe { tango_get_last_error(&mut name, &mut length) } != 0 {
-            "Unknown FFI Error".to_string()
-        } else {
-            let name = unsafe { slice::from_raw_parts(name as *const u8, length as usize) };
-            // TODO, remove unwrap
-            str::from_utf8(name).unwrap().to_string()
-        }
-    }
-
-    impl Drop for SelfVTable {
-        fn drop(&mut self) {
-            unsafe {
-                tango_free();
-            }
-        }
-    }
-
-    pub(super) struct LibraryVTable {
-        /// SAFETY: using static here is sound because
+    pub(super) struct VTable {
+        /// SAFETY: using plain function pointers instead of [`Symbol`] here to generalize over case
+        /// when we have to have VTable for function defined in our own address space (so called self VTable) –
+        /// [`Self::for_self()`].
+        ///
+        /// This is is sound because:
         ///  (1) this struct is private and field can not be accessed outside
         ///  (2) rust has drop order guarantee (fields are dropped in declaration order)
-        init_fn: Symbol<'static, InitFn>,
-        count_fn: Symbol<'static, CountFn>,
-        select_fn: Symbol<'static, SelectFn>,
-        get_test_name_fn: Symbol<'static, GetTestNameFn>,
-        get_last_error_fn: Symbol<'static, GetLastErrorFn>,
-        run_fn: Symbol<'static, RunFn>,
-        estimate_iterations_fn: Symbol<'static, EstimateIterationsFn>,
-        prepare_state_fn: Symbol<'static, PrepareStateFn>,
-        free_fn: Symbol<'static, FreeFn>,
+        init_fn: InitFn,
+        count_fn: CountFn,
+        select_fn: SelectFn,
+        get_test_name_fn: GetTestNameFn,
+        get_last_error_fn: GetLastErrorFn,
+        run_fn: RunFn,
+        estimate_iterations_fn: EstimateIterationsFn,
+        prepare_state_fn: PrepareStateFn,
+        free_fn: FreeFn,
 
         /// SAFETY: This field should be last because it should be dropped last
-        _library: Box<Library>,
+        _library: Option<Box<Library>>,
     }
 
-    impl LibraryVTable {
+    impl VTable {
         pub(super) fn new(library: Library) -> Result<Self, Error> {
             // SAFETY: library is boxed and not moved here, therefore we can safley construct self-referential
             // struct here
             let library = Box::new(library);
-            let init_fn = lookup_symbol::<InitFn>(&library, "tango_init")?;
-            let count_fn = lookup_symbol::<CountFn>(&library, "tango_count")?;
-            let select_fn = lookup_symbol::<SelectFn>(&library, "tango_select")?;
-            let get_test_name_fn = lookup_symbol::<GetTestNameFn>(&library, "tango_get_test_name")?;
-            let run_fn = lookup_symbol::<RunFn>(&library, "tango_run")?;
+            let init_fn = *lookup_symbol::<InitFn>(&library, "tango_init")?;
+            let count_fn = *lookup_symbol::<CountFn>(&library, "tango_count")?;
+            let select_fn = *lookup_symbol::<SelectFn>(&library, "tango_select")?;
+            let get_test_name_fn =
+                *lookup_symbol::<GetTestNameFn>(&library, "tango_get_test_name")?;
+            let run_fn = *lookup_symbol::<RunFn>(&library, "tango_run")?;
             let estimate_iterations_fn =
-                lookup_symbol::<EstimateIterationsFn>(&library, "tango_estimate_iterations")?;
+                *lookup_symbol::<EstimateIterationsFn>(&library, "tango_estimate_iterations")?;
             let prepare_state_fn =
-                lookup_symbol::<PrepareStateFn>(&library, "tango_prepare_state")?;
+                *lookup_symbol::<PrepareStateFn>(&library, "tango_prepare_state")?;
             let get_last_error_fn =
-                lookup_symbol::<GetLastErrorFn>(&library, "tango_get_last_error")?;
-            let free_fn = lookup_symbol::<FreeFn>(&library, "tango_free")?;
+                *lookup_symbol::<GetLastErrorFn>(&library, "tango_get_last_error")?;
+            let free_fn = *lookup_symbol::<FreeFn>(&library, "tango_free")?;
             Ok(Self {
-                _library: library,
                 init_fn,
                 count_fn,
                 select_fn,
@@ -608,7 +525,60 @@ pub mod ffi {
                 prepare_state_fn,
                 get_last_error_fn,
                 free_fn,
+                _library: Some(library),
             })
+        }
+
+        const fn for_self() -> Self {
+            unsafe extern "C" fn no_init() {
+                // In executable mode `tango_init` is already called by the main function
+            }
+            Self {
+                init_fn: no_init,
+                count_fn: ffi::tango_count,
+                select_fn: ffi::tango_select,
+                get_test_name_fn: ffi::tango_get_test_name,
+                run_fn: ffi::tango_run,
+                estimate_iterations_fn: ffi::tango_estimate_iterations,
+                prepare_state_fn: ffi::tango_prepare_state,
+                get_last_error_fn: ffi::tango_get_last_error,
+                free_fn: ffi::tango_free,
+                _library: None,
+            }
+        }
+
+        pub(super) fn init(&self) {
+            unsafe { (self.init_fn)() }
+        }
+
+        pub(super) fn count(&self) -> c_ulonglong {
+            unsafe { (self.count_fn)() }
+        }
+
+        pub(super) fn select(&self, func_idx: c_ulonglong) {
+            unsafe { (self.select_fn)(func_idx) }
+        }
+
+        pub(super) fn get_test_name(&self, ptr: *mut *const c_char, len: *mut c_ulonglong) {
+            unsafe { (self.get_test_name_fn)(ptr, len) }
+        }
+
+        pub(super) fn run(&self, iterations: c_ulonglong) -> u64 {
+            unsafe { (self.run_fn)(iterations) }
+        }
+
+        pub(super) fn estimate_iterations(&self, time_ms: c_uint) -> Result<usize, String> {
+            match unsafe { (self.estimate_iterations_fn)(time_ms) } {
+                0 => Err(self.last_error()),
+                iters => Ok(iters as usize),
+            }
+        }
+
+        pub(super) fn prepare_state(&self, seed: c_ulonglong) -> Result<(), String> {
+            match unsafe { (self.prepare_state_fn)(seed) } {
+                0 => Ok(()),
+                _ => Err(self.last_error()),
+            }
         }
 
         fn last_error(&self) -> String {
@@ -624,43 +594,7 @@ pub mod ffi {
         }
     }
 
-    impl VTable for LibraryVTable {
-        fn init(&self) {
-            unsafe { (self.init_fn)() }
-        }
-
-        fn count(&self) -> c_ulonglong {
-            unsafe { (self.count_fn)() }
-        }
-
-        fn select(&self, func_idx: c_ulonglong) {
-            unsafe { (self.select_fn)(func_idx) }
-        }
-
-        fn get_test_name(&self, ptr: *mut *const c_char, len: *mut c_ulonglong) {
-            unsafe { (self.get_test_name_fn)(ptr, len) }
-        }
-
-        fn run(&self, iterations: c_ulonglong) -> u64 {
-            unsafe { (self.run_fn)(iterations) }
-        }
-
-        fn estimate_iterations(&self, time_ms: c_uint) -> Result<usize, String> {
-            match unsafe { (self.estimate_iterations_fn)(time_ms) } {
-                0 => Err(self.last_error()),
-                iters => Ok(iters as usize),
-            }
-        }
-
-        fn prepare_state(&self, seed: c_ulonglong) -> Result<(), String> {
-            match unsafe { (self.prepare_state_fn)(seed) } {
-                0 => Ok(()),
-                _ => Err(self.last_error()),
-            }
-        }
-    }
-
-    impl Drop for LibraryVTable {
+    impl Drop for VTable {
         fn drop(&mut self) {
             unsafe { (self.free_fn)() }
         }
