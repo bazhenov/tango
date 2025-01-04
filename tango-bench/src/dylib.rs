@@ -63,7 +63,11 @@ impl Spi {
     }
 
     pub(crate) fn for_self(mode: SpiModeKind) -> Option<Spi> {
-        unsafe { SELF_VTABLE.take() }.map(|vt| spi_handle_for_vtable(vt, mode))
+        SELF_VTABLE
+            .lock()
+            .unwrap()
+            .take()
+            .map(|vt| spi_handle_for_vtable(vt, mode))
     }
 
     pub(crate) fn tests(&self) -> &[NamedFunction] {
@@ -329,6 +333,7 @@ pub mod ffi {
         os::raw::c_char,
         panic::{catch_unwind, UnwindSafe},
         ptr::null,
+        sync::Mutex,
     };
 
     /// Signature types of all FFI API functions
@@ -470,7 +475,7 @@ pub mod ffi {
         }
     }
 
-    pub(super) static mut SELF_VTABLE: Option<VTable> = Some(VTable::for_self());
+    pub(super) static SELF_VTABLE: Mutex<Option<VTable>> = Mutex::new(Some(VTable::for_self()));
 
     pub(super) struct VTable {
         /// SAFETY: using plain function pointers instead of [`Symbol`] here to generalize over case
