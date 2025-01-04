@@ -341,6 +341,7 @@ pub mod ffi {
     type RunFn = unsafe extern "C" fn(c_ulonglong) -> u64;
     type EstimateIterationsFn = unsafe extern "C" fn(c_uint) -> c_ulonglong;
     type PrepareStateFn = unsafe extern "C" fn(c_ulonglong) -> c_int;
+    type GetLastErrorFn = unsafe extern "C" fn(*mut *const c_char, *mut c_ulonglong) -> c_int;
     type FreeFn = unsafe extern "C" fn();
 
     /// This block of constants is checking that all exported tango functions are of valid type according to the API.
@@ -354,6 +355,7 @@ pub mod ffi {
         const TANGO_GET_TEST_NAME: GetTestNameFn = tango_get_test_name;
         const TANGO_RUN: RunFn = tango_run;
         const TANGO_ESTIMATE_ITERATIONS: EstimateIterationsFn = tango_estimate_iterations;
+        const TANGO_GET_LAST_ERROR: GetLastErrorFn = tango_get_last_error;
         const TANGO_FREE: FreeFn = tango_free;
     }
 
@@ -384,10 +386,29 @@ pub mod ffi {
         if let Some(s) = STATE.as_ref() {
             let n = s.selected().name();
             *name = n.as_ptr() as _;
-            *length = n.len() as c_ulonglong;
+            *length = n.len() as _;
         } else {
             *name = null();
             *length = 0;
+        }
+    }
+
+    /// Retrurns C-string to a description of last error (if any)
+    ///
+    /// Returns: 0 if last error was returned, -1 otherwise
+    #[no_mangle]
+    unsafe extern "C" fn tango_get_last_error(
+        name: *mut *const c_char,
+        length: *mut c_ulonglong,
+    ) -> c_int {
+        if let Some(err) = STATE.as_ref().and_then(|s| s.last_error.as_ref()) {
+            *name = err.as_ptr() as _;
+            *length = err.len() as _;
+            0
+        } else {
+            *name = null();
+            *length = 0;
+            -1
         }
     }
 
@@ -507,20 +528,29 @@ pub mod ffi {
         }
 
         fn estimate_iterations(&self, time_ms: c_uint) -> Result<usize, String> {
-            let iterations = unsafe { tango_estimate_iterations(time_ms) };
-            if iterations == 0 {
-                Err("FFI Failed".to_string())
-            } else {
-                Ok(iterations as usize)
+            match unsafe { tango_estimate_iterations(time_ms) } {
+                0 => Err(ffi_last_error()),
+                iters => Ok(iters as usize),
             }
         }
 
         fn prepare_state(&self, seed: u64) -> Result<(), String> {
-            if unsafe { tango_prepare_state(seed) } == 0 {
-                Err("FFI Failed".to_string())
-            } else {
-                Ok(())
+            match unsafe { tango_prepare_state(seed) } {
+                0 => Ok(()),
+                _ => Err(ffi_last_error()),
             }
+        }
+    }
+
+    fn ffi_last_error() -> String {
+        let mut length = 0;
+        let mut name = null();
+        if unsafe { tango_get_last_error(&mut name, &mut length) } != 0 {
+            "Unknown FFI Error".to_string()
+        } else {
+            let name = unsafe { slice::from_raw_parts(name as *const u8, length as usize) };
+            // TODO, remove unwrap
+            str::from_utf8(name).unwrap().to_string()
         }
     }
 
@@ -540,6 +570,7 @@ pub mod ffi {
         count_fn: Symbol<'static, CountFn>,
         select_fn: Symbol<'static, SelectFn>,
         get_test_name_fn: Symbol<'static, GetTestNameFn>,
+        get_last_error_fn: Symbol<'static, GetLastErrorFn>,
         run_fn: Symbol<'static, RunFn>,
         estimate_iterations_fn: Symbol<'static, EstimateIterationsFn>,
         prepare_state_fn: Symbol<'static, PrepareStateFn>,
@@ -563,6 +594,8 @@ pub mod ffi {
                 lookup_symbol::<EstimateIterationsFn>(&library, "tango_estimate_iterations")?;
             let prepare_state_fn =
                 lookup_symbol::<PrepareStateFn>(&library, "tango_prepare_state")?;
+            let get_last_error_fn =
+                lookup_symbol::<GetLastErrorFn>(&library, "tango_get_last_error")?;
             let free_fn = lookup_symbol::<FreeFn>(&library, "tango_free")?;
             Ok(Self {
                 _library: library,
@@ -573,8 +606,21 @@ pub mod ffi {
                 run_fn,
                 estimate_iterations_fn,
                 prepare_state_fn,
+                get_last_error_fn,
                 free_fn,
             })
+        }
+
+        fn last_error(&self) -> String {
+            let mut length = 0;
+            let mut name = null();
+            if unsafe { (self.get_last_error_fn)(&mut name, &mut length) } != 0 {
+                "Unknown FFI Error".to_string()
+            } else {
+                let name = unsafe { slice::from_raw_parts(name as *const u8, length as usize) };
+                // TODO, remove unwrap
+                str::from_utf8(name).unwrap().to_string()
+            }
         }
     }
 
@@ -600,17 +646,17 @@ pub mod ffi {
         }
 
         fn estimate_iterations(&self, time_ms: c_uint) -> Result<usize, String> {
-            let iterations = unsafe { (self.estimate_iterations_fn)(time_ms) };
-            if iterations == 0 {
-                Err("FFI Error".to_string())
-            } else {
-                Ok(iterations as usize)
+            match unsafe { (self.estimate_iterations_fn)(time_ms) } {
+                0 => Err(self.last_error()),
+                iters => Ok(iters as usize),
             }
         }
 
         fn prepare_state(&self, seed: c_ulonglong) -> Result<(), String> {
-            unsafe { (self.prepare_state_fn)(seed) };
-            Ok(())
+            match unsafe { (self.prepare_state_fn)(seed) } {
+                0 => Ok(()),
+                _ => Err(self.last_error()),
+            }
         }
     }
 

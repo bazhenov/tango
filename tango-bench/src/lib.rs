@@ -42,7 +42,7 @@ pub enum Error {
     #[error("IO Error")]
     IOError(#[from] io::Error),
 
-    #[error("FFI Error")]
+    #[error("FFI Error: {0}")]
     FFIError(String),
 }
 
