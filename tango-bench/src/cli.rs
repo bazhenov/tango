@@ -338,11 +338,8 @@ mod solo_test {
 
         let seed = seed.unwrap_or_else(rand::random);
 
-        spi_func.spi.prepare_state(seed).map_err(Error::FFIError)?;
-        let iters = spi_func
-            .spi
-            .estimate_iterations(TIME_SLICE_MS)
-            .map_err(Error::FFIError)?;
+        spi_func.spi.prepare_state(seed)?;
+        let iters = spi_func.spi.estimate_iterations(TIME_SLICE_MS)?;
         let mut iterations_per_sample = (iters / 2).max(1);
         let mut sampler = create_sampler(&settings, seed);
 
@@ -603,18 +600,12 @@ mod paired_test {
 
         let seed = seed.unwrap_or_else(rand::random);
 
-        a_func.spi.prepare_state(seed).map_err(Error::FFIError)?;
-        let a_iters = a_func
-            .spi
-            .estimate_iterations(TIME_SLICE_MS)
-            .map_err(Error::FFIError)?;
+        a_func.spi.prepare_state(seed)?;
+        let a_iters = a_func.spi.estimate_iterations(TIME_SLICE_MS)?;
         let a_estimate = (a_iters / 2).max(1);
 
-        b_func.spi.prepare_state(seed).map_err(Error::FFIError)?;
-        let b_iters = b_func
-            .spi
-            .estimate_iterations(TIME_SLICE_MS)
-            .map_err(Error::FFIError)?;
+        b_func.spi.prepare_state(seed)?;
+        let b_iters = b_func.spi.estimate_iterations(TIME_SLICE_MS)?;
         let b_estimate = (b_iters / 2).max(1);
 
         let mut iterations_per_sample = a_estimate.min(b_estimate);
@@ -924,7 +915,7 @@ fn prepare_func(
     firewall: Option<&CacheFirewall>,
 ) -> Result<()> {
     if let Some(seed) = prepare_state_seed {
-        f.spi.prepare_state(seed).map_err(Error::FFIError)?;
+        f.spi.prepare_state(seed)?;
         if let Some(firewall) = firewall {
             firewall.issue_read();
         }

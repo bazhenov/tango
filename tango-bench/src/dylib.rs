@@ -115,7 +115,7 @@ impl Spi {
         }
     }
 
-    pub(crate) fn estimate_iterations(&mut self, time_ms: u32) -> Result<usize, String> {
+    pub(crate) fn estimate_iterations(&mut self, time_ms: u32) -> Result<usize, Error> {
         match &self.mode {
             SpiMode::Synchronous { vt, .. } => vt.estimate_iterations(time_ms),
             SpiMode::Asynchronous { tx, rx, .. } => {
@@ -128,7 +128,7 @@ impl Spi {
         }
     }
 
-    pub(crate) fn prepare_state(&mut self, seed: u64) -> Result<(), String> {
+    pub(crate) fn prepare_state(&mut self, seed: u64) -> Result<(), Error> {
         match &self.mode {
             SpiMode::Synchronous { vt, .. } => vt.prepare_state(seed),
             SpiMode::Asynchronous { tx, rx, .. } => {
@@ -253,8 +253,8 @@ enum SpiRequest {
 
 #[derive(Debug)]
 enum SpiReply {
-    EstimateIterations(Result<usize, String>),
-    PrepareState(Result<(), String>),
+    EstimateIterations(Result<usize, Error>),
+    PrepareState(Result<(), Error>),
     Select,
     Run(u64),
     Measure(u64),
@@ -328,7 +328,6 @@ pub mod ffi {
     use super::*;
     use std::{
         ffi::{c_int, c_uint, c_ulonglong},
-        mem,
         os::raw::c_char,
         panic::{catch_unwind, UnwindSafe},
         ptr::null,
@@ -379,7 +378,7 @@ pub mod ffi {
         }
     }
 
-    /// Retrurns C-string to a description of last error (if any)
+    /// Returns C-string to a description of last error (if any)
     ///
     /// Returns: 0 if last error was returned, -1 otherwise
     #[no_mangle]
@@ -567,29 +566,31 @@ pub mod ffi {
             unsafe { (self.run_fn)(iterations) }
         }
 
-        pub(super) fn estimate_iterations(&self, time_ms: c_uint) -> Result<usize, String> {
+        pub(super) fn estimate_iterations(&self, time_ms: c_uint) -> Result<usize, Error> {
             match unsafe { (self.estimate_iterations_fn)(time_ms) } {
-                0 => Err(self.last_error()),
+                0 => Err(self.last_error()?),
                 iters => Ok(iters as usize),
             }
         }
 
-        pub(super) fn prepare_state(&self, seed: c_ulonglong) -> Result<(), String> {
+        pub(super) fn prepare_state(&self, seed: c_ulonglong) -> Result<(), Error> {
             match unsafe { (self.prepare_state_fn)(seed) } {
                 0 => Ok(()),
-                _ => Err(self.last_error()),
+                _ => Err(self.last_error()?),
             }
         }
 
-        fn last_error(&self) -> String {
+        fn last_error(&self) -> Result<Error, Error> {
             let mut length = 0;
             let mut name = null();
             if unsafe { (self.get_last_error_fn)(&mut name, &mut length) } != 0 {
-                "Unknown FFI Error".to_string()
+                Err(Error::UnknownFFIError)
             } else {
                 let name = unsafe { slice::from_raw_parts(name as *const u8, length as usize) };
-                // TODO, remove unwrap
-                str::from_utf8(name).unwrap().to_string()
+                str::from_utf8(name)
+                    .map_err(Error::InvalidFFIString)
+                    .map(str::to_string)
+                    .map(Error::FFIError)
             }
         }
     }
@@ -603,12 +604,11 @@ pub mod ffi {
     fn lookup_symbol<'l, T>(
         library: &'l Library,
         name: &'static str,
-    ) -> Result<Symbol<'static, T>, Error> {
+    ) -> Result<Symbol<'l, T>, Error> {
         unsafe {
-            let symbol = library
+            library
                 .get(name.as_bytes())
-                .map_err(Error::UnableToLoadSymbol)?;
-            Ok(mem::transmute::<Symbol<'l, T>, Symbol<'static, T>>(symbol))
+                .map_err(Error::UnableToLoadSymbol)
         }
     }
 }

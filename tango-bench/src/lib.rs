@@ -44,6 +44,9 @@ pub enum Error {
 
     #[error("FFI Error: {0}")]
     FFIError(String),
+
+    #[error("Unknown FFI Error")]
+    UnknownFFIError,
 }
 
 /// Registers benchmark in the system
