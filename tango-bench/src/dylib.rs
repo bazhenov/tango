@@ -497,34 +497,20 @@ pub mod ffi {
     }
 
     impl VTable {
-        pub(super) fn new(library: Library) -> Result<Self, Error> {
+        pub(super) fn new(lib: Library) -> Result<Self, Error> {
             // SAFETY: library is boxed and not moved here, therefore we can safley construct self-referential
             // struct here
-            let library = Box::new(library);
-            let init_fn = *lookup_symbol::<InitFn>(&library, "tango_init")?;
-            let count_fn = *lookup_symbol::<CountFn>(&library, "tango_count")?;
-            let select_fn = *lookup_symbol::<SelectFn>(&library, "tango_select")?;
-            let get_test_name_fn =
-                *lookup_symbol::<GetTestNameFn>(&library, "tango_get_test_name")?;
-            let run_fn = *lookup_symbol::<RunFn>(&library, "tango_run")?;
-            let estimate_iterations_fn =
-                *lookup_symbol::<EstimateIterationsFn>(&library, "tango_estimate_iterations")?;
-            let prepare_state_fn =
-                *lookup_symbol::<PrepareStateFn>(&library, "tango_prepare_state")?;
-            let get_last_error_fn =
-                *lookup_symbol::<GetLastErrorFn>(&library, "tango_get_last_error")?;
-            let free_fn = *lookup_symbol::<FreeFn>(&library, "tango_free")?;
             Ok(Self {
-                init_fn,
-                count_fn,
-                select_fn,
-                get_test_name_fn,
-                run_fn,
-                estimate_iterations_fn,
-                prepare_state_fn,
-                get_last_error_fn,
-                free_fn,
-                _library: Some(library),
+                init_fn: *lookup_symbol(&lib, "tango_init")?,
+                count_fn: *lookup_symbol(&lib, "tango_count")?,
+                select_fn: *lookup_symbol(&lib, "tango_select")?,
+                get_test_name_fn: *lookup_symbol(&lib, "tango_get_test_name")?,
+                run_fn: *lookup_symbol(&lib, "tango_run")?,
+                estimate_iterations_fn: *lookup_symbol(&lib, "tango_estimate_iterations")?,
+                prepare_state_fn: *lookup_symbol(&lib, "tango_prepare_state")?,
+                get_last_error_fn: *lookup_symbol(&lib, "tango_get_last_error")?,
+                free_fn: *lookup_symbol(&lib, "tango_free")?,
+                _library: Some(Box::new(lib)),
             })
         }
 
@@ -601,10 +587,7 @@ pub mod ffi {
         }
     }
 
-    fn lookup_symbol<'l, T>(
-        library: &'l Library,
-        name: &'static str,
-    ) -> Result<Symbol<'l, T>, Error> {
+    fn lookup_symbol<'l, T>(library: &'l Library, name: &str) -> Result<Symbol<'l, T>, Error> {
         unsafe {
             library
                 .get(name.as_bytes())
