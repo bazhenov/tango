@@ -2,7 +2,6 @@
 
 use self::ffi::SELF_VTABLE;
 use crate::{Benchmark, ErasedSampler, Error};
-use anyhow::Context;
 use ffi::VTable;
 use libloading::{Library, Symbol};
 use std::{
@@ -57,11 +56,10 @@ enum SpiMode {
 }
 
 impl Spi {
-    pub(crate) fn for_library(path: impl AsRef<Path>, mode: SpiModeKind) -> Spi {
+    pub(crate) fn for_library(path: impl AsRef<Path>, mode: SpiModeKind) -> Result<Spi, Error> {
         let lib = unsafe { Library::new(path.as_ref()) }
-            .with_context(|| format!("Unable to open library: {}", path.as_ref().display()))
-            .unwrap();
-        spi_handle_for_vtable(ffi::VTable::new(lib).unwrap(), mode)
+            .map_err(|e| Error::UnableToLoadLibrary(path.as_ref().to_path_buf(), e))?;
+        Ok(spi_handle_for_vtable(ffi::VTable::new(lib).unwrap(), mode))
     }
 
     pub(crate) fn for_self(mode: SpiModeKind) -> Option<Spi> {

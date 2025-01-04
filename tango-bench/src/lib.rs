@@ -8,6 +8,7 @@ use std::{
     hint::black_box,
     io, mem,
     ops::{Deref, RangeInclusive},
+    path::PathBuf,
     str::Utf8Error,
     time::Duration,
 };
@@ -29,6 +30,9 @@ pub enum Error {
 
     #[error("Spi::self() was already called")]
     SpiSelfWasMoved,
+
+    #[error("Unable to load library {0}. Error: {1}")]
+    UnableToLoadLibrary(PathBuf, libloading::Error),
 
     #[error("Unable to load library symbol")]
     UnableToLoadSymbol(#[source] libloading::Error),
