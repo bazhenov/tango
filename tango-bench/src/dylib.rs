@@ -78,7 +78,7 @@ impl Spi {
         self.tests.iter().find(|f| f.name == name)
     }
 
-    pub(crate) fn run(&mut self, iterations: usize) -> u64 {
+    pub(crate) fn run(&mut self, iterations: usize) -> Result<u64, Error> {
         match &self.mode {
             SpiMode::Synchronous { vt, .. } => vt.run(iterations as c_ulonglong),
             SpiMode::Asynchronous { worker: _, tx, rx } => {
@@ -91,25 +91,26 @@ impl Spi {
         }
     }
 
-    pub(crate) fn measure(&mut self, iterations: usize) {
+    pub(crate) fn measure(&mut self, iterations: usize) -> Result<(), Error> {
         match &mut self.mode {
             SpiMode::Synchronous {
                 vt,
                 last_measurement,
             } => {
-                *last_measurement = vt.run(iterations as c_ulonglong);
+                *last_measurement = vt.run(iterations as c_ulonglong)?;
             }
             SpiMode::Asynchronous { tx, .. } => {
                 tx.send(SpiRequest::Measure { iterations }).unwrap();
             }
         }
+        Ok(())
     }
 
-    pub(crate) fn read_sample(&mut self) -> u64 {
+    pub(crate) fn read_sample(&mut self) -> Result<u64, Error> {
         match &self.mode {
             SpiMode::Synchronous {
                 last_measurement, ..
-            } => *last_measurement,
+            } => Ok(*last_measurement),
             SpiMode::Asynchronous { rx, .. } => match rx.recv().unwrap() {
                 SpiReply::Measure(time) => time,
                 r => panic!("Unexpected response: {:?}", r),
@@ -258,8 +259,8 @@ enum SpiReply {
     EstimateIterations(Result<usize, Error>),
     PrepareState(Result<(), Error>),
     Select,
-    Run(u64),
-    Measure(u64),
+    Run(Result<u64, Error>),
+    Measure(Result<u64, Error>),
 }
 
 /// State which holds the information about list of benchmarks and which one is selected.
@@ -341,11 +342,13 @@ pub mod ffi {
     type CountFn = unsafe extern "C" fn() -> c_ulonglong;
     type GetTestNameFn = unsafe extern "C" fn(*mut *const c_char, *mut c_ulonglong);
     type SelectFn = unsafe extern "C" fn(c_ulonglong);
-    type RunFn = unsafe extern "C" fn(c_ulonglong) -> u64;
+    type RunFn = unsafe extern "C" fn(c_ulonglong, *mut c_ulonglong) -> c_int;
     type EstimateIterationsFn = unsafe extern "C" fn(c_uint) -> c_ulonglong;
     type PrepareStateFn = unsafe extern "C" fn(c_ulonglong) -> c_int;
     type GetLastErrorFn = unsafe extern "C" fn(*mut *const c_char, *mut c_ulonglong) -> c_int;
     type FreeFn = unsafe extern "C" fn();
+
+    pub(super) static SELF_VTABLE: Mutex<Option<VTable>> = Mutex::new(Some(VTable::for_self()));
 
     #[no_mangle]
     unsafe extern "C" fn tango_count() -> c_ulonglong {
@@ -401,17 +404,21 @@ pub mod ffi {
     }
 
     #[no_mangle]
-    unsafe extern "C" fn tango_run(iterations: c_ulonglong) -> u64 {
-        catch(|| {
-            if let Some(s) = STATE.as_mut() {
+    unsafe extern "C" fn tango_run(iterations: c_ulonglong, time: *mut c_ulonglong) -> c_int {
+        let measurement = catch(|| {
+            STATE.as_mut().map(|s| {
                 s.selected_state_mut()
                     .expect("no tango_prepare_state() was called")
                     .measure(iterations as usize)
-            } else {
-                0
-            }
+            })
         })
-        .unwrap_or(0)
+        .flatten();
+        *time = measurement.unwrap_or(0);
+        if measurement.is_some() {
+            0
+        } else {
+            -1
+        }
     }
 
     /// Returns an estimation of number of iterations needed to spent given amount of time
@@ -475,12 +482,10 @@ pub mod ffi {
         }
     }
 
-    pub(super) static SELF_VTABLE: Mutex<Option<VTable>> = Mutex::new(Some(VTable::for_self()));
-
     pub(super) struct VTable {
-        /// SAFETY: using plain function pointers instead of [`Symbol`] here to generalize over case
-        /// when we have to have VTable for function defined in our own address space (so called self VTable) –
-        /// [`Self::for_self()`].
+        /// SAFETY: using plain function pointers instead of [`Symbol`] here to generalize over the case
+        /// when we have to have `VTable` for functions defined in our own address space
+        /// (so called [self VTable](Self::for_self()))
         ///
         /// This is is sound because:
         ///  (1) this struct is private and field can not be accessed outside
@@ -501,8 +506,6 @@ pub mod ffi {
 
     impl VTable {
         pub(super) fn new(lib: Library) -> Result<Self, Error> {
-            // SAFETY: library is boxed and not moved here, therefore we can safley construct self-referential
-            // struct here
             Ok(Self {
                 init_fn: *lookup_symbol(&lib, "tango_init")?,
                 count_fn: *lookup_symbol(&lib, "tango_count")?,
@@ -513,6 +516,7 @@ pub mod ffi {
                 prepare_state_fn: *lookup_symbol(&lib, "tango_prepare_state")?,
                 get_last_error_fn: *lookup_symbol(&lib, "tango_get_last_error")?,
                 free_fn: *lookup_symbol(&lib, "tango_free")?,
+                // SAFETY: symbols are valid as long as _library member is alive
                 _library: Some(Box::new(lib)),
             })
         }
@@ -551,8 +555,12 @@ pub mod ffi {
             unsafe { (self.get_test_name_fn)(ptr, len) }
         }
 
-        pub(super) fn run(&self, iterations: c_ulonglong) -> u64 {
-            unsafe { (self.run_fn)(iterations) }
+        pub(super) fn run(&self, iterations: c_ulonglong) -> Result<u64, Error> {
+            let mut measurement = 0u64;
+            match unsafe { (self.run_fn)(iterations, &mut measurement) } {
+                0 => Ok(measurement),
+                _ => Err(self.last_error()?),
+            }
         }
 
         pub(super) fn estimate_iterations(&self, time_ms: c_uint) -> Result<usize, Error> {

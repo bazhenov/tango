@@ -385,13 +385,13 @@ mod solo_test {
             // Allocate a custom stack frame during runtime, to try to offset alignment of the stack.
             if let Some(distr) = stack_offset_distr {
                 with_alloca(rng.sample(distr), |_| {
-                    spi_func.measure(iterations);
+                    spi_func.spi.measure(iterations).unwrap();
                 });
             } else {
-                spi_func.measure(iterations);
+                spi_func.spi.measure(iterations)?;
             }
 
-            loop_time += Duration::from_nanos(spi_func.read_sample());
+            loop_time += Duration::from_nanos(spi_func.read_sample()?);
             sample_iterations.push(iterations);
             i += 1;
         }
@@ -675,16 +675,16 @@ mod paired_test {
             // Allocate a custom stack frame during runtime, to try to offset alignment of the stack.
             if let Some(distr) = stack_offset_distr {
                 with_alloca(rng.sample(distr), |_| {
-                    a_func.measure(iterations);
-                    b_func.measure(iterations);
+                    a_func.spi.measure(iterations).unwrap();
+                    b_func.spi.measure(iterations).unwrap();
                 });
             } else {
-                a_func.measure(iterations);
-                b_func.measure(iterations);
+                a_func.spi.measure(iterations)?;
+                b_func.spi.measure(iterations)?;
             }
 
-            let a_sample_time = a_func.read_sample();
-            let b_sample_time = b_func.read_sample();
+            let a_sample_time = a_func.read_sample()?;
+            let b_sample_time = b_func.read_sample()?;
             sample_time += a_sample_time.max(b_sample_time);
 
             loop_time += Duration::from_nanos(sample_time);
@@ -893,18 +893,16 @@ impl<'a> TestedFunction<'a> {
         }
     }
 
-    pub(crate) fn measure(&mut self, iterations: usize) {
-        self.spi.measure(iterations);
-    }
-
-    pub(crate) fn read_sample(&mut self) -> u64 {
-        let sample = self.spi.read_sample();
+    pub(crate) fn read_sample(&mut self) -> Result<u64> {
+        let sample = self.spi.read_sample().context("Unable to read sample")?;
         self.samples.push(sample);
-        sample
+        Ok(sample)
     }
 
-    pub(crate) fn run(&mut self, iterations: usize) -> u64 {
-        self.spi.run(iterations)
+    pub(crate) fn run(&mut self, iterations: usize) -> Result<u64> {
+        self.spi
+            .run(iterations)
+            .context("Unable to run measurement")
     }
 }
 
@@ -921,7 +919,7 @@ fn prepare_func(
         }
     }
     if let Some(warmup_iterations) = warmup_iterations {
-        f.run(warmup_iterations);
+        f.run(warmup_iterations)?;
     }
     Ok(())
 }
