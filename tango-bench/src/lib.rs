@@ -1,6 +1,7 @@
 #[cfg(feature = "async")]
 pub use asynchronous::async_benchmark_fn;
 use core::ptr;
+use dylib::ffi::TANGO_API_VERSION;
 use num_traits::ToPrimitive;
 use rand::{rngs::SmallRng, Rng, SeedableRng};
 use std::{
@@ -8,6 +9,7 @@ use std::{
     hint::black_box,
     io, mem,
     ops::{Deref, RangeInclusive},
+    path::PathBuf,
     str::Utf8Error,
     time::Duration,
 };
@@ -30,6 +32,9 @@ pub enum Error {
     #[error("Spi::self() was already called")]
     SpiSelfWasMoved,
 
+    #[error("Unable to load library {0}. Error: {1}")]
+    UnableToLoadLibrary(PathBuf, libloading::Error),
+
     #[error("Unable to load library symbol")]
     UnableToLoadSymbol(#[source] libloading::Error),
 
@@ -41,6 +46,18 @@ pub enum Error {
 
     #[error("IO Error")]
     IOError(#[from] io::Error),
+
+    #[error("FFI Error: {0}")]
+    FFIError(String),
+
+    #[error("Unknown FFI Error")]
+    UnknownFFIError,
+
+    #[error(
+        "Non matching tango version. Expected: {}, got: {0}",
+        TANGO_API_VERSION
+    )]
+    IncorrectVersion(u32),
 }
 
 /// Registers benchmark in the system
