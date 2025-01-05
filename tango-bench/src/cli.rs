@@ -601,12 +601,24 @@ mod paired_test {
 
         let seed = seed.unwrap_or_else(rand::random);
 
-        a_func.spi.prepare_state(seed)?;
-        let a_iters = a_func.spi.estimate_iterations(TIME_SLICE_MS)?;
+        a_func
+            .spi
+            .prepare_state(seed)
+            .context("Unable to prepare benchmark state")?;
+        let a_iters = a_func
+            .spi
+            .estimate_iterations(TIME_SLICE_MS)
+            .context("Failed to estimate required iterations number")?;
         let a_estimate = (a_iters / 2).max(1);
 
-        b_func.spi.prepare_state(seed)?;
-        let b_iters = b_func.spi.estimate_iterations(TIME_SLICE_MS)?;
+        b_func
+            .spi
+            .prepare_state(seed)
+            .context("Unable to prepare benchmark state")?;
+        let b_iters = b_func
+            .spi
+            .estimate_iterations(TIME_SLICE_MS)
+            .context("Failed to estimate required iterations number")?;
         let b_estimate = (b_iters / 2).max(1);
 
         let mut iterations_per_sample = a_estimate.min(b_estimate);
