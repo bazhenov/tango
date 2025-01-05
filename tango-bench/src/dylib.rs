@@ -59,7 +59,7 @@ impl Spi {
     pub(crate) fn for_library(path: impl AsRef<Path>, mode: SpiModeKind) -> Result<Spi, Error> {
         let lib = unsafe { Library::new(path.as_ref()) }
             .map_err(|e| Error::UnableToLoadLibrary(path.as_ref().to_path_buf(), e))?;
-        Ok(spi_handle_for_vtable(ffi::VTable::new(lib).unwrap(), mode))
+        Ok(spi_handle_for_vtable(ffi::VTable::new(lib)?, mode))
     }
 
     pub(crate) fn for_self(mode: SpiModeKind) -> Option<Spi> {
@@ -346,9 +346,11 @@ pub mod ffi {
     type EstimateIterationsFn = unsafe extern "C" fn(c_uint) -> c_ulonglong;
     type PrepareStateFn = unsafe extern "C" fn(c_ulonglong) -> c_int;
     type GetLastErrorFn = unsafe extern "C" fn(*mut *const c_char, *mut c_ulonglong) -> c_int;
+    type ApiVersionFn = unsafe extern "C" fn() -> c_uint;
     type FreeFn = unsafe extern "C" fn();
 
     pub(super) static SELF_VTABLE: Mutex<Option<VTable>> = Mutex::new(Some(VTable::for_self()));
+    pub const TANGO_API_VERSION: u32 = 3;
 
     #[no_mangle]
     unsafe extern "C" fn tango_count() -> c_ulonglong {
@@ -356,6 +358,11 @@ pub mod ffi {
             .as_ref()
             .map(|s| s.benchmarks.len() as c_ulonglong)
             .unwrap_or(0)
+    }
+
+    #[no_mangle]
+    unsafe extern "C" fn tango_api_version() -> c_uint {
+        TANGO_API_VERSION
     }
 
     #[no_mangle]
@@ -506,6 +513,11 @@ pub mod ffi {
 
     impl VTable {
         pub(super) fn new(lib: Library) -> Result<Self, Error> {
+            let api_version_fn = *lookup_symbol::<ApiVersionFn>(&lib, "tango_api_version")?;
+            let api_version = unsafe { (api_version_fn)() };
+            if api_version != TANGO_API_VERSION {
+                return Err(Error::IncorrectVersion(api_version));
+            }
             Ok(Self {
                 init_fn: *lookup_symbol(&lib, "tango_init")?,
                 count_fn: *lookup_symbol(&lib, "tango_count")?,

@@ -1,6 +1,7 @@
 #[cfg(feature = "async")]
 pub use asynchronous::async_benchmark_fn;
 use core::ptr;
+use dylib::ffi::TANGO_API_VERSION;
 use num_traits::ToPrimitive;
 use rand::{rngs::SmallRng, Rng, SeedableRng};
 use std::{
@@ -51,6 +52,12 @@ pub enum Error {
 
     #[error("Unknown FFI Error")]
     UnknownFFIError,
+
+    #[error(
+        "Non matching tango version. Expected: {}, got: {0}",
+        TANGO_API_VERSION
+    )]
+    IncorrectVersion(u32),
 }
 
 /// Registers benchmark in the system

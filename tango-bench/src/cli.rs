@@ -463,7 +463,8 @@ mod paired_test {
         };
 
         let mut spi_self = Spi::for_self(mode).ok_or(Error::SpiSelfWasMoved)?;
-        let mut spi_lib = Spi::for_library(path, mode)?;
+        let mut spi_lib = Spi::for_library(&path, mode)
+            .with_context(|| format!("Unable to load library: {}", path.display()))?;
 
         settings.filter_outliers = filter_outliers;
         settings.cache_firewall = cache_firewall;
