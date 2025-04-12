@@ -58,11 +58,12 @@ enum SpiMode {
 impl Spi {
     pub(crate) fn for_library(path: impl AsRef<Path>, mode: SpiModeKind) -> Result<Spi, Error> {
         let path = path.as_ref();
-        if !path.exists() {
-            return Err(Error::BenchmarkNotFound);
+        if path.exists() {
+            let lib = unsafe { Library::new(path) }.map_err(Error::UnableToLoadBenchmark)?;
+            Ok(spi_handle_for_vtable(ffi::VTable::new(lib)?, mode))
+        } else {
+            Err(Error::BenchmarkNotFound)
         }
-        let lib = unsafe { Library::new(path) }.map_err(Error::UnableToLoadBenchmark)?;
-        Ok(spi_handle_for_vtable(ffi::VTable::new(lib)?, mode))
     }
 
     pub(crate) fn for_self(mode: SpiModeKind) -> Option<Spi> {
