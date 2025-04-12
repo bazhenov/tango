@@ -62,7 +62,7 @@ jobs:
           target/benchmarks/tango --color=never compare baseline-branch/target/benchmarks/tango \
             -v -t 1 --fail-threshold 10 | tee target/benchmark.txt
 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: benchmark.txt
           path: target/benchmark.txt
