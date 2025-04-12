@@ -9,7 +9,6 @@ use std::{
     hint::black_box,
     io, mem,
     ops::{Deref, RangeInclusive},
-    path::PathBuf,
     str::Utf8Error,
     time::Duration,
 };
@@ -32,11 +31,14 @@ pub enum Error {
     #[error("Spi::self() was already called")]
     SpiSelfWasMoved,
 
-    #[error("Unable to load library {0}. Error: {1}")]
-    UnableToLoadLibrary(PathBuf, libloading::Error),
+    #[error("Benchmark is missing")]
+    BenchmarkNotFound,
 
-    #[error("Unable to load library symbol")]
-    UnableToLoadSymbol(#[source] libloading::Error),
+    #[error("Unable to load benchmark")]
+    UnableToLoadBenchmark(#[source] libloading::Error),
+
+    #[error("Unable to load library symbol: {0}")]
+    UnableToLoadSymbol(String, #[source] libloading::Error),
 
     #[error("Unknown sampler type. Available options are: flat and linear")]
     UnknownSamplerType,
@@ -905,7 +907,7 @@ mod tests {
         let mut rng = SmallRng::from_entropy();
 
         let mut values = vec![];
-        values.extend(std::iter::repeat(0.).take(20));
+        values.extend([0.; 20]);
         values.extend((0..10).map(|_| rng.gen_range(-1000.0..=-200.0)));
         values.extend((0..10).map(|_| rng.gen_range(200.0..=1000.0)));
 

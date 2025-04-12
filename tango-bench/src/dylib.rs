@@ -57,9 +57,13 @@ enum SpiMode {
 
 impl Spi {
     pub(crate) fn for_library(path: impl AsRef<Path>, mode: SpiModeKind) -> Result<Spi, Error> {
-        let lib = unsafe { Library::new(path.as_ref()) }
-            .map_err(|e| Error::UnableToLoadLibrary(path.as_ref().to_path_buf(), e))?;
-        Ok(spi_handle_for_vtable(ffi::VTable::new(lib)?, mode))
+        let path = path.as_ref();
+        if path.exists() {
+            let lib = unsafe { Library::new(path) }.map_err(Error::UnableToLoadBenchmark)?;
+            Ok(spi_handle_for_vtable(ffi::VTable::new(lib)?, mode))
+        } else {
+            Err(Error::BenchmarkNotFound)
+        }
     }
 
     pub(crate) fn for_self(mode: SpiModeKind) -> Option<Spi> {
@@ -613,7 +617,7 @@ pub mod ffi {
         unsafe {
             library
                 .get(name.as_bytes())
-                .map_err(Error::UnableToLoadSymbol)
+                .map_err(|e| Error::UnableToLoadSymbol(name.to_string(), e))
         }
     }
 }
