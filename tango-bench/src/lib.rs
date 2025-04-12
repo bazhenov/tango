@@ -907,7 +907,7 @@ mod tests {
         let mut rng = SmallRng::from_entropy();
 
         let mut values = vec![];
-        values.extend(std::iter::repeat(0.).take(20));
+        values.extend([0.; 20]);
         values.extend((0..10).map(|_| rng.gen_range(-1000.0..=-200.0)));
         values.extend((0..10).map(|_| rng.gen_range(200.0..=1000.0)));
 
