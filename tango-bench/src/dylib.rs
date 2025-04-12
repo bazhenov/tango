@@ -8,7 +8,7 @@ use std::{
     cell::UnsafeCell,
     ffi::{c_char, c_ulonglong},
     path::Path,
-    ptr::{addr_of, null},
+    ptr::addr_of,
     slice, str,
     sync::mpsc::{channel, Receiver, Sender},
     thread::{self, JoinHandle},
@@ -230,17 +230,16 @@ fn enumerate_tests(vt: &VTable) -> Result<Vec<NamedFunction>, Error> {
         vt.select(idx);
 
         let mut length = 0;
-        let name_ptr: *const c_char = null();
+        let name_ptr: *const c_char = c"".as_ptr();
         vt.get_test_name(addr_of!(name_ptr) as _, &mut length);
-        if length == 0 {
-            continue;
+        if length > 0 {
+            let slice = unsafe { slice::from_raw_parts(name_ptr as *const u8, length as usize) };
+            let name = str::from_utf8(slice)
+                .map_err(Error::InvalidFFIString)?
+                .to_string();
+            let idx = idx as usize;
+            tests.push(NamedFunction { name, idx });
         }
-        let slice = unsafe { slice::from_raw_parts(name_ptr as *const u8, length as usize) };
-        let name = str::from_utf8(slice)
-            .map_err(Error::InvalidFFIString)?
-            .to_string();
-        let idx = idx as usize;
-        tests.push(NamedFunction { name, idx });
     }
     Ok(tests)
 }
