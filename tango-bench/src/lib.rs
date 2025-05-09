@@ -857,12 +857,15 @@ pub mod asynchronous {
         use super::*;
         use ::tokio::runtime::Builder;
 
-        #[derive(Copy, Clone)]
+        #[derive(Copy, Clone, Default)]
         pub struct TokioRuntime;
 
         impl AsyncRuntime for TokioRuntime {
             fn block_on<O, Fut: Future<Output = O>, F: FnMut() -> Fut>(&self, mut f: F) -> O {
-                let runtime = Builder::new_current_thread().build().unwrap();
+                let mut builder = Builder::new_current_thread();
+                #[cfg(feature = "async-tokio-time")]
+                builder.enable_time();
+                let runtime = builder.build().unwrap();
                 runtime.block_on(f())
             }
         }
