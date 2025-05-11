@@ -1,0 +1,28 @@
+name: Test and Lint using Nightly
+# Used to test tango on nightly periodically, to make sure nothing
+# breaks on a new compiler and clippy version
+
+on:
+  schedule:
+    - cron: "0 0 * * 0" # Every Sunday
+
+jobs:
+  lint:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: "clippy"
+      - uses: Swatinem/rust-cache@v2
+      - name: Running clippy
+        run: cargo clippy --all-targets --all-features -p tango-bench --message-format=json | cargo-action-fmt
+  test:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Run Tests
+        run: cargo test
