@@ -33,7 +33,7 @@ tempfile = "3.8"
 hw-timer = []
 async = []
 async-tokio = ['async', 'dep:tokio']
-async-tokio-time = ["async-tokio", "tokio/time"]
+async-tokio-all-drivers = ["async-tokio", "tokio/time"]
 
 [[bench]]
 name = "tango"
