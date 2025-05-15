@@ -23,7 +23,7 @@ jobs:
       matrix:
         include:
           - os: ubuntu-22.04
-          - os: macos-12
+          - os: macos-13
           - os: windows-2019
     runs-on: ${{ matrix.os }}
     steps:
@@ -62,7 +62,7 @@ jobs:
           target/benchmarks/tango --color=never compare baseline-branch/target/benchmarks/tango \
             -v -t 1 --fail-threshold 10 | tee target/benchmark.txt
 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: benchmark.txt
           path: target/benchmark.txt

@@ -1,6 +1,7 @@
 #[cfg(feature = "async")]
 pub use asynchronous::async_benchmark_fn;
 use core::ptr;
+use dylib::ffi::TANGO_API_VERSION;
 use num_traits::ToPrimitive;
 use rand::{rngs::SmallRng, Rng, SeedableRng};
 use std::{
@@ -30,8 +31,14 @@ pub enum Error {
     #[error("Spi::self() was already called")]
     SpiSelfWasMoved,
 
-    #[error("Unable to load library symbol")]
-    UnableToLoadSymbol(#[source] libloading::Error),
+    #[error("Benchmark is missing")]
+    BenchmarkNotFound,
+
+    #[error("Unable to load benchmark")]
+    UnableToLoadBenchmark(#[source] libloading::Error),
+
+    #[error("Unable to load library symbol: {0}")]
+    UnableToLoadSymbol(String, #[source] libloading::Error),
 
     #[error("Unknown sampler type. Available options are: flat and linear")]
     UnknownSamplerType,
@@ -41,6 +48,18 @@ pub enum Error {
 
     #[error("IO Error")]
     IOError(#[from] io::Error),
+
+    #[error("FFI Error: {0}")]
+    FFIError(String),
+
+    #[error("Unknown FFI Error")]
+    UnknownFFIError,
+
+    #[error(
+        "Non matching tango version. Expected: {}, got: {0}",
+        TANGO_API_VERSION
+    )]
+    IncorrectVersion(u32),
 }
 
 /// Registers benchmark in the system
@@ -891,7 +910,7 @@ mod tests {
         let mut rng = SmallRng::from_entropy();
 
         let mut values = vec![];
-        values.extend(std::iter::repeat(0.).take(20));
+        values.extend([0.; 20]);
         values.extend((0..10).map(|_| rng.gen_range(-1000.0..=-200.0)));
         values.extend((0..10).map(|_| rng.gen_range(200.0..=1000.0)));
 

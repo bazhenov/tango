@@ -10,3 +10,4 @@ Cargo.lock
 /.vscode
 /.ttr.yaml
 /*.drawio
+/rust-toolchain.toml
