@@ -126,11 +126,11 @@ To use Tango.rs in an asynchronous setup, follow these steps:
     harness = false
     ```
 
-    If you need Tokio's timer functionalities (e.g., for `tokio::time::sleep`), you can enable the `async-tokio-time` feature:
+    If you need Tokio's timer functionalities (e.g., for `tokio::time::sleep`), you can enable the `async-tokio-all-drivers` feature:
 
     ```toml
     [dev-dependencies]
-    tango-bench = { version = "0.6", features = ["async-tokio-time"] }
+    tango-bench = { version = "0.6", features = ["async-tokio-all-drivers"] }
     ```
 
 2. Create `benches/async_factorial.rs` with the following content:
