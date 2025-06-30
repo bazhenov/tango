@@ -450,19 +450,17 @@ pub(crate) fn calculate_run_result<N: Into<String>>(
 
     let mut iterations_per_sample = iterations_per_sample.to_vec();
 
-    let mut diff = candidate
-        .iter()
+    let mut log_of_ratios = candidate.
+        iter()
         .zip(baseline.iter())
-        // Calculating difference between candidate and baseline
-        .map(|(&c, &b)| (c as f64 - b as f64))
-        .zip(iterations_per_sample.iter())
-        // Normalizing difference to iterations count
-        .map(|(diff, &iters)| diff / iters as f64)
+        .map(|(&c, &b)| (c as f64 / b as f64))
+        .map(|ratio| ratio.log2())
         .collect::<Vec<_>>();
 
-    // need to save number of original samples to calculate number of outliers correctly
-    let n = diff.len();
+    let n = log_of_ratios.len();
 
+
+    ////////////// UNTOUCHED REGION //////////////
     // Normalizing measurements to iterations count
     let mut baseline = baseline
         .iter()
@@ -474,49 +472,37 @@ pub(crate) fn calculate_run_result<N: Into<String>>(
         .zip(iterations_per_sample.iter())
         .map(|(&v, &iters)| (v as f64) / (iters as f64))
         .collect::<Vec<_>>();
+    //////////// END UNTOUCHED REGION ////////////
 
-    // Calculating measurements range. All measurements outside this interval considered outliers
-    let range = if filter_outliers {
-        iqr_variance_thresholds(diff.to_vec())
-    } else {
-        None
-    };
+    // Summary can use arithmetic mean because doing it to the ratios'
+    // logarithms is equivalent do doing the geometric mean to the real 
+    // ratios.
+    let log_of_ratios_summary = Summary::from(&log_of_ratios)?;
 
-    // Cleaning measurements from outliers if needed
-    if let Some(range) = range {
-        // We filtering outliers to build statistical Summary and the order of elements in arrays
-        // doesn't matter, therefore swap_remove() is used. But we need to make sure that all arrays
-        // has the same length
-        assert_eq!(diff.len(), baseline.len());
-        assert_eq!(diff.len(), candidate.len());
-
-        let mut i = 0;
-        while i < diff.len() {
-            if range.contains(&diff[i]) {
-                i += 1;
-            } else {
-                diff.swap_remove(i);
-                iterations_per_sample.swap_remove(i);
-                baseline.swap_remove(i);
-                candidate.swap_remove(i);
-            }
-        }
-    };
-
-    let diff_summary = Summary::from(&diff)?;
+    ////////////// UNTOUCHED REGION //////////////
     let baseline_summary = Summary::from(&baseline)?;
     let candidate_summary = Summary::from(&candidate)?;
+    //////////// END UNTOUCHED REGION ////////////
 
-    let diff_estimate = DiffEstimate::build(&baseline_summary, &diff_summary);
+    // TODO: Do we use DiffEstimate here?
+    // let ratio_estimate = ??
+    //  |
+    //  | Original line
+    //  V
+    // let diff_estimate = DiffEstimate::build(&baseline_summary, &diff_summary);
 
-    Some(RunResult {
-        baseline: baseline_summary,
-        candidate: candidate_summary,
-        diff: diff_summary,
-        name: name.into(),
-        diff_estimate,
-        outliers: n - diff_summary.n,
-    })
+    unimplemented!()
+
+    // TODO: how do we do this part?
+
+    // Some(RunResult {
+    //     baseline: baseline_summary,
+    //     candidate: candidate_summary,
+    //     diff: diff_summary,
+    //     name: name.into(),
+    //     diff_estimate,
+    //     outliers: n - diff_summary.n,
+    // })
 }
 
 /// Contains the estimation of how much faster or slower is candidate function compared to baseline
