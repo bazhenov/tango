@@ -1,5 +1,8 @@
 //! Loading and resolving symbols from .dylib/.so libraries
 
+#![allow(static_mut_refs)]
+#![allow(invalid_null_arguments)]
+
 use self::ffi::{VTable, SELF_VTABLE};
 use crate::{Benchmark, ErasedSampler, Error};
 use anyhow::Context;
@@ -81,7 +84,7 @@ impl Spi {
                 tx.send(SpiRequest::Run { iterations }).unwrap();
                 match rx.recv().unwrap() {
                     SpiReply::Run(time) => time,
-                    r => panic!("Unexpected response: {:?}", r),
+                    r => panic!("Unexpected response: {r:?}"),
                 }
             }
         }
@@ -108,7 +111,7 @@ impl Spi {
             } => *last_measurement,
             SpiMode::Asynchronous { rx, .. } => match rx.recv().unwrap() {
                 SpiReply::Measure(time) => time,
-                r => panic!("Unexpected response: {:?}", r),
+                r => panic!("Unexpected response: {r:?}"),
             },
         }
     }
@@ -120,7 +123,7 @@ impl Spi {
                 tx.send(SpiRequest::EstimateIterations { time_ms }).unwrap();
                 match rx.recv().unwrap() {
                     SpiReply::EstimateIterations(iters) => iters,
-                    r => panic!("Unexpected response: {:?}", r),
+                    r => panic!("Unexpected response: {r:?}"),
                 }
             }
         }
@@ -133,7 +136,7 @@ impl Spi {
                 tx.send(SpiRequest::PrepareState { seed }).unwrap();
                 match rx.recv().unwrap() {
                     SpiReply::PrepareState => {}
-                    r => panic!("Unexpected response: {:?}", r),
+                    r => panic!("Unexpected response: {r:?}"),
                 }
             }
         }
@@ -146,7 +149,7 @@ impl Spi {
                 tx.send(SpiRequest::Select { idx }).unwrap();
                 match rx.recv().unwrap() {
                     SpiReply::Select => self.selected_function = Some(idx),
-                    r => panic!("Unexpected response: {:?}", r),
+                    r => panic!("Unexpected response: {r:?}"),
                 }
             }
         }

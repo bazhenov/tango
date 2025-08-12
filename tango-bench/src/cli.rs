@@ -750,12 +750,12 @@ mod paired_test {
     ) -> io::Result<()> {
         let mut file = BufWriter::new(File::create(path)?);
         for (a, b, c) in values {
-            writeln!(&mut file, "{},{},{}", a, b, c)?;
+            writeln!(&mut file, "{a},{b},{c}")?;
         }
         Ok(())
     }
 
-    fn generate_plots(path: &Path, sample_dumps: &[PathBuf]) -> Result<()> {
+    fn generate_plots(_path: &Path, sample_dumps: &[PathBuf]) -> Result<()> {
         let gnuplot_file = AutoDelete(temp_dir().join("tango-plot.gnuplot"));
         fs::write(&*gnuplot_file, include_bytes!("plot.gnuplot"))?;
         let gnuplot_file_str = gnuplot_file.to_str().unwrap();
@@ -1017,9 +1017,7 @@ mod tests {
         for pattern in patterns {
             assert!(
                 glob_match(pattern, input),
-                "failed to match {} against {}",
-                pattern,
-                input
+                "failed to match {pattern} against {input}"
             );
         }
     }
