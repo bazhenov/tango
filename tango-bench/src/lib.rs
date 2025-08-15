@@ -899,8 +899,7 @@ mod tests {
 
         assert!(
             -50. <= *thresholds.start() && *thresholds.end() <= 50.,
-            "Invalid range: {:?}",
-            thresholds
+            "Invalid range: {thresholds:?}"
         );
     }
 
@@ -918,8 +917,7 @@ mod tests {
 
         assert!(
             0. <= *thresholds.start() && *thresholds.end() <= 0.,
-            "Invalid range: {:?}",
-            thresholds
+            "Invalid range: {thresholds:?}"
         );
     }
 
@@ -978,9 +976,7 @@ mod tests {
         for (value, expected_value) in variances.iter().zip(expected) {
             assert!(
                 (value - expected_value).abs() < 1e-3,
-                "Expected close to: {}, given: {}",
-                expected_value,
-                value
+                "Expected close to: {expected_value}, given: {value}"
             );
         }
     }
