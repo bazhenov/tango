@@ -151,33 +151,33 @@ impl Bencher {
 struct Sampler<F>(F);
 
 pub trait ErasedSampler {
-    /// Measures the performance if the function
+    /// Measures the performance of the function
     ///
-    /// Returns the cumulative execution time (all iterations) with nanoseconds precision,
-    /// but not necessarily accuracy. Usually this time is get by `clock_gettime()` call or some other
+    /// Returns the cumulative execution time (all iterations) with nanoseconds precision, but not
+    /// necessarily accuracy. Usually this time is get by `clock_gettime()` call or some other
     /// platform-specific call.
     ///
-    /// This method should use the same arguments for measuring the test function unless [`prepare_state()`]
-    /// method is called. Only then new set of input arguments should be generated. It is NOT allowed
-    /// to call this method without first calling [`prepare_state()`].
+    /// This method should use the same arguments for measuring the test function unless
+    /// [`prepare_state()`] method is called. Only then a new set of input arguments should be
+    /// generated. It is NOT allowed to call this method without first calling [`prepare_state()`].
     ///
     /// [`prepare_state()`]: Self::prepare_state()
     fn measure(&mut self, iterations: usize) -> u64;
 
     /// Estimates the number of iterations achievable within given time.
     ///
-    /// Time span is given in milliseconds (`time_ms`). Estimate can be an approximation and it is important
-    /// for implementation to be fast (in the order of 10 ms).
-    /// If possible the same input arguments should be used when building the estimate.
-    /// If the single call of a function is longer than provided timespan the implementation should return 0.
+    /// Time span is given in milliseconds (`time_ms`). Estimate can be an approximation and it is
+    /// important for implementation to be fast (in the order of 10 ms).  If possible the same input
+    /// arguments should be used when building the estimate.  If the single call of a function is
+    /// longer than provided timespan the implementation should return 0.
     fn estimate_iterations(&mut self, time_ms: u32) -> usize {
         let mut iters = 1;
         let time_ns = Duration::from_millis(time_ms as u64).as_nanos() as u64;
 
         for _ in 0..5 {
             // Never believe short measurements because they are very unreliable. Pretending that
-            // measurement at least took 1us guarantees that we won't end up with an unreasonably large number
-            // of iterations
+            // measurement at least took 1us guarantees that we won't end up with an unreasonably
+            // large number of iterations
             let time = self.measure(iters).max(1_000);
             let time_per_iteration = (time / iters as u64).max(1);
             let new_iters = (time_ns / time_per_iteration) as usize;
@@ -236,8 +236,8 @@ impl<F: FnMut(Bencher) -> Box<dyn ErasedSampler>> SamplerFactory for SyncSampleF
 impl Benchmark {
     /// Generates next haystack for the measurement
     ///
-    /// Calling this method should update internal haystack used for measurement.
-    /// Returns `true` if update happens, `false` if implementation doesn't support haystack generation.
+    /// Calling this method should update internal haystack used for measurement.  Returns `true` if
+    /// update happens, `false` if implementation doesn't support haystack generation.
     /// Haystack/Needle distinction is described in [`Generator`] trait.
     pub fn prepare_state(&mut self, seed: u64) -> Box<dyn ErasedSampler> {
         self.sampler_factory
@@ -300,19 +300,22 @@ pub struct MeasurementSettings {
 
     /// Size of a CPU cache firewall in KBytes
     ///
-    /// If set, the scheduler will perform a dummy data read between samples generation to spoil the CPU cache
+    /// If set, the scheduler will perform a dummy data read between samples generation to spoil the
+    /// CPU cache
     ///
-    /// Cache firewall is a way to reduce the impact of the CPU cache on the benchmarking process. It tries
-    /// to minimize discrepancies in performance between two algorithms due to the CPU cache state.
+    /// Cache firewall is a way to reduce the impact of the CPU cache on the benchmarking
+    /// process. It tries to minimize discrepancies in performance between two algorithms due to the
+    /// CPU cache state.
     pub cache_firewall: Option<usize>,
 
     /// If true, scheduler will perform a yield of control back to the OS before taking each sample
     ///
-    /// Yielding control to the OS is a way to reduce the impact of OS scheduler on the benchmarking process.
+    /// Yielding control to the OS is a way to reduce the impact of OS scheduler on the benchmarking
+    /// process.
     pub yield_before_sample: bool,
 
-    /// If set, use alloca to allocate a random offset for the stack each sample.
-    /// This to reduce memory alignment effects on the benchmarking process.
+    /// If set, use alloca to allocate a random offset for the stack each sample.  This to reduce
+    /// memory alignment effects on the benchmarking process.
     ///
     /// May cause UB if the allocation is larger then the thread stack size.
     pub randomize_stack: Option<usize>,
@@ -373,13 +376,14 @@ impl Default for MeasurementSettings {
 
 /// Responsible for determining the number of iterations to run for each sample
 ///
-/// Different sampler strategies can influence the results heavily. For example, if function is dependent heavily
-/// on a memory subsystem, then it should be tested with different number of iterations to be representative
-/// for different memory access patterns and cache states.
+/// Different sampler strategies can influence the results heavily. For example, if function is
+/// dependent heavily on a memory subsystem, then it should be tested with different number of
+/// iterations to be representative for different memory access patterns and cache states.
 trait SampleLength {
     /// Returns the number of iterations to run for the next sample
     ///
-    /// Accepts the number of iteration being run starting from 0 and cumulative time spent by both functions
+    /// Accepts the number of iteration being run starting from 0 and cumulative time spent by both
+    /// functions
     fn next_sample_iterations(&mut self, iteration_no: usize, estimate: usize) -> usize;
 }
 
@@ -552,9 +556,9 @@ pub(crate) struct DiffEstimate {
 impl DiffEstimate {
     /// Builds [`DiffEstimate`] from flat sampling
     ///
-    /// Flat sampling is a sampling where each measurement is normalized by the number of iterations.
-    /// This is needed to make measurements comparable between each other. Linear sampling is more
-    /// robust to outliers, but it is requiring more iterations.
+    /// Flat sampling is a sampling where each measurement is normalized by the number of
+    /// iterations.  This is needed to make measurements comparable between each other. Linear
+    /// sampling is more robust to outliers, but it is requiring more iterations.
     ///
     /// It is assumed that baseline and candidate are already normalized by iterations count.
     fn build(baseline: &Summary<f64>, diff: &Summary<f64>) -> Self {
@@ -595,8 +599,8 @@ pub(crate) struct RunResult {
 
 /// Statistical summary for a given iterator of numbers.
 ///
-/// Calculates all the information using single pass over the data. Mean and variance are calculated using
-/// streaming algorithm described in _Art of Computer Programming, Vol 2, page 232_.
+/// Calculates all the information using single pass over the data. Mean and variance are calculated
+/// using streaming algorithm described in _Art of Computer Programming, Vol 2, page 232_.
 #[derive(Clone, Copy)]
 pub struct Summary<T> {
     pub n: usize,
@@ -686,8 +690,8 @@ where
 
 /// Outlier detection algorithm based on interquartile range
 ///
-/// Observations that are 1.5 IQR away from the corresponding quartile are consideted as outliers
-/// as described in original Tukey's paper.
+/// Observations that are 1.5 IQR away from the corresponding quartile are consideted as outliers as
+/// described in original Tukey's paper.
 pub fn iqr_variance_thresholds(mut input: Vec<f64>) -> Option<RangeInclusive<f64>> {
     const MINIMUM_IQR: f64 = 1.;
 
@@ -720,7 +724,8 @@ pub fn iqr_variance_thresholds(mut input: Vec<f64>) -> Option<RangeInclusive<f64
         return None;
     }
 
-    // Calculating the equal number of observations which should be removed from each "side" of observations
+    // Calculating the equal number of observations which should be removed from each "side" of
+    // observations
     let outliers_cnt = low_threshold_idx.min(input.len() - high_threshold_idx);
 
     Some(input[outliers_cnt]..=(input[input.len() - outliers_cnt - 1]))
@@ -903,7 +908,8 @@ mod tests {
         );
     }
 
-    /// This tests checks that the algorithm is stable in case of zero difference between 25 and 75 percentiles
+    /// This tests checks that the algorithm is stable in case of zero difference between 25 and 75
+    /// percentiles
     #[test]
     fn check_outliers_zero_iqr() {
         let mut rng = SmallRng::from_entropy();
@@ -992,9 +998,12 @@ mod tests {
     /// Basic check of measurement code
     ///
     /// This test is quite brittle. There is no guarantee the OS scheduler will wake up the thread
-    /// soon enough to meet measurement target. We try to mitigate this possibility using several strategies:
-    /// 1. repeating test several times and taking median as target measurement.
-    /// 2. using more liberal checking condition (allowing 1 order of magnitude error in measurement)
+    /// soon enough to meet measurement target. We try to mitigate this possibility using several
+    /// strategies:
+    ///
+    /// * repeating test several times and taking median as target measurement.
+    ///
+    /// * using more liberal checking condition (allowing 1 order of magnitude error in measurement)
     #[test]
     fn check_measure_time() {
         let expected_delay = 1;
