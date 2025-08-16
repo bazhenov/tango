@@ -1,5 +1,8 @@
+#![feature(rustc_private)]
+
 #[cfg(feature = "async")]
 pub use asynchronous::async_benchmark_fn;
+
 use core::ptr;
 use dylib::ffi::TANGO_API_VERSION;
 use num_traits::ToPrimitive;
@@ -732,13 +735,15 @@ pub fn iqr_variance_thresholds(mut input: Vec<f64>) -> Option<RangeInclusive<f64
 }
 
 mod timer {
-    use std::time::Instant;
-
     #[cfg(all(feature = "hw-timer", target_arch = "x86_64"))]
     pub(super) type ActiveTimer = x86::RdtscpTimer;
 
-    #[cfg(not(all(feature = "hw-timer", target_arch = "x86_64")))]
-    pub(super) type ActiveTimer = PlatformTimer;
+    #[cfg(all(not(all(feature = "hw-timer", target_arch = "x86_64")), unix))]
+    pub(super) type ActiveTimer = unix::UnixThreadCPUTimer;
+
+    #[cfg(all(not(all(feature = "hw-timer", target_arch = "x86_64")), not(unix)))]
+    pub(super) type ActiveTimer = platform::PlatformTimer;
+
 
     pub(super) trait Timer<T> {
         fn start() -> T;
@@ -752,17 +757,67 @@ mod timer {
         }
     }
 
-    pub(super) struct PlatformTimer;
+    #[cfg(all(not(all(feature = "hw-timer", target_arch = "x86_64")), unix))]
+    pub(super) mod unix {
+        use super::Timer;
+        extern crate libc;
 
-    impl Timer<Instant> for PlatformTimer {
-        #[inline]
-        fn start() -> Instant {
-            Instant::now()
+        pub(crate) struct UnixThreadCPUTimer;
+
+        use std::mem::MaybeUninit;
+        impl Timer<u64> for UnixThreadCPUTimer {
+            #[inline]
+            fn start() -> u64 {
+                let mut tp: MaybeUninit<libc::timespec> = MaybeUninit::uninit();
+                let retval = unsafe { libc::clock_gettime(libc::CLOCK_THREAD_CPUTIME_ID, tp.as_mut_ptr()) };
+                debug_assert_eq!(retval, 0);
+                let instsec = unsafe { (*tp.as_ptr()).tv_sec };
+                let instnsec = unsafe { (*tp.as_ptr()).tv_nsec };
+
+                debug_assert!(instsec >= 0);
+                debug_assert!(instnsec >= 0);
+
+                instsec as u64 * 1_000_000_000 + instnsec as u64
+            }
+
+            #[inline]
+            fn stop(start_time: u64) -> u64 {
+                let mut tp: MaybeUninit<libc::timespec> = MaybeUninit::uninit();
+                let retval = unsafe { libc::clock_gettime(libc::CLOCK_THREAD_CPUTIME_ID, tp.as_mut_ptr()) };
+                debug_assert_eq!(retval, 0);
+                let instsec = unsafe { (*tp.as_ptr()).tv_sec };
+                let instnsec = unsafe { (*tp.as_ptr()).tv_nsec };
+
+                debug_assert!(instsec >= 0);
+                debug_assert!(instnsec >= 0);
+
+                (instsec as u64 * 1_000_000_000 + instnsec as u64) - start_time
+            }
+
+            // xxx Experimentally, this timer's minimum measurement seems to be about 1000 nanoseconds
+            // on Macos on Apple M4 Max. Should we return 1000 from precision()? BTW, all clocks
+            // including Instant::now() also return at least 1000 nanos on this machine, and return at
+            // least around 8000 on the two Linux servers I've tested on:
+            // https://github.com/zooko/measure-clocks/tree/main/results
         }
+    }
 
-        #[inline]
-        fn stop(start_time: Instant) -> u64 {
-            start_time.elapsed().as_nanos() as u64
+    #[cfg(all(not(all(feature = "hw-timer", target_arch = "x86_64")), not(unix)))]
+    pub(super) mod platform {
+        pub(super) struct PlatformTimer;
+
+        use std::time::Instant;
+
+        impl Timer<Instant> for PlatformTimer {
+            #[inline]
+            fn start() -> Instant {
+                Instant::now()
+            }
+
+            #[inline]
+            fn stop(start_time: Instant) -> u64 {
+                start_time.elapsed().as_nanos() as u64
+            }
         }
     }
 
