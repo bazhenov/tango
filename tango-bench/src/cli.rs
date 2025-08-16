@@ -93,7 +93,7 @@ struct PairedOpts {
     filter: Option<String>,
 
     /// Report only statistically significant results
-    #[arg(short = 'g', long = "significant-only", default_value_t = false)]
+    #[arg(short = 'i', long = "significant-only", default_value_t = false)]
     significant_only: bool,
 
     /// Enable outlier detection
@@ -759,7 +759,7 @@ mod paired_test {
     ) -> io::Result<()> {
         let mut file = BufWriter::new(File::create(path)?);
         for (a, b, c) in values {
-            writeln!(&mut file, "{},{},{}", a, b, c)?;
+            writeln!(&mut file, "{a},{b},{c}")?;
         }
         Ok(())
     }
@@ -1017,9 +1017,7 @@ mod tests {
         for pattern in patterns {
             assert!(
                 glob_match(pattern, input),
-                "failed to match {} against {}",
-                pattern,
-                input
+                "failed to match {pattern} against {input}"
             );
         }
     }

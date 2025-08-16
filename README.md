@@ -53,7 +53,7 @@ Tango is designed to have the capability to detect a 1% change in performance wi
       }
       ```
 
-    - **(Windows, nightly required)** Add following code to cargo config (`.cargo/config`)
+    - **(Windows, nightly required)** Add following code to cargo config (`.cargo/config.toml`)
 
        ```toml
        [build]
