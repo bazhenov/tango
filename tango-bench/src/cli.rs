@@ -93,7 +93,7 @@ struct PairedOpts {
     filter: Option<String>,
 
     /// Report only statistically significant results
-    #[arg(short = 'g', long = "significant-only", default_value_t = false)]
+    #[arg(short = 'i', long = "significant-only", default_value_t = false)]
     significant_only: bool,
 
     /// Enable outlier detection
