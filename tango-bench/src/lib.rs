@@ -132,11 +132,12 @@ pub struct BenchmarkParams {
     pub seed: u64,
 }
 
-pub struct Bencher {
+pub struct Bencher<M> {
     params: BenchmarkParams,
+    metric: PhantomData<M>,
 }
 
-impl Deref for Bencher {
+impl<M> Deref for Bencher<M> {
     type Target = BenchmarkParams;
 
     fn deref(&self) -> &Self::Target {
@@ -144,9 +145,16 @@ impl Deref for Bencher {
     }
 }
 
-impl Bencher {
+impl<M: Metric + 'static> Bencher<M> {
+    pub fn metric<T: Metric>(self) -> Bencher<T> {
+        Bencher {
+            params: self.params,
+            metric: PhantomData::<T>,
+        }
+    }
+
     pub fn iter<O: 'static, F: FnMut() -> O + 'static>(self, func: F) -> Box<dyn ErasedSampler> {
-        Box::new(Sampler::<_, WallClock>::new(func))
+        Box::new(Sampler::<_, M>::new(func))
     }
 }
 
@@ -223,7 +231,7 @@ pub struct Benchmark {
     sampler_factory: Box<dyn SamplerFactory>,
 }
 
-pub fn benchmark_fn<F: FnMut(Bencher) -> Box<dyn ErasedSampler> + 'static>(
+pub fn benchmark_fn<F: FnMut(Bencher<WallClock>) -> Box<dyn ErasedSampler> + 'static>(
     name: impl Into<String>,
     sampler_factory: F,
 ) -> Benchmark {
@@ -241,9 +249,14 @@ pub trait SamplerFactory {
 
 struct SyncSampleFactory<F>(F);
 
-impl<F: FnMut(Bencher) -> Box<dyn ErasedSampler>> SamplerFactory for SyncSampleFactory<F> {
+impl<F: FnMut(Bencher<WallClock>) -> Box<dyn ErasedSampler>> SamplerFactory
+    for SyncSampleFactory<F>
+{
     fn create_sampler(&mut self, params: BenchmarkParams) -> Box<dyn ErasedSampler> {
-        (self.0)(Bencher { params })
+        (self.0)(Bencher {
+            params,
+            metric: PhantomData::<WallClock>,
+        })
     }
 }
 
@@ -578,9 +591,7 @@ impl DiffEstimate {
 
         // significant result is far away from 0 and have more than 0.5% base/candidate difference
         // z_score = 2.6 corresponds to 99% significance level
-        let significant = z_score.abs() >= 2.6
-            && (diff.mean / baseline.mean).abs() > 0.005
-            && diff.mean.abs() >= WallClock::precision() as f64;
+        let significant = z_score.abs() >= 2.6 && (diff.mean / baseline.mean).abs() > 0.005;
         let pct = diff.mean / baseline.mean * 100.0;
 
         Self { pct, significant }
@@ -740,18 +751,13 @@ pub fn iqr_variance_thresholds(mut input: Vec<f64>) -> Option<RangeInclusive<f64
     Some(input[outliers_cnt]..=(input[input.len() - outliers_cnt - 1]))
 }
 
+/// This trait allows to define strategy for measuring metric of intrest about the code
 pub trait Metric {
+    /// Measures current metric on a given code
     fn measure_fn(f: impl FnMut()) -> u64;
-
-    /// Metric precision
-    ///
-    /// TODO docs
-    fn precision() -> u64 {
-        1
-    }
 }
 
-mod metrics {
+pub mod metrics {
     use crate::Metric;
     use std::time::Instant;
 
@@ -1002,7 +1008,8 @@ mod tests {
     fn check_measure_time() {
         let expected_delay = 1;
         let mut target = benchmark_fn("foo", move |b| {
-            b.iter(move || thread::sleep(Duration::from_millis(expected_delay)))
+            b.metric::<WallClock>()
+                .iter(move || thread::sleep(Duration::from_millis(expected_delay)))
         });
         target.prepare_state(0);
 
