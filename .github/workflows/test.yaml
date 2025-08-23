@@ -24,7 +24,7 @@ jobs:
         include:
           - os: ubuntu-22.04
           - os: macos-13
-          - os: windows-2019
+          - os: windows-2022
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
