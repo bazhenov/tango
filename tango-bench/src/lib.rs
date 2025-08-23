@@ -759,7 +759,6 @@ pub trait Metric {
 
 pub mod metrics {
     use crate::Metric;
-    use std::time::Instant;
 
     pub struct WallClock;
 
@@ -767,6 +766,7 @@ pub mod metrics {
         /// Implementation of wall clock timer that uses standard OS time source
         #[cfg(not(all(feature = "hw-timer", target_arch = "x86_64")))]
         fn measure_fn(mut f: impl FnMut()) -> u64 {
+            use std::time::Instant;
             let start = Instant::now();
             f();
             start.elapsed().as_nanos() as u64
