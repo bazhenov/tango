@@ -2,18 +2,20 @@
 pub use asynchronous::async_benchmark_fn;
 use core::ptr;
 use dylib::ffi::TANGO_API_VERSION;
+use metrics::WallClock;
 use num_traits::ToPrimitive;
 use rand::{rngs::SmallRng, Rng, SeedableRng};
 use std::{
     cmp::Ordering,
     hint::black_box,
-    io, mem,
+    io,
+    marker::PhantomData,
+    mem,
     ops::{Deref, RangeInclusive},
     str::Utf8Error,
     time::Duration,
 };
 use thiserror::Error;
-use timer::{ActiveTimer, Timer};
 
 pub mod cli;
 pub mod dylib;
@@ -130,11 +132,12 @@ pub struct BenchmarkParams {
     pub seed: u64,
 }
 
-pub struct Bencher {
+pub struct Bencher<M> {
     params: BenchmarkParams,
+    metric: PhantomData<M>,
 }
 
-impl Deref for Bencher {
+impl<M> Deref for Bencher<M> {
     type Target = BenchmarkParams;
 
     fn deref(&self) -> &Self::Target {
@@ -142,13 +145,32 @@ impl Deref for Bencher {
     }
 }
 
-impl Bencher {
+impl<M: Metric + 'static> Bencher<M> {
+    pub fn metric<T: Metric>(self) -> Bencher<T> {
+        Bencher {
+            params: self.params,
+            metric: PhantomData::<T>,
+        }
+    }
+
     pub fn iter<O: 'static, F: FnMut() -> O + 'static>(self, func: F) -> Box<dyn ErasedSampler> {
-        Box::new(Sampler(func))
+        Box::new(Sampler::<_, M>::new(func))
     }
 }
 
-struct Sampler<F>(F);
+struct Sampler<F, M> {
+    func: F,
+    metric: PhantomData<M>,
+}
+
+impl<F, M> Sampler<F, M> {
+    fn new(func: F) -> Self {
+        Self {
+            func,
+            metric: PhantomData::<M>,
+        }
+    }
+}
 
 pub trait ErasedSampler {
     /// Measures the performance if the function
@@ -194,13 +216,13 @@ pub trait ErasedSampler {
     }
 }
 
-impl<O, F: FnMut() -> O> ErasedSampler for Sampler<F> {
+impl<O, F: FnMut() -> O, M: Metric> ErasedSampler for Sampler<F, M> {
     fn measure(&mut self, iterations: usize) -> u64 {
-        let start = ActiveTimer::start();
-        for _ in 0..iterations {
-            black_box((self.0)());
-        }
-        ActiveTimer::stop(start)
+        M::measure_fn(|| {
+            for _ in 0..iterations {
+                black_box((self.func)());
+            }
+        })
     }
 }
 
@@ -209,7 +231,7 @@ pub struct Benchmark {
     sampler_factory: Box<dyn SamplerFactory>,
 }
 
-pub fn benchmark_fn<F: FnMut(Bencher) -> Box<dyn ErasedSampler> + 'static>(
+pub fn benchmark_fn<F: FnMut(Bencher<WallClock>) -> Box<dyn ErasedSampler> + 'static>(
     name: impl Into<String>,
     sampler_factory: F,
 ) -> Benchmark {
@@ -227,9 +249,14 @@ pub trait SamplerFactory {
 
 struct SyncSampleFactory<F>(F);
 
-impl<F: FnMut(Bencher) -> Box<dyn ErasedSampler>> SamplerFactory for SyncSampleFactory<F> {
+impl<F: FnMut(Bencher<WallClock>) -> Box<dyn ErasedSampler>> SamplerFactory
+    for SyncSampleFactory<F>
+{
     fn create_sampler(&mut self, params: BenchmarkParams) -> Box<dyn ErasedSampler> {
-        (self.0)(Bencher { params })
+        (self.0)(Bencher {
+            params,
+            metric: PhantomData::<WallClock>,
+        })
     }
 }
 
@@ -564,9 +591,7 @@ impl DiffEstimate {
 
         // significant result is far away from 0 and have more than 0.5% base/candidate difference
         // z_score = 2.6 corresponds to 99% significance level
-        let significant = z_score.abs() >= 2.6
-            && (diff.mean / baseline.mean).abs() > 0.005
-            && diff.mean.abs() >= ActiveTimer::precision() as f64;
+        let significant = z_score.abs() >= 2.6 && (diff.mean / baseline.mean).abs() > 0.005;
         let pct = diff.mean / baseline.mean * 100.0;
 
         Self { pct, significant }
@@ -726,64 +751,40 @@ pub fn iqr_variance_thresholds(mut input: Vec<f64>) -> Option<RangeInclusive<f64
     Some(input[outliers_cnt]..=(input[input.len() - outliers_cnt - 1]))
 }
 
-mod timer {
-    use std::time::Instant;
+/// This trait allows to define strategy for measuring metric of interest about the code
+pub trait Metric {
+    /// Measures current metric on a given code
+    fn measure_fn(f: impl FnMut()) -> u64;
+}
 
-    #[cfg(all(feature = "hw-timer", target_arch = "x86_64"))]
-    pub(super) type ActiveTimer = x86::RdtscpTimer;
+pub mod metrics {
+    use crate::Metric;
 
-    #[cfg(not(all(feature = "hw-timer", target_arch = "x86_64")))]
-    pub(super) type ActiveTimer = PlatformTimer;
+    pub struct WallClock;
 
-    pub(super) trait Timer<T> {
-        fn start() -> T;
-        fn stop(start_time: T) -> u64;
-
-        /// Timer precision in nanoseconds
-        ///
-        /// The results less than the precision of a timer are considered not significant
-        fn precision() -> u64 {
-            1
-        }
-    }
-
-    pub(super) struct PlatformTimer;
-
-    impl Timer<Instant> for PlatformTimer {
-        #[inline]
-        fn start() -> Instant {
-            Instant::now()
+    impl Metric for WallClock {
+        /// Implementation of wall clock timer that uses standard OS time source
+        #[cfg(not(all(feature = "hw-timer", target_arch = "x86_64")))]
+        fn measure_fn(mut f: impl FnMut()) -> u64 {
+            use std::time::Instant;
+            let start = Instant::now();
+            f();
+            start.elapsed().as_nanos() as u64
         }
 
-        #[inline]
-        fn stop(start_time: Instant) -> u64 {
-            start_time.elapsed().as_nanos() as u64
-        }
-    }
-
-    #[cfg(all(feature = "hw-timer", target_arch = "x86_64"))]
-    pub(super) mod x86 {
-        use super::Timer;
-        use std::arch::x86_64::{__rdtscp, _mm_mfence};
-
-        pub struct RdtscpTimer;
-
-        impl Timer<u64> for RdtscpTimer {
-            #[inline]
-            fn start() -> u64 {
-                unsafe {
-                    _mm_mfence();
-                    __rdtscp(&mut 0)
-                }
-            }
-
-            #[inline]
-            fn stop(start: u64) -> u64 {
-                unsafe {
-                    let end = __rdtscp(&mut 0);
-                    _mm_mfence();
-                    end - start
-                }
+        /// Implementation of wall clock timer that uses rdtscp on x86
+        #[cfg(all(feature = "hw-timer", target_arch = "x86_64"))]
+        fn measure_fn(mut f: impl FnMut()) -> u64 {
+            use std::arch::x86_64::{__rdtscp, _mm_mfence};
+            let start = unsafe {
+                _mm_mfence();
+                __rdtscp(&mut 0)
+            };
+            f();
+            unsafe {
+                let end = __rdtscp(&mut 0);
+                _mm_mfence();
+                end - start
             }
         }
     }
@@ -791,6 +792,8 @@ mod timer {
 
 #[cfg(feature = "async")]
 pub mod asynchronous {
+    use crate::metrics::WallClock;
+
     use super::{Benchmark, BenchmarkParams, ErasedSampler, Sampler, SamplerFactory};
     use std::{future::Future, ops::Deref};
 
@@ -836,7 +839,9 @@ pub mod asynchronous {
             Fut: Future<Output = O>,
             F: FnMut() -> Fut + Copy + 'static,
         {
-            Box::new(Sampler(move || self.runtime.block_on(func)))
+            Box::new(Sampler::<_, WallClock>::new(move || {
+                self.runtime.block_on(func)
+            }))
         }
     }
 
@@ -1003,7 +1008,8 @@ mod tests {
     fn check_measure_time() {
         let expected_delay = 1;
         let mut target = benchmark_fn("foo", move |b| {
-            b.iter(move || thread::sleep(Duration::from_millis(expected_delay)))
+            b.metric::<WallClock>()
+                .iter(move || thread::sleep(Duration::from_millis(expected_delay)))
         });
         target.prepare_state(0);
 
