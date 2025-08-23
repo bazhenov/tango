@@ -304,6 +304,7 @@ impl StateWrapper {
         (*self.0.get()).as_ref()
     }
 
+    #[allow(clippy::mut_from_ref)]
     unsafe fn as_mut(&self) -> Option<&mut State> {
         (*self.0.get()).as_mut()
     }
