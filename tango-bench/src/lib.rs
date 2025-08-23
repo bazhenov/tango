@@ -751,7 +751,7 @@ pub fn iqr_variance_thresholds(mut input: Vec<f64>) -> Option<RangeInclusive<f64
     Some(input[outliers_cnt]..=(input[input.len() - outliers_cnt - 1]))
 }
 
-/// This trait allows to define strategy for measuring metric of intrest about the code
+/// This trait allows to define strategy for measuring metric of interest about the code
 pub trait Metric {
     /// Measures current metric on a given code
     fn measure_fn(f: impl FnMut()) -> u64;
@@ -764,7 +764,7 @@ pub mod metrics {
     pub struct WallClock;
 
     impl Metric for WallClock {
-        /// Implementation of wall clock timer that uses standart OS time source
+        /// Implementation of wall clock timer that uses standard OS time source
         #[cfg(not(all(feature = "hw-timer", target_arch = "x86_64")))]
         fn measure_fn(mut f: impl FnMut()) -> u64 {
             let start = Instant::now();
