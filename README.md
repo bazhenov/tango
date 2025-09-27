@@ -111,6 +111,22 @@ The result shows that indeed there is indeed ~1% difference between `factorial(5
 
 Additional examples are available in `examples` directory.
 
+## Plots
+
+Tango generates two plots.
+
+In the first plot, the X axis is the sequence of pairs of samples. For each pair, the plot shows the
+time taken by the baseline sample, the *negative* of the time taken by the candidate sample (i.e. it
+is plotted below the Y=0 line), and the difference between the two -- time taken by candidate minus
+time taken by baseline.
+
+In the second plot there is no sequencing -- it is just a scatter plot of all of the sample
+pairs. Each point shows the time taken by the baseline in that sample on the X axis and the time
+taken by the candidate in that sample on the Y axis. So if the points are below and to the right of
+the line X=Y, then the candidate takes less time than the baseline, if they are above and to the
+left of X=Y then the candidate takes ore time, and if they are kind of clustered around X=Y then it
+is a toss-up.
+
 ## Async support
 
 To use Tango.rs in an asynchronous setup, follow these steps:
@@ -174,7 +190,7 @@ There are several arguments you can pass to the `compare` command to change it b
   - `-t`, `--time` – how long to run each benchmark (in seconds)
   - `-s`, `--samples` – how much samples to gather from each benchmark
   - `-f` – filter benchmarks by name. Glob patterns are supported (eg. `*/bench_name/{2,4,8}/**`)
-  - `-d [path]` – dump CSV with raw samples in a given directory
+  - `-d [path]` – dump SVG plot and CSV with raw samples in the given directory
   - `--gnuplot` – generate plot for each benchmark (requires gnuplot to be installed)
   - `-o`, `--filter-outliers` – additionally filter outliers
   - `-p`, `--parallel` - run base/candidate functions in 2 different threads instead of interleaving in a single thread
