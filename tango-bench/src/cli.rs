@@ -47,7 +47,7 @@ struct PairedOpts {
     path_to_dump: Option<PathBuf>,
 
     /// generate gnuplot graphs for each test (requires --dump [path] to be specified)
-    #[arg(short = 'g', long = "gnuplot")]
+    #[arg(long = "gnuplot")]
     gnuplot: bool,
 
     /// seed for the random number generator or omit to use a random seed
