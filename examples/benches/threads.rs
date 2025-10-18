@@ -1,5 +1,4 @@
-use std::hint::black_box;
-use std::thread;
+use std::{hint::black_box, thread};
 use tango_bench::{benchmark_fn, tango_benchmarks, tango_main};
 
 tango_benchmarks!([benchmark_fn("spawn_join", |b| {

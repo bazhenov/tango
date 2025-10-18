@@ -21,6 +21,7 @@ pub mod cli;
 pub mod dylib;
 #[cfg(target_os = "linux")]
 pub mod linux;
+pub mod platform;
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -500,7 +501,7 @@ pub(crate) fn calculate_run_result<N: Into<String>>(
         .iter()
         .zip(baseline.iter())
         // Calculating difference between candidate and baseline
-        .map(|(&c, &b)| (c as f64 - b as f64))
+        .map(|(&c, &b)| c as f64 - b as f64)
         .zip(iterations_per_sample.iter())
         // Normalizing difference to iterations count
         .map(|(diff, &iters)| diff / iters as f64)
@@ -1015,6 +1016,14 @@ mod tests {
 
         let median = median_execution_time(&mut target, 10).as_millis() as u64;
         assert!(median < expected_delay * 10);
+    }
+
+    #[test]
+    fn check_rusage() {
+        let (_, rusage) = platform::rusage(|| thread::spawn(|| {}).join());
+        assert!(rusage.system_time > rusage.user_time,
+            "Overhead of thread spawning (system time: {:?}) should be higher than cost of computations (user time: {:?})",
+            rusage.system_time, rusage.user_time)
     }
 
     struct RngIterator<T>(T);
