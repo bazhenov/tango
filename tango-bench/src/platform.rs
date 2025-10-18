@@ -18,6 +18,17 @@ pub use linux as active_platform;
 #[cfg(target_os = "linux")]
 pub mod linux {
     use super::*;
+    pub use unix::rusage;
+}
+
+pub mod macos {
+    use super::*;
+    pub use unix::rusage;
+}
+
+#[cfg(target_family = "unix")]
+pub mod unix {
+    use super::*;
     use std::{mem::MaybeUninit, time::Duration};
 
     pub fn rusage<T>(f: impl Fn() -> T) -> (T, RUsage) {
@@ -49,20 +60,5 @@ pub mod linux {
             system_time,
         };
         (result, rusage)
-    }
-}
-
-pub mod macos {
-    use crate::platform::RUsage;
-    use std::time::Duration;
-
-    pub fn rusage<T>(f: impl Fn() -> T) -> (T, RUsage) {
-        (
-            f(),
-            RUsage {
-                user_time: Duration::from_millis(0),
-                system_time: Duration::from_millis(0),
-            },
-        )
     }
 }
