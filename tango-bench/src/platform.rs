@@ -35,10 +35,10 @@ pub mod unix {
         let stime_after = usage.ru_stime;
 
         let user_time = Duration::from_secs((utime_after.tv_sec - utime_before.tv_sec) as u64)
-            + Duration::from_millis((utime_after.tv_usec - utime_before.tv_usec) as u64);
+            + Duration::from_micros((utime_after.tv_usec - utime_before.tv_usec) as u64);
 
         let system_time = Duration::from_secs((stime_after.tv_sec - stime_before.tv_sec) as u64)
-            + Duration::from_millis((stime_after.tv_usec - stime_before.tv_usec) as u64);
+            + Duration::from_micros((stime_after.tv_usec - stime_before.tv_usec) as u64);
 
         let rusage = RUsage {
             user_time,
