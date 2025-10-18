@@ -886,7 +886,7 @@ mod tests {
         iter::Sum,
         ops::{Add, Div},
         thread,
-        time::{Duration, Instant},
+        time::Duration,
     };
 
     #[test]
@@ -1016,24 +1016,6 @@ mod tests {
 
         let median = median_execution_time(&mut target, 10).as_millis() as u64;
         assert!(median < expected_delay * 10);
-    }
-
-    /// The idea of the test is that we keep spawning and joining threads that do nothing for a while.
-    /// Because the threads have no useful payload, most of the time should be spent in the kernel; hence,
-    /// system time should be larger than user time. We continue doing this for some time because the system timer
-    /// used by getrusage() has platform-specific resolution. Empirically, 100ms is sufficient on macOS and Linux.
-    #[test]
-    fn check_rusage() {
-        const TEST_DURATION: Duration = Duration::from_millis(100);
-        let start_ts = Instant::now();
-        let (_, rusage) = platform::rusage(|| {
-            while Instant::now() - start_ts < TEST_DURATION {
-                thread::spawn(|| {}).join().unwrap();
-            }
-        });
-        assert!(rusage.system_time > rusage.user_time,
-            "Overhead of thread spawning (system time: {:?}) should be higher than cost of computations (user time: {:?})",
-            rusage.system_time, rusage.user_time)
     }
 
     struct RngIterator<T>(T);

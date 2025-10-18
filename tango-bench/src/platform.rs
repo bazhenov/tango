@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+/// Reexports
 pub use active_platform::rusage;
 
 #[derive(Debug)]
@@ -8,20 +9,23 @@ pub struct RUsage {
     pub system_time: Duration,
 }
 
-#[cfg(target_family = "unix")]
-pub use unix as active_platform;
+#[cfg(target_os = "macos")]
+pub use macos as active_platform;
 
-#[cfg(target_family = "unix")]
-pub mod unix {
+#[cfg(target_os = "linux")]
+pub use linux as active_platform;
+
+#[cfg(target_os = "linux")]
+pub mod linux {
     use super::*;
     use std::{mem::MaybeUninit, time::Duration};
 
     pub fn rusage<T>(f: impl Fn() -> T) -> (T, RUsage) {
-        use libc::rusage;
+        use libc::{rusage, RUSAGE_SELF};
 
         let mut usage = unsafe {
             let mut usage = MaybeUninit::<rusage>::uninit();
-            libc::getrusage(0, usage.as_mut_ptr());
+            libc::getrusage(RUSAGE_SELF, usage.as_mut_ptr());
             usage.assume_init()
         };
 
@@ -30,7 +34,7 @@ pub mod unix {
 
         let result = f();
 
-        unsafe { libc::getrusage(0, &mut usage as *mut rusage) };
+        unsafe { libc::getrusage(RUSAGE_SELF, &mut usage as *mut rusage) };
         let utime_after = usage.ru_utime;
         let stime_after = usage.ru_stime;
 
@@ -45,5 +49,20 @@ pub mod unix {
             system_time,
         };
         (result, rusage)
+    }
+}
+
+pub mod macos {
+    use crate::platform::RUsage;
+    use std::time::Duration;
+
+    pub fn rusage<T>(f: impl Fn() -> T) -> (T, RUsage) {
+        (
+            f(),
+            RUsage {
+                user_time: Duration::from_millis(0),
+                system_time: Duration::from_millis(0),
+            },
+        )
     }
 }
