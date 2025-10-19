@@ -820,12 +820,12 @@ mod paired_test {
 }
 
 mod reporting {
-
-    use crate::cli::{colorize, HumanTime};
-    use crate::platform::RUsage;
-    use crate::{RunResult, Summary};
-    use colorz::{ansi, Style};
-    use colorz::{mode::Stream, Colorize};
+    use crate::{
+        cli::{colorize, HumanTime},
+        platform::RUsage,
+        RunResult, Summary,
+    };
+    use colorz::{ansi, mode::Stream, Colorize, Style};
 
     pub(super) fn verbose_reporter(results: &RunResult) {
         let base = results.baseline;
