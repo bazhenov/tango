@@ -3,9 +3,13 @@ use std::{ops::Sub, time::Duration};
 /// Reexports
 pub use active_platform::rusage;
 
+/// Describes how much resources current process spent
 #[derive(Debug)]
 pub struct RUsage {
+    /// CPU time spent in user mode
     pub user_time: Duration,
+
+    /// CPU time spent in a system/kernel mode
     pub system_time: Duration,
 }
 
@@ -47,8 +51,10 @@ pub mod unix {
     pub fn rusage() -> RUsage {
         use libc::{getrusage, rusage, RUSAGE_SELF};
 
+        // SAFETY: rusage contains no references, so zeroed struct pose no UB
         let mut usage = unsafe { MaybeUninit::<rusage>::zeroed().assume_init() };
-        unsafe { getrusage(RUSAGE_SELF, &mut usage as *mut _) };
+        let err_code = unsafe { getrusage(RUSAGE_SELF, &mut usage as *mut _) };
+        assert!(err_code == 0, "getrusage() failed with code: {err_code}");
 
         usage.into()
     }
