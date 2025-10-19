@@ -20,18 +20,17 @@ pub use windows as active_platform;
 
 #[cfg(target_os = "linux")]
 pub mod linux {
-    use super::*;
-    pub use unix::rusage;
+    pub use super::unix::rusage;
 }
 
 #[cfg(target_os = "macos")]
 pub mod macos {
-    pub use unix::rusage;
+    pub use super::unix::rusage;
 }
 
 #[cfg(target_family = "unix")]
 pub mod unix {
-    use super::*;
+    use super::RUsage;
     use std::{mem::MaybeUninit, time::Duration};
 
     pub fn rusage<T>(f: impl Fn() -> T) -> (T, RUsage) {
