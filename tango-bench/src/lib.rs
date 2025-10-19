@@ -21,6 +21,7 @@ pub mod cli;
 pub mod dylib;
 #[cfg(target_os = "linux")]
 pub mod linux;
+pub mod platform;
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -500,7 +501,7 @@ pub(crate) fn calculate_run_result<N: Into<String>>(
         .iter()
         .zip(baseline.iter())
         // Calculating difference between candidate and baseline
-        .map(|(&c, &b)| (c as f64 - b as f64))
+        .map(|(&c, &b)| c as f64 - b as f64)
         .zip(iterations_per_sample.iter())
         // Normalizing difference to iterations count
         .map(|(diff, &iters)| diff / iters as f64)

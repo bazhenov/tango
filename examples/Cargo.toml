@@ -34,6 +34,10 @@ name = "tango-slower"
 harness = false
 
 [[bench]]
+name = "threads"
+harness = false
+
+[[bench]]
 name = "tango-async"
 harness = false
 required-features = ["async-tokio", "async-tokio-time"]
