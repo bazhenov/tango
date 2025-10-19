@@ -15,13 +15,15 @@ use tango_bench::platform;
 #[test]
 fn check_rusage() {
     const TEST_DURATION: Duration = Duration::from_millis(100);
-    let start_ts = Instant::now();
-    let (_, rusage) = platform::rusage(|| {
-        while Instant::now() - start_ts < TEST_DURATION {
-            thread::spawn(|| {}).join().unwrap();
-        }
-    });
-    assert!(rusage.system_time > rusage.user_time,
-        "Overhead of thread spawning (system time: {:?}) should be higher than cost of computations (user time: {:?})",
-        rusage.system_time, rusage.user_time);
+    for _ in 0..20 {
+        let start_ts = Instant::now();
+        let (_, rusage) = platform::rusage(|| {
+            while Instant::now() - start_ts < TEST_DURATION {
+                thread::spawn(|| {}).join().unwrap();
+            }
+        });
+        assert!(rusage.system_time > rusage.user_time,
+            "Overhead of thread spawning (system time: {:?}) should be higher than cost of computations (user time: {:?})",
+            rusage.system_time, rusage.user_time);
+    }
 }
