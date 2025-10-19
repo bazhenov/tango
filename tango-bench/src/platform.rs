@@ -69,11 +69,8 @@ pub mod unix {
 pub mod windows {
     use super::*;
     use ::windows::Win32::{
-        Foundation::{FILETIME, SYSTEMTIME},
-        System::{
-            Threading::{GetCurrentProcess, GetProcessTimes},
-            Time::FileTimeToSystemTime,
-        },
+        Foundation::FILETIME,
+        System::Threading::{GetCurrentProcess, GetProcessTimes},
     };
 
     pub fn rusage<T>(f: impl Fn() -> T) -> (T, RUsage) {
@@ -107,6 +104,7 @@ pub mod windows {
 
         let system_time = filetime_to_duration(kernel_time_before, kernel_time_after);
         let user_time = filetime_to_duration(user_time_before, user_time_after);
+
         (
             result,
             RUsage {
@@ -117,18 +115,7 @@ pub mod windows {
     }
 
     fn filetime_to_duration(before: FILETIME, after: FILETIME) -> Duration {
-        let mut before_sys_time = SYSTEMTIME::default();
-        let mut after_sys_time = SYSTEMTIME::default();
-
-        unsafe {
-            FileTimeToSystemTime(&before as *const _, &mut before_sys_time as *mut _).unwrap();
-            FileTimeToSystemTime(&after as *const _, &mut after_sys_time as *mut _).unwrap();
-        };
-
-        Duration::from_secs((after_sys_time.wMinute - before_sys_time.wMinute) as u64 * 60)
-            + Duration::from_secs((after_sys_time.wSecond - before_sys_time.wSecond) as u64)
-            + Duration::from_millis(
-                (after_sys_time.wMilliseconds - before_sys_time.wMilliseconds) as u64,
-            )
+        // FILETIME is expressed in 100ns time units
+        Duration::from_micros((after.dwLowDateTime - before.dwLowDateTime) as u64 / 10)
     }
 }

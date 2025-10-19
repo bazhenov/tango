@@ -14,16 +14,20 @@ use tango_bench::platform;
 /// `getrusage()` reports resource usage for the whole process.
 #[test]
 fn check_rusage() {
+    #[cfg(not(target_os = "windows"))]
     const TEST_DURATION: Duration = Duration::from_millis(100);
-    for _ in 0..20 {
-        let start_ts = Instant::now();
-        let (_, rusage) = platform::rusage(|| {
-            while Instant::now() - start_ts < TEST_DURATION {
-                thread::spawn(|| {}).join().unwrap();
-            }
-        });
-        assert!(rusage.system_time > rusage.user_time,
+    /// On Windows `GetProcessTimes()` has a precision of 1/64s.,
+    /// so 100ms is not enough to get reliable reading from the OS
+    #[cfg(target_os = "windows")]
+    const TEST_DURATION: Duration = Duration::from_millis(1000);
+
+    let start_ts = Instant::now();
+    let (_, rusage) = platform::rusage(|| {
+        while Instant::now() - start_ts < TEST_DURATION {
+            thread::spawn(|| {}).join().unwrap();
+        }
+    });
+    assert!(rusage.system_time > rusage.user_time,
             "Overhead of thread spawning (system time: {:?}) should be higher than cost of computations (user time: {:?})",
             rusage.system_time, rusage.user_time);
-    }
 }
