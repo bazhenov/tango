@@ -5,7 +5,7 @@ use crate::{
     RandomSampleLength, SampleLength, SampleLengthKind,
 };
 use anyhow::{bail, Context};
-use clap::Parser;
+use clap::{ArgAction, Parser};
 use colorz::mode::{self, Mode};
 use core::fmt;
 use glob_match::glob_match;
@@ -113,6 +113,10 @@ struct PairedOpts {
 
     #[arg(short = 'v', long = "verbose", default_value_t = false)]
     verbose: bool,
+
+    /// Disables checking proportion of the time spent in a system/kernel mode
+    #[arg(long = "no-system-time-check", default_value_t = true, action = ArgAction::SetFalse)]
+    system_time_check: bool,
 }
 
 #[derive(Parser, Debug)]
@@ -408,7 +412,11 @@ mod solo_test {
 
 mod paired_test {
     use super::*;
-    use crate::{calculate_run_result, CacheFirewall, RunResult};
+    use crate::{
+        calculate_run_result,
+        platform::{self, RUsage},
+        CacheFirewall, RunResult,
+    };
     use alloca::with_alloca;
     use fs::File;
     use rand::{distributions, rngs::SmallRng, Rng, SeedableRng};
@@ -442,6 +450,7 @@ mod paired_test {
             parallel,
             quiet,
             randomize_stack,
+            system_time_check,
         } = opts;
         let mut path = path
             .or_else(|| args().next().map(PathBuf::from))
@@ -518,6 +527,7 @@ mod paired_test {
                 continue;
             }
 
+            let rusage_before = system_time_check.then(platform::rusage);
             let (result, sample_dump) = run_paired_test(
                 &mut spi_lib,
                 &mut spi_self,
@@ -527,6 +537,12 @@ mod paired_test {
                 loop_mode,
                 path_to_dump.as_ref(),
             )?;
+            if let Some(usage_before) = rusage_before {
+                let rusage = platform::rusage() - usage_before;
+                if detect_system_time_bias(&rusage) {
+                    reporting::report_system_time_bias(&result, &rusage);
+                }
+            }
 
             if let Some(dump) = sample_dump {
                 sample_dumps.push(dump);
@@ -562,6 +578,16 @@ mod paired_test {
         }
 
         Ok(exit_code)
+    }
+
+    /// Checking if test spent too much time in a system/kernel mode.
+    ///
+    /// OS doesn't provide fairness guarantees, this can influence result
+    fn detect_system_time_bias(rusage: &RUsage) -> bool {
+        // system time is at least 5% of CPU time overall
+        let system = rusage.system_time.as_secs_f64();
+        let overall = (rusage.user_time + rusage.system_time).as_secs_f64();
+        system / overall > 0.05
     }
 
     /// Measure the difference in performance of two functions
@@ -794,8 +820,11 @@ mod paired_test {
 }
 
 mod reporting {
+
     use crate::cli::{colorize, HumanTime};
+    use crate::platform::RUsage;
     use crate::{RunResult, Summary};
+    use colorz::{ansi, Style};
     use colorz::{mode::Stream, Colorize};
 
     pub(super) fn verbose_reporter(results: &RunResult) {
@@ -893,6 +922,18 @@ mod reporting {
             HumanTime(results.max),
             HumanTime(results.variance.sqrt()),
         )
+    }
+
+    pub(super) fn report_system_time_bias(result: &RunResult, rusage: &RUsage) {
+        const RED: Style = Style::new().fg(ansi::Red).const_into_runtime_style();
+
+        eprintln!(
+            "{}: {} benchmark spent too much time in system mode (sys: {:?}, usr: {:?}). Results may be inaccurate",
+            "WARN".into_style_with(RED).stream(Stream::Stderr),
+            &result.name,
+            rusage.system_time,
+            rusage.user_time
+        );
     }
 }
 
