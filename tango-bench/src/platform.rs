@@ -74,49 +74,29 @@ pub mod windows {
         System::Threading::{GetCurrentProcess, GetProcessTimes},
     };
 
-    pub fn rusage<T>(f: impl Fn() -> T) -> (T, RUsage) {
+    pub fn rusage() -> RUsage {
         let mut dummy = FILETIME::default();
-        let mut kernel_time_before = FILETIME::default();
-        let mut kernel_time_after = FILETIME::default();
-        let mut user_time_before = FILETIME::default();
-        let mut user_time_after = FILETIME::default();
-        let self_process = unsafe { GetCurrentProcess() };
+        let mut kernel_time = FILETIME::default();
+        let mut user_time = FILETIME::default();
         unsafe {
             GetProcessTimes(
-                self_process,
+                GetCurrentProcess(),
                 &mut dummy as *mut _,
                 &mut dummy as *mut _,
-                &mut kernel_time_before as *mut _,
-                &mut user_time_before as *mut _,
+                &mut kernel_time as *mut _,
+                &mut user_time as *mut _,
             )
-            .unwrap()
-        };
-        let result = f();
-        unsafe {
-            GetProcessTimes(
-                self_process,
-                &mut dummy as *mut _,
-                &mut dummy as *mut _,
-                &mut kernel_time_after as *mut _,
-                &mut user_time_after as *mut _,
-            )
-            .unwrap()
-        };
+        }
+        .unwrap();
 
-        let system_time = filetime_to_duration(kernel_time_before, kernel_time_after);
-        let user_time = filetime_to_duration(user_time_before, user_time_after);
-
-        (
-            result,
-            RUsage {
-                user_time,
-                system_time,
-            },
-        )
+        RUsage {
+            user_time: filetime_to_duration(user_time),
+            system_time: filetime_to_duration(kernel_time),
+        }
     }
 
-    fn filetime_to_duration(before: FILETIME, after: FILETIME) -> Duration {
+    fn filetime_to_duration(time: FILETIME) -> Duration {
         // FILETIME is expressed in 100ns time units
-        Duration::from_micros((after.dwLowDateTime - before.dwLowDateTime) as u64 / 10)
+        Duration::from_micros(time.dwLowDateTime as u64 / 10)
     }
 }
