@@ -22,11 +22,13 @@ fn check_rusage() {
     const TEST_DURATION: Duration = Duration::from_millis(1000);
 
     let start_ts = Instant::now();
-    let (_, rusage) = platform::rusage(|| {
+    let rusage = {
+        let usage_before = platform::rusage();
         while Instant::now() - start_ts < TEST_DURATION {
             thread::spawn(|| {}).join().unwrap();
         }
-    });
+        platform::rusage() - usage_before
+    };
     assert!(rusage.system_time > rusage.user_time,
             "Overhead of thread spawning (system time: {:?}) should be higher than cost of computations (user time: {:?})",
             rusage.system_time, rusage.user_time);

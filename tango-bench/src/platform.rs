@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{ops::Sub, time::Duration};
 
 /// Reexports
 pub use active_platform::rusage;
@@ -7,6 +7,17 @@ pub use active_platform::rusage;
 pub struct RUsage {
     pub user_time: Duration,
     pub system_time: Duration,
+}
+
+impl Sub for RUsage {
+    type Output = Self;
+
+    fn sub(self, other: Self) -> Self {
+        Self {
+            user_time: self.user_time - other.user_time,
+            system_time: self.system_time - other.system_time,
+        }
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -33,35 +44,25 @@ pub mod unix {
     use super::RUsage;
     use std::{mem::MaybeUninit, time::Duration};
 
-    pub fn rusage<T>(f: impl Fn() -> T) -> (T, RUsage) {
-        use libc::{rusage, RUSAGE_SELF};
+    pub fn rusage() -> RUsage {
+        use libc::{getrusage, rusage, RUSAGE_SELF};
 
-        let mut usage = unsafe {
-            let mut usage = MaybeUninit::<rusage>::uninit();
-            libc::getrusage(RUSAGE_SELF, usage.as_mut_ptr());
-            usage.assume_init()
-        };
+        let mut usage = unsafe { MaybeUninit::<rusage>::zeroed().assume_init() };
+        unsafe { getrusage(RUSAGE_SELF, &mut usage as *mut _) };
 
-        let utime_before = usage.ru_utime;
-        let stime_before = usage.ru_stime;
+        usage.into()
+    }
 
-        let result = f();
-
-        unsafe { libc::getrusage(RUSAGE_SELF, &mut usage as *mut rusage) };
-        let utime_after = usage.ru_utime;
-        let stime_after = usage.ru_stime;
-
-        let user_time = Duration::from_secs((utime_after.tv_sec - utime_before.tv_sec) as u64)
-            + Duration::from_micros((utime_after.tv_usec - utime_before.tv_usec) as u64);
-
-        let system_time = Duration::from_secs((stime_after.tv_sec - stime_before.tv_sec) as u64)
-            + Duration::from_micros((stime_after.tv_usec - stime_before.tv_usec) as u64);
-
-        let rusage = RUsage {
-            user_time,
-            system_time,
-        };
-        (result, rusage)
+    impl From<libc::rusage> for RUsage {
+        fn from(usage: libc::rusage) -> Self {
+            fn timeval_to_duration(tv: libc::timeval) -> Duration {
+                Duration::from_secs(tv.tv_sec as u64) + Duration::from_micros(tv.tv_usec as u64)
+            }
+            Self {
+                user_time: timeval_to_duration(usage.ru_utime),
+                system_time: timeval_to_duration(usage.ru_stime),
+            }
+        }
     }
 }
 
