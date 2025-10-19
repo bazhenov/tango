@@ -15,14 +15,17 @@ pub use macos as active_platform;
 #[cfg(target_os = "linux")]
 pub use linux as active_platform;
 
+#[cfg(target_os = "windows")]
+pub use windows as active_platform;
+
 #[cfg(target_os = "linux")]
 pub mod linux {
     use super::*;
     pub use unix::rusage;
 }
 
+#[cfg(target_os = "macos")]
 pub mod macos {
-    use super::*;
     pub use unix::rusage;
 }
 
@@ -60,5 +63,73 @@ pub mod unix {
             system_time,
         };
         (result, rusage)
+    }
+}
+
+#[cfg(target_os = "windows")]
+pub mod windows {
+    use super::*;
+    use ::windows::Win32::{
+        Foundation::{FILETIME, SYSTEMTIME},
+        System::{
+            Threading::{GetCurrentProcess, GetProcessTimes},
+            Time::FileTimeToSystemTime,
+        },
+    };
+
+    pub fn rusage<T>(f: impl Fn() -> T) -> (T, RUsage) {
+        let mut dummy = FILETIME::default();
+        let mut kernel_time_before = FILETIME::default();
+        let mut kernel_time_after = FILETIME::default();
+        let mut user_time_before = FILETIME::default();
+        let mut user_time_after = FILETIME::default();
+        let self_process = unsafe { GetCurrentProcess() };
+        unsafe {
+            GetProcessTimes(
+                self_process,
+                &mut dummy as *mut _,
+                &mut dummy as *mut _,
+                &mut kernel_time_before as *mut _,
+                &mut user_time_before as *mut _,
+            )
+            .unwrap()
+        };
+        let result = f();
+        unsafe {
+            GetProcessTimes(
+                self_process,
+                &mut dummy as *mut _,
+                &mut dummy as *mut _,
+                &mut kernel_time_after as *mut _,
+                &mut user_time_after as *mut _,
+            )
+            .unwrap()
+        };
+
+        let system_time = filetime_to_duration(kernel_time_before, kernel_time_after);
+        let user_time = filetime_to_duration(user_time_before, user_time_after);
+        (
+            result,
+            RUsage {
+                user_time,
+                system_time,
+            },
+        )
+    }
+
+    fn filetime_to_duration(before: FILETIME, after: FILETIME) -> Duration {
+        let mut before_sys_time = SYSTEMTIME::default();
+        let mut after_sys_time = SYSTEMTIME::default();
+
+        unsafe {
+            FileTimeToSystemTime(&before as *const _, &mut before_sys_time as *mut _).unwrap();
+            FileTimeToSystemTime(&after as *const _, &mut after_sys_time as *mut _).unwrap();
+        };
+
+        Duration::from_secs((after_sys_time.wMinute - before_sys_time.wMinute) as u64 * 60)
+            + Duration::from_secs((after_sys_time.wSecond - before_sys_time.wSecond) as u64)
+            + Duration::from_millis(
+                (after_sys_time.wMilliseconds - before_sys_time.wMilliseconds) as u64,
+            )
     }
 }

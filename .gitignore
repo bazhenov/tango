@@ -1,6 +1,7 @@
 target/
 Cargo.lock
 **/*.rs.bk
+._*
 *.svg
 /graphs
 /*.csv
