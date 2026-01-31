@@ -12,3 +12,4 @@ Cargo.lock
 /.ttr.yaml
 /*.drawio
 /rust-toolchain.toml
+.sandbox
