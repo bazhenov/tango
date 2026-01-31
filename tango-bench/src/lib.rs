@@ -1015,7 +1015,7 @@ mod tests {
         target.prepare_state(0);
 
         let median = median_execution_time(&mut target, 10).as_millis() as u64;
-        assert!(median < expected_delay * 10);
+        assert!(median < expected_delay * 10, "Median {median} is too large");
     }
 
     struct RngIterator<T>(T);
