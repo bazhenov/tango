@@ -50,7 +50,12 @@ jobs:
         with:
           ref: dev
           path: baseline-branch
-      - uses: dtolnay/rust-toolchain@stable
+      # on Windows we need nightly to enable exporting symbols from executable files
+      - if: runner.os == 'Windows'
+        uses: dtolnay/rust-toolchain@nightly
+      - if: runner.os != 'Windows'
+        uses: dtolnay/rust-toolchain@stable
+
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@v2
         with:
@@ -58,12 +63,18 @@ jobs:
 
       - name: Building Benchmarks
         run: |
+          set -eo pipefail
+
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            # On Windows we need to configure -Zexport-executable-symbols
+            cp .cargo/config.windows.toml .cargo/config.toml
+          fi
+
           cargo export target/benchmarks -- bench --bench=tango
           cd baseline-branch
           cargo export target/benchmarks -- bench --bench=tango
 
       - name: Run Benchmarks
-        shell: bash
         run: |
           set -eo pipefail
 

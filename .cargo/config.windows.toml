@@ -1,0 +1,2 @@
+[build]
+rustflags = ["-Zexport-executable-symbols"]
