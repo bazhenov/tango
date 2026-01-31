@@ -62,6 +62,7 @@ jobs:
           tool: cargo-export
 
       - name: Building Benchmarks
+        shell: bash
         run: |
           set -eo pipefail
 
@@ -75,6 +76,7 @@ jobs:
           cargo export target/benchmarks -- bench --bench=tango
 
       - name: Run Benchmarks
+        shell: bash
         run: |
           set -eo pipefail
 
