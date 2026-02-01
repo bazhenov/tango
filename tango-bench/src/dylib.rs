@@ -59,7 +59,29 @@ impl Spi {
     pub(crate) fn for_library(path: impl AsRef<Path>, mode: SpiModeKind) -> Result<Spi, Error> {
         let path = path.as_ref();
         if path.exists() {
+            #[cfg(target_os = "windows")]
+            let lib = {
+                use libloading::os::windows::Library as WinLibrary;
+                use windows::Win32::Foundation::HMODULE;
+
+                let lib = unsafe { WinLibrary::new(path) }.map_err(Error::UnableToLoadBenchmark)?;
+
+                // Get the raw module handle and patch the IAT
+                // This is needed because Windows doesn't properly resolve imports when loading
+                // an EXE file as a library
+                let raw_handle = lib.into_raw();
+                let handle = HMODULE(raw_handle as _);
+                unsafe {
+                    crate::windows::patch_iat(handle).map_err(|e| Error::UnableToPatchIat(e))?;
+                }
+                // Reconstruct the library from the raw handle
+                let lib = unsafe { WinLibrary::from_raw(raw_handle) };
+                Library::from(lib)
+            };
+
+            #[cfg(not(target_os = "windows"))]
             let lib = unsafe { Library::new(path) }.map_err(Error::UnableToLoadBenchmark)?;
+
             Ok(spi_handle_for_vtable(ffi::VTable::new(lib)?, mode))
         } else {
             Err(Error::BenchmarkNotFound)

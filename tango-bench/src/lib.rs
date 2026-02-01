@@ -22,6 +22,8 @@ pub mod dylib;
 #[cfg(target_os = "linux")]
 pub mod linux;
 pub mod platform;
+#[cfg(target_os = "windows")]
+pub mod windows;
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -39,6 +41,10 @@ pub enum Error {
 
     #[error("Unable to load benchmark")]
     UnableToLoadBenchmark(#[source] libloading::Error),
+
+    #[cfg(target_os = "windows")]
+    #[error("Unable to patch IAT")]
+    UnableToPatchIat(#[source] windows::Error),
 
     #[error("Unable to load library symbol: {0}")]
     UnableToLoadSymbol(String, #[source] libloading::Error),
