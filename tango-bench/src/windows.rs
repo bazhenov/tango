@@ -15,15 +15,18 @@ use std::{
     ptr,
 };
 use thiserror::Error;
-use windows::Win32::{
-    Foundation::HMODULE,
-    System::{
-        Diagnostics::Debug::{IMAGE_DIRECTORY_ENTRY_IMPORT, IMAGE_NT_HEADERS64},
-        LibraryLoader::{GetProcAddress, LoadLibraryA},
-        Memory::{VirtualProtect, PAGE_PROTECTION_FLAGS, PAGE_READWRITE},
-        SystemServices::{
-            IMAGE_DOS_HEADER, IMAGE_DOS_SIGNATURE, IMAGE_IMPORT_DESCRIPTOR, IMAGE_NT_SIGNATURE,
-            IMAGE_ORDINAL_FLAG64,
+use windows::{
+    core::PCSTR,
+    Win32::{
+        Foundation::HMODULE,
+        System::{
+            Diagnostics::Debug::{IMAGE_DIRECTORY_ENTRY_IMPORT, IMAGE_NT_HEADERS64},
+            LibraryLoader::{GetProcAddress, LoadLibraryA},
+            Memory::{VirtualProtect, PAGE_PROTECTION_FLAGS, PAGE_READWRITE},
+            SystemServices::{
+                IMAGE_DOS_HEADER, IMAGE_DOS_SIGNATURE, IMAGE_IMPORT_DESCRIPTOR, IMAGE_NT_SIGNATURE,
+                IMAGE_ORDINAL_FLAG64,
+            },
         },
     },
 };
@@ -61,7 +64,7 @@ pub enum Error {
 /// - Changes memory protection of IAT pages
 /// - Assumes the module handle points to a valid PE image
 pub unsafe fn patch_iat(module: HMODULE) -> Result<(), Error> {
-    let base = module.0 as *const u8;
+    let base = module.0;
 
     // Parse DOS header
     let dos_header = &*(base as *const IMAGE_DOS_HEADER);
@@ -90,17 +93,13 @@ pub unsafe fn patch_iat(module: HMODULE) -> Result<(), Error> {
     while (*import_desc).Name != 0 {
         // Get the DLL name
         let dll_name_ptr = base.offset((*import_desc).Name as isize) as *const i8;
-        let dll_name = CStr::from_ptr(dll_name_ptr);
 
         // Load the dependency DLL
-        let dll_handle = LoadLibraryA(windows::core::PCSTR(dll_name_ptr as *const u8));
-        let dll_handle = match dll_handle {
-            Ok(h) => h,
-            Err(_) => {
-                return Err(Error::FailedToLoadDependency(
-                    dll_name.to_string_lossy().into_owned(),
-                ));
-            }
+        let Ok(dll_handle) = LoadLibraryA(PCSTR(dll_name_ptr as *const u8)) else {
+            let dll_name = CStr::from_ptr(dll_name_ptr);
+            return Err(Error::FailedToLoadDependency(
+                dll_name.to_string_lossy().into_owned(),
+            ));
         };
 
         // Get the Import Name Table (INT) and Import Address Table (IAT)
@@ -113,32 +112,25 @@ pub unsafe fn patch_iat(module: HMODULE) -> Result<(), Error> {
             let func_addr = if (*int_entry & IMAGE_ORDINAL_FLAG64) != 0 {
                 // Import by ordinal
                 let ordinal = (*int_entry & 0xFFFF) as u16;
-                GetProcAddress(
-                    dll_handle,
-                    windows::core::PCSTR(ordinal as usize as *const u8),
-                )
+                let Some(func_addr) =
+                    GetProcAddress(dll_handle, PCSTR(ordinal as usize as *const u8))
+                else {
+                    let name = format!("ordinal {}", *int_entry & 0xFFFF);
+                    return Err(Error::FailedToResolveFunction(name));
+                };
+                func_addr
             } else {
                 // Import by name
                 // The INT entry points to IMAGE_IMPORT_BY_NAME structure
                 // First 2 bytes are hint, followed by null-terminated name
                 let import_by_name = base.offset(*int_entry as isize);
                 let func_name_ptr = import_by_name.offset(2) as *const i8;
-                GetProcAddress(dll_handle, windows::core::PCSTR(func_name_ptr as *const u8))
-            };
-
-            let func_addr = match func_addr {
-                Some(addr) => addr as usize as u64,
-                None => {
-                    // Try to get function name for error message
-                    let name = if (*int_entry & IMAGE_ORDINAL_FLAG64) != 0 {
-                        format!("ordinal {}", *int_entry & 0xFFFF)
-                    } else {
-                        let import_by_name = base.offset(*int_entry as isize);
-                        let func_name_ptr = import_by_name.offset(2) as *const i8;
-                        CStr::from_ptr(func_name_ptr).to_string_lossy().into_owned()
-                    };
+                let Some(func_addr) = GetProcAddress(dll_handle, PCSTR(func_name_ptr as *const u8))
+                else {
+                    let name = CStr::from_ptr(func_name_ptr).to_string_lossy().into_owned();
                     return Err(Error::FailedToResolveFunction(name));
-                }
+                };
+                func_addr
             };
 
             // Change memory protection to allow writing
@@ -155,7 +147,7 @@ pub unsafe fn patch_iat(module: HMODULE) -> Result<(), Error> {
             }
 
             // Write the resolved address
-            ptr::write_volatile(iat_entry, func_addr);
+            ptr::write_volatile(iat_entry, func_addr as usize as u64);
 
             // Restore original protection
             let mut dummy = PAGE_PROTECTION_FLAGS::default();
