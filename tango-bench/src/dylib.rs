@@ -59,7 +59,8 @@ impl Spi {
     pub(crate) fn for_library(path: impl AsRef<Path>, mode: SpiModeKind) -> Result<Spi, Error> {
         let path = path.as_ref();
         if path.exists() {
-            let lib = if cfg!(target_os = "windows") {
+            #[cfg(target_os = "windows")]
+            let lib = {
                 use libloading::os::windows::Library as WinLibrary;
                 use windows::Win32::Foundation::HMODULE;
 
@@ -75,9 +76,10 @@ impl Spi {
                 }
                 // Reconstruct the library from the raw handle
                 Library::from(unsafe { WinLibrary::from_raw(raw_handle) })
-            } else {
-                unsafe { Library::new(path) }.map_err(Error::UnableToLoadBenchmark)?
             };
+
+            #[cfg(not(target_os = "windows"))]
+            let lib = unsafe { Library::new(path) }.map_err(Error::UnableToLoadBenchmark)?;
 
             Ok(spi_handle_for_vtable(ffi::VTable::new(lib)?, mode))
         } else {
