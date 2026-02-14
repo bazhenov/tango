@@ -1,0 +1,16 @@
+allow-branch = ["main", "dev"]
+release = true
+tag = true
+tag-name = "v{{version}}"
+
+pre-release-replacements = [
+    {
+        file="../README.md",
+        search='tango-bench = "[0-9]+\.[0-9]+(\.[0-9]+)?"',
+        replace="tango-bench = \"{{version}}\""
+    }, {
+        file="../README.md",
+        search='tango-bench = \{ version = "[0-9]+\.[0-9]+(\.[0-9]+)?"',
+        replace='tango-bench = { version = "{{version}}"'
+    },
+]
