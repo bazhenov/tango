@@ -1,6 +1,6 @@
 [package]
 name = "tango-bench"
-version = "0.6.0"
+version = "0.7.0"
 edition = "2021"
 license = "MIT"
 description = "Tango benchmarking harness"
@@ -24,6 +24,22 @@ thiserror = "1.0.50"
 alloca = "0.4"
 tokio = { version = "1.37.0", features = ["rt"], optional = true }
 
+# Required for getrusage()
+[target.'cfg(not(target_os = "windows"))'.dependencies]
+libc = "0.2.177"
+
+# Required for GetProcessTimes and IAT patching
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.62.2", features = [
+    "Win32_System_Threading",
+    "Win32_System_Diagnostics_Debug",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Memory",
+    "Win32_System_SystemServices",
+    "Win32_System_SystemInformation",
+] }
+
+# Required for ELF patching
 [target.'cfg(target_os = "linux")'.dependencies]
 goblin = "0.7.1"
 scroll = "0.11"
@@ -32,7 +48,8 @@ tempfile = "3.8"
 [features]
 hw-timer = []
 async = []
-async-tokio = ['async', 'dep:tokio']
+async-tokio = ["async", "dep:tokio"]
+async-tokio-all-drivers = ["async-tokio", "tokio/full"]
 
 [[bench]]
 name = "tango"

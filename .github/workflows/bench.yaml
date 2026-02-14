@@ -36,7 +36,7 @@ jobs:
           target/benchmarks/search_ord --color=never compare target/benchmarks/search_ord \
             -t 1 -o -d target/dumps | tee target/benchmark.txt
 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: benchmark-results
           path: |

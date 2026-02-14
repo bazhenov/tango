@@ -65,7 +65,10 @@ where
         .map(|v| 2 * v)
         .map(|v| T::try_from(v))
         .map_while(Result::ok)
-        .flat_map(|v| iter::repeat(v).take(dup_factor))
+        .flat_map(|v| {
+            #[allow(clippy::manual_repeat_n)]
+            iter::repeat(v).take(dup_factor)
+        })
         .take(size)
         .collect()
 }

@@ -73,30 +73,6 @@ pub fn factorial(mut n: usize) -> usize {
 #[cfg_attr(feature = "align", inline(never))]
 #[allow(unused)]
 #[allow(clippy::ptr_arg)]
-pub fn str_count_rev(s: &str) -> usize {
-    let mut l = 0;
-    for _ in s.chars().rev() {
-        l += 1;
-    }
-    l
-}
-
-#[cfg_attr(feature = "align", repr(align(32)))]
-#[cfg_attr(feature = "align", inline(never))]
-#[allow(unused)]
-#[allow(clippy::ptr_arg)]
-pub fn str_count(s: &str) -> usize {
-    let mut l = 0;
-    for _ in s.chars() {
-        l += 1;
-    }
-    l
-}
-
-#[cfg_attr(feature = "align", repr(align(32)))]
-#[cfg_attr(feature = "align", inline(never))]
-#[allow(unused)]
-#[allow(clippy::ptr_arg)]
 pub fn str_take(n: usize, s: &str) -> usize {
     s.chars().take(black_box(n)).count()
 }

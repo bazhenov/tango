@@ -5,7 +5,7 @@ use crate::{
     RandomSampleLength, SampleLength, SampleLengthKind,
 };
 use anyhow::{bail, Context};
-use clap::Parser;
+use clap::{ArgAction, Parser};
 use colorz::mode::{self, Mode};
 use core::fmt;
 use glob_match::glob_match;
@@ -47,7 +47,7 @@ struct PairedOpts {
     path_to_dump: Option<PathBuf>,
 
     /// generate gnuplot graphs for each test (requires --dump [path] to be specified)
-    #[arg(short = 'g', long = "gnuplot")]
+    #[arg(long = "gnuplot")]
     gnuplot: bool,
 
     /// seed for the random number generator or omit to use a random seed
@@ -113,6 +113,10 @@ struct PairedOpts {
 
     #[arg(short = 'v', long = "verbose", default_value_t = false)]
     verbose: bool,
+
+    /// Disables checking proportion of the time spent in a system/kernel mode
+    #[arg(long = "no-system-time-check", default_value_t = true, action = ArgAction::SetFalse)]
+    system_time_check: bool,
 }
 
 #[derive(Parser, Debug)]
@@ -157,13 +161,6 @@ struct SoloOpts {
     /// Perform warmup iterations before taking measurements (1/10 of sample iterations)
     #[arg(long = "warmup")]
     warmup_enabled: Option<bool>,
-
-    /// Quiet mode
-    #[arg(short = 'q')]
-    quiet: bool,
-
-    #[arg(short = 'v', long = "verbose", default_value_t = false)]
-    verbose: bool,
 }
 
 #[derive(Parser, Debug)]
@@ -278,8 +275,6 @@ mod solo_test {
     pub(super) fn run_test(opts: SoloOpts, mut settings: MeasurementSettings) -> Result<ExitCode> {
         let SoloOpts {
             bench_flags: _,
-            quiet: _,
-            verbose: _,
             filter,
             samples,
             time,
@@ -347,8 +342,9 @@ mod solo_test {
 
         let seed = seed.unwrap_or_else(rand::random);
 
-        spi_func.prepare_state(seed);
-        let mut iterations_per_sample = (spi_func.estimate_iterations(TIME_SLICE_MS) / 2).max(1);
+        spi_func.spi.prepare_state(seed)?;
+        let iters = spi_func.spi.estimate_iterations(TIME_SLICE_MS)?;
+        let mut iterations_per_sample = (iters / 2).max(1);
         let mut sampler = create_sampler(&settings, seed);
 
         let mut rng = SmallRng::seed_from_u64(seed);
@@ -388,18 +384,18 @@ mod solo_test {
                 &mut spi_func,
                 warmup_iterations,
                 firewall.as_ref(),
-            );
+            )?;
 
             // Allocate a custom stack frame during runtime, to try to offset alignment of the stack.
             if let Some(distr) = stack_offset_distr {
                 with_alloca(rng.sample(distr), |_| {
-                    spi_func.measure(iterations);
+                    spi_func.spi.measure(iterations).unwrap();
                 });
             } else {
-                spi_func.measure(iterations);
+                spi_func.spi.measure(iterations)?;
             }
 
-            loop_time += Duration::from_nanos(spi_func.read_sample());
+            loop_time += Duration::from_nanos(spi_func.read_sample()?);
             sample_iterations.push(iterations);
             i += 1;
         }
@@ -416,7 +412,11 @@ mod solo_test {
 
 mod paired_test {
     use super::*;
-    use crate::{calculate_run_result, CacheFirewall, RunResult};
+    use crate::{
+        calculate_run_result,
+        platform::{self, RUsage},
+        CacheFirewall, RunResult,
+    };
     use alloca::with_alloca;
     use fs::File;
     use rand::{distributions, rngs::SmallRng, Rng, SeedableRng};
@@ -450,6 +450,7 @@ mod paired_test {
             parallel,
             quiet,
             randomize_stack,
+            system_time_check,
         } = opts;
         let mut path = path
             .or_else(|| args().next().map(PathBuf::from))
@@ -471,7 +472,12 @@ mod paired_test {
         };
 
         let mut spi_self = Spi::for_self(mode).ok_or(Error::SpiSelfWasMoved)?;
-        let mut spi_lib = Spi::for_library(path, mode);
+        let mut spi_lib = Spi::for_library(&path, mode).with_context(|| {
+            format!(
+                "Unable to load benchmark: {}. Make sure it exists and it is valid tango benchmark.",
+                path.display()
+            )
+        })?;
 
         settings.filter_outliers = filter_outliers;
         settings.cache_firewall = cache_firewall;
@@ -521,6 +527,7 @@ mod paired_test {
                 continue;
             }
 
+            let rusage_before = system_time_check.then(platform::rusage);
             let (result, sample_dump) = run_paired_test(
                 &mut spi_lib,
                 &mut spi_self,
@@ -530,6 +537,12 @@ mod paired_test {
                 loop_mode,
                 path_to_dump.as_ref(),
             )?;
+            if let Some(usage_before) = rusage_before {
+                let rusage = platform::rusage() - usage_before;
+                if detect_system_time_bias(&rusage) {
+                    reporting::report_system_time_bias(&result, &rusage);
+                }
+            }
 
             if let Some(dump) = sample_dump {
                 sample_dumps.push(dump);
@@ -560,13 +573,21 @@ mod paired_test {
             }
         }
 
-        if let Some(path_to_dump) = path_to_dump {
-            if gnuplot && !sample_dumps.is_empty() {
-                generate_plots(&path_to_dump, sample_dumps.as_slice())?;
-            }
+        if gnuplot && !sample_dumps.is_empty() {
+            generate_plots(sample_dumps.as_slice())?;
         }
 
         Ok(exit_code)
+    }
+
+    /// Checking if test spent too much time in a system/kernel mode.
+    ///
+    /// OS doesn't provide fairness guarantees, this can influence result
+    fn detect_system_time_bias(rusage: &RUsage) -> bool {
+        // system time is at least 5% of CPU time overall
+        let system = rusage.system_time.as_secs_f64();
+        let overall = (rusage.user_time + rusage.system_time).as_secs_f64();
+        system / overall > 0.05
     }
 
     /// Measure the difference in performance of two functions
@@ -610,11 +631,25 @@ mod paired_test {
 
         let seed = seed.unwrap_or_else(rand::random);
 
-        a_func.prepare_state(seed);
-        let a_estimate = (a_func.estimate_iterations(TIME_SLICE_MS) / 2).max(1);
+        a_func
+            .spi
+            .prepare_state(seed)
+            .context("Unable to prepare benchmark state")?;
+        let a_iters = a_func
+            .spi
+            .estimate_iterations(TIME_SLICE_MS)
+            .context("Failed to estimate required iterations number")?;
+        let a_estimate = (a_iters / 2).max(1);
 
-        b_func.prepare_state(seed);
-        let b_estimate = (b_func.estimate_iterations(TIME_SLICE_MS) / 2).max(1);
+        b_func
+            .spi
+            .prepare_state(seed)
+            .context("Unable to prepare benchmark state")?;
+        let b_iters = b_func
+            .spi
+            .estimate_iterations(TIME_SLICE_MS)
+            .context("Failed to estimate required iterations number")?;
+        let b_estimate = (b_iters / 2).max(1);
 
         let mut iterations_per_sample = a_estimate.min(b_estimate);
         let mut sampler = create_sampler(&settings, seed);
@@ -672,27 +707,27 @@ mod paired_test {
                 a_func,
                 warmup_iterations,
                 firewall.as_ref(),
-            );
+            )?;
             prepare_func(
                 prepare_state_seed,
                 b_func,
                 warmup_iterations,
                 firewall.as_ref(),
-            );
+            )?;
 
             // Allocate a custom stack frame during runtime, to try to offset alignment of the stack.
             if let Some(distr) = stack_offset_distr {
                 with_alloca(rng.sample(distr), |_| {
-                    a_func.measure(iterations);
-                    b_func.measure(iterations);
+                    a_func.spi.measure(iterations).unwrap();
+                    b_func.spi.measure(iterations).unwrap();
                 });
             } else {
-                a_func.measure(iterations);
-                b_func.measure(iterations);
+                a_func.spi.measure(iterations)?;
+                b_func.spi.measure(iterations)?;
             }
 
-            let a_sample_time = a_func.read_sample();
-            let b_sample_time = b_func.read_sample();
+            let a_sample_time = a_func.read_sample()?;
+            let b_sample_time = b_func.read_sample()?;
             sample_time += a_sample_time.max(b_sample_time);
 
             loop_time += Duration::from_nanos(sample_time);
@@ -755,7 +790,7 @@ mod paired_test {
         Ok(())
     }
 
-    fn generate_plots(path: &Path, sample_dumps: &[PathBuf]) -> Result<()> {
+    fn generate_plots(sample_dumps: &[PathBuf]) -> Result<()> {
         let gnuplot_file = AutoDelete(temp_dir().join("tango-plot.gnuplot"));
         fs::write(&*gnuplot_file, include_bytes!("plot.gnuplot"))?;
         let gnuplot_file_str = gnuplot_file.to_str().unwrap();
@@ -785,9 +820,12 @@ mod paired_test {
 }
 
 mod reporting {
-    use crate::cli::{colorize, HumanTime};
-    use crate::{RunResult, Summary};
-    use colorz::{mode::Stream, Colorize};
+    use crate::{
+        cli::{colorize, HumanTime},
+        platform::RUsage,
+        RunResult, Summary,
+    };
+    use colorz::{ansi, mode::Stream, Colorize, Style};
 
     pub(super) fn verbose_reporter(results: &RunResult) {
         let base = results.baseline;
@@ -885,6 +923,18 @@ mod reporting {
             HumanTime(results.variance.sqrt()),
         )
     }
+
+    pub(super) fn report_system_time_bias(result: &RunResult, rusage: &RUsage) {
+        const RED: Style = Style::new().fg(ansi::Red).const_into_runtime_style();
+
+        eprintln!(
+            "{}: {} benchmark spent too much time in system mode (sys: {:?}, usr: {:?}). Results may be inaccurate",
+            "WARN".into_style_with(RED).stream(Stream::Stderr),
+            &result.name,
+            rusage.system_time,
+            rusage.user_time
+        );
+    }
 }
 
 struct TestedFunction<'a> {
@@ -901,26 +951,16 @@ impl<'a> TestedFunction<'a> {
         }
     }
 
-    pub(crate) fn measure(&mut self, iterations: usize) {
-        self.spi.measure(iterations);
-    }
-
-    pub(crate) fn read_sample(&mut self) -> u64 {
-        let sample = self.spi.read_sample();
+    pub(crate) fn read_sample(&mut self) -> Result<u64> {
+        let sample = self.spi.read_sample().context("Unable to read sample")?;
         self.samples.push(sample);
-        sample
+        Ok(sample)
     }
 
-    pub(crate) fn run(&mut self, iterations: usize) -> u64 {
-        self.spi.run(iterations)
-    }
-
-    pub(crate) fn prepare_state(&mut self, seed: u64) {
-        self.spi.prepare_state(seed);
-    }
-
-    pub(crate) fn estimate_iterations(&mut self, time_ms: u32) -> usize {
-        self.spi.estimate_iterations(time_ms)
+    pub(crate) fn run(&mut self, iterations: usize) -> Result<u64> {
+        self.spi
+            .run(iterations)
+            .context("Unable to run measurement")
     }
 }
 
@@ -929,16 +969,17 @@ fn prepare_func(
     f: &mut TestedFunction,
     warmup_iterations: Option<usize>,
     firewall: Option<&CacheFirewall>,
-) {
+) -> Result<()> {
     if let Some(seed) = prepare_state_seed {
-        f.prepare_state(seed);
+        f.spi.prepare_state(seed)?;
         if let Some(firewall) = firewall {
             firewall.issue_read();
         }
     }
     if let Some(warmup_iterations) = warmup_iterations {
-        f.run(warmup_iterations);
+        f.run(warmup_iterations)?;
     }
+    Ok(())
 }
 
 fn create_sampler(settings: &MeasurementSettings, seed: u64) -> Box<dyn SampleLength> {
