@@ -1,7 +1,6 @@
-allow-branch = ["main", "dev"]
+allow-branch = ["main", "*"]
 release = true
-tag = true
-tag-name = "v{{version}}"
+tag = false
 
 pre-release-replacements = [
     {
