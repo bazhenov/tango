@@ -65,7 +65,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: Run cargo release
-        run: cargo release -p tango-bench --no-confirm --no-publish --execute ${{ inputs.level }}
+        run: cargo release -p tango-bench --no-confirm --execute ${{ inputs.level }}
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
