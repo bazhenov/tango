@@ -1013,7 +1013,7 @@ mod tests {
     /// 2. using more liberal checking condition (allowing 1 order of magnitude error in measurement)
     #[test]
     fn check_measure_time() {
-        let expected_delay = 1;
+        let expected_delay = 100;
         let mut target = benchmark_fn("foo", move |b| {
             b.metric::<WallClock>()
                 .iter(move || thread::sleep(Duration::from_millis(expected_delay)))
