@@ -28,7 +28,7 @@ jobs:
       - name: Run Tests
         run: cargo test
       - name: Running clippy
-        run: cargo clippy --all-targets --all-features -p tango-bench --message-format=json | cargo-action-fmt
+        run: cargo clippy --all-targets --all-features -p tango-bench
 
   lint:
     runs-on: ubuntu-22.04
