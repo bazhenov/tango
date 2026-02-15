@@ -887,7 +887,7 @@ mod reporting {
     pub(super) trait Reporter {
         /// Executed when a benchmark execution is progressed to a new stage
         fn report_progress(&self, name: &str, progress: BenchmarkProgress) {
-            const BAR_WIDTH: usize = 20;
+            const BAR_WIDTH: usize = 23;
             match progress {
                 BenchmarkProgress::SamplingNo {
                     sample_no,
@@ -897,7 +897,7 @@ mod reporting {
                     let filled = (sample_no * BAR_WIDTH) / samples_total;
                     let empty = BAR_WIDTH - filled;
                     eprint!(
-                        "\r\x1b[2K{}: sampling [{}{}] {}/{}",
+                        "\r\x1b[2K{:50} [{}{}] {}/{}",
                         name,
                         "#".repeat(filled),
                         ".".repeat(empty),
@@ -913,7 +913,7 @@ mod reporting {
                         / total_duration.as_millis() as usize;
                     let empty = BAR_WIDTH - filled;
                     eprint!(
-                        "\r\x1b[2K{}: time [{}{}] {:.1}s",
+                        "\r\x1b[2K{:50} [{}{}] {:.1}s",
                         name,
                         "#".repeat(filled),
                         ".".repeat(empty),
