@@ -29,4 +29,4 @@ tango_benchmarks!(
     search_benchmarks(search_btree::<u32>),
     search_benchmarks(search_btree::<u64>)
 );
-tango_main!(common::SETTINGS);
+tango_main!();

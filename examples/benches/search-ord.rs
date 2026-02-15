@@ -25,4 +25,4 @@ tango_benchmarks!(
     search_benchmarks(search_ord::<u32>),
     search_benchmarks(search_ord::<u64>)
 );
-tango_main!(common::SETTINGS);
+tango_main!();
