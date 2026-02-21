@@ -1,6 +1,6 @@
 extern crate tango_bench;
 
-use std::{any::type_name, convert::TryFrom, fmt::Debug, iter, marker::PhantomData};
+use std::{any::type_name, convert::TryFrom, fmt::Debug, iter, marker::PhantomData, usize};
 use tango_bench::{benchmark_fn, IntoBenchmarks, MeasurementSettings, DEFAULT_SETTINGS};
 
 const SIZES: [usize; 14] = [
@@ -116,9 +116,3 @@ where
     }
     benchmarks
 }
-
-pub const SETTINGS: MeasurementSettings = MeasurementSettings {
-    samples_per_haystack: usize::MAX,
-    max_iterations_per_sample: 10_000,
-    ..DEFAULT_SETTINGS
-};

@@ -23,4 +23,4 @@ tango_benchmarks!(
     search_benchmarks(search_vec::<u64>)
 );
 
-tango_main!(common::SETTINGS);
+tango_main!();

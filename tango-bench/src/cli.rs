@@ -414,12 +414,14 @@ mod paired_test {
     use super::*;
     use crate::{
         calculate_run_result,
+        cli::reporting::BenchmarkProgress,
         platform::{self, RUsage},
         CacheFirewall, RunResult,
     };
     use alloca::with_alloca;
     use fs::File;
     use rand::{distributions, rngs::SmallRng, Rng, SeedableRng};
+    use reporting::Reporter;
     use std::{
         io::{self, BufWriter},
         mem, thread,
@@ -509,6 +511,12 @@ mod paired_test {
 
         let mut sample_dumps = vec![];
 
+        let reporter: &dyn Reporter = if verbose {
+            &reporting::VerboseReporter
+        } else {
+            &reporting::DefaultReporter
+        };
+
         let test_names = spi_self
             .tests()
             .iter()
@@ -536,11 +544,12 @@ mod paired_test {
                 seed,
                 loop_mode,
                 path_to_dump.as_ref(),
+                reporter,
             )?;
             if let Some(usage_before) = rusage_before {
                 let rusage = platform::rusage() - usage_before;
                 if detect_system_time_bias(&rusage) {
-                    reporting::report_system_time_bias(&result, &rusage);
+                    reporting::report_system_time_bias(&func_name, &rusage);
                 }
             }
 
@@ -549,11 +558,7 @@ mod paired_test {
             }
 
             if result.diff_estimate.significant || !significant_only {
-                if verbose {
-                    reporting::verbose_reporter(&result);
-                } else {
-                    reporting::default_reporter(&result);
-                }
+                reporter.benchmark_finished(&func_name, &result);
             }
 
             if result.diff_estimate.significant {
@@ -613,6 +618,7 @@ mod paired_test {
         seed: Option<u64>,
         loop_mode: LoopMode,
         samples_dump_path: Option<&PathBuf>,
+        reporter: &dyn Reporter,
     ) -> Result<(RunResult, Option<PathBuf>)> {
         const TIME_SLICE_MS: u32 = 10;
 
@@ -670,16 +676,37 @@ mod paired_test {
             b_func.samples.reserve(samples);
         }
 
+        let estimated_benchmark_time = match loop_mode {
+            LoopMode::Samples(total_samples) => {
+                Duration::from_millis(TIME_SLICE_MS as u64 * total_samples as u64)
+            }
+            LoopMode::Time(duration) => duration,
+        };
+
         let mut loop_time = Duration::from_secs(0);
         let mut loop_iterations = 0;
+        let mut last_report_time = loop_time;
         while loop_mode.should_continue(i, loop_time) {
-            if loop_time > Duration::from_millis(100) {
-                // correcting time slice estimates
-                iterations_per_sample =
-                    loop_iterations * TIME_SLICE_MS as usize / loop_time.as_millis() as usize;
+            // Report no more that 20 times a sec and do not show progress if benchmark is fast enough
+            if loop_time > last_report_time + Duration::from_millis(50)
+                && (estimated_benchmark_time > Duration::from_millis(500)
+                    || loop_time > Duration::from_millis(500))
+            {
+                last_report_time = loop_time;
+                let phase = match loop_mode {
+                    LoopMode::Samples(samples_total) => BenchmarkProgress::SamplingNo {
+                        sample_no: i,
+                        samples_total,
+                    },
+                    LoopMode::Time(total_duration) => BenchmarkProgress::SamplingTime {
+                        loop_time,
+                        total_duration,
+                    },
+                };
+                reporter.report_progress(test_name, phase);
             }
+
             let iterations = sampler.next_sample_iterations(i, iterations_per_sample);
-            loop_iterations += iterations;
             let warmup_iterations = settings.warmup_enabled.then(|| (iterations / 10).max(1));
 
             // !!! IMPORTANT !!!
@@ -733,6 +760,12 @@ mod paired_test {
             loop_time += Duration::from_nanos(sample_time);
             sample_iterations.push(iterations);
             i += 1;
+
+            // correcting time slice estimates
+            loop_iterations += iterations;
+            iterations_per_sample = loop_iterations
+                * Duration::from_millis(TIME_SLICE_MS as u64).as_nanos() as usize
+                / loop_time.as_nanos() as usize;
         }
 
         // If we switched functions odd number of times then we need to swap them back so that
@@ -742,7 +775,6 @@ mod paired_test {
         }
 
         let run_result = calculate_run_result(
-            test_name,
             &a_func.samples,
             &b_func.samples,
             &sample_iterations,
@@ -826,91 +858,171 @@ mod reporting {
         RunResult, Summary,
     };
     use colorz::{ansi, mode::Stream, Colorize, Style};
+    use std::{
+        io::{self, Write},
+        time::Duration,
+    };
 
-    pub(super) fn verbose_reporter(results: &RunResult) {
-        let base = results.baseline;
-        let candidate = results.candidate;
-
-        let significant = results.diff_estimate.significant;
-
-        println!(
-            "{}  (n: {}, outliers: {})",
-            results.name.bold().stream(Stream::Stdout),
-            results.diff.n,
-            results.outliers
-        );
-
-        println!(
-            "    {:12}   {:>15} {:>15} {:>15}",
-            "",
-            "baseline".bold().stream(Stream::Stdout),
-            "candidate".bold().stream(Stream::Stdout),
-            "∆".bold().stream(Stream::Stdout),
-        );
-        println!(
-            "    {:12} ╭────────────────────────────────────────────────",
-            ""
-        );
-        println!(
-            "    {:12} │ {:>15} {:>15} {:>15}  {:+4.2}{}{}",
-            "mean",
-            HumanTime(base.mean),
-            HumanTime(candidate.mean),
-            colorize(
-                HumanTime(results.diff.mean),
-                significant,
-                results.diff.mean < 0.
-            ),
-            colorize(
-                results.diff_estimate.pct,
-                significant,
-                results.diff.mean < 0.
-            ),
-            colorize("%", significant, results.diff.mean < 0.),
-            if significant { "*" } else { "" },
-        );
-        println!(
-            "    {:12} │ {:>15} {:>15} {:>15}",
-            "min",
-            HumanTime(base.min),
-            HumanTime(candidate.min),
-            HumanTime(candidate.min - base.min)
-        );
-        println!(
-            "    {:12} │ {:>15} {:>15} {:>15}",
-            "max",
-            HumanTime(base.max),
-            HumanTime(candidate.max),
-            HumanTime(candidate.max - base.max),
-        );
-        println!(
-            "    {:12} │ {:>15} {:>15} {:>15}",
-            "std. dev.",
-            HumanTime(base.variance.sqrt()),
-            HumanTime(candidate.variance.sqrt()),
-            HumanTime(results.diff.variance.sqrt()),
-        );
-        println!();
+    pub(super) enum BenchmarkProgress {
+        SamplingNo {
+            /// The number of sample being taken right now
+            sample_no: usize,
+            /// The number of samples that harness is plan to gather
+            samples_total: usize,
+        },
+        SamplingTime {
+            /// The time being taken by benchmark so far
+            loop_time: Duration,
+            /// The total time requested by a user
+            total_duration: Duration,
+        },
     }
 
-    pub(super) fn default_reporter(results: &RunResult) {
-        let base = results.baseline;
-        let candidate = results.candidate;
-        let diff = results.diff;
+    /// Clears the current line on stderr (carriage return + ANSI erase line)
+    fn clear_progress_line() {
+        eprint!("\r\x1b[2K");
+        let _ = io::stderr().flush();
+    }
 
-        let significant = results.diff_estimate.significant;
+    pub(super) trait Reporter {
+        /// Executed when a benchmark execution is progressed to a new stage
+        fn report_progress(&self, name: &str, progress: BenchmarkProgress) {
+            const BAR_WIDTH: usize = 23;
+            match progress {
+                BenchmarkProgress::SamplingNo {
+                    sample_no,
+                    samples_total,
+                } => {
+                    let sample_no = sample_no.min(samples_total);
+                    let filled = (sample_no * BAR_WIDTH) / samples_total;
+                    let empty = BAR_WIDTH - filled;
+                    eprint!(
+                        "\r\x1b[2K{:50} [{}{}] {}/{}",
+                        name,
+                        "#".repeat(filled),
+                        ".".repeat(empty),
+                        sample_no,
+                        samples_total,
+                    );
+                }
+                BenchmarkProgress::SamplingTime {
+                    loop_time,
+                    total_duration,
+                } => {
+                    let filled = loop_time.as_millis() as usize * BAR_WIDTH
+                        / total_duration.as_millis() as usize;
+                    let empty = BAR_WIDTH - filled;
+                    eprint!(
+                        "\r\x1b[2K{:50} [{}{}] {:.1}s",
+                        name,
+                        "#".repeat(filled),
+                        ".".repeat(empty),
+                        loop_time.as_secs_f32(),
+                    );
+                }
+            }
+            let _ = io::stderr().flush();
+        }
 
-        let speedup = results.diff_estimate.pct;
-        let candidate_faster = diff.mean < 0.;
-        println!(
-            "{:50} [ {:>8} ... {:>8} ]    {:>+7.2}{}{}",
-            colorize(&results.name, significant, candidate_faster),
-            HumanTime(base.mean),
-            colorize(HumanTime(candidate.mean), significant, candidate_faster),
-            colorize(speedup, significant, candidate_faster),
-            colorize("%", significant, candidate_faster),
-            if significant { "*" } else { "" },
-        )
+        fn benchmark_finished(&self, name: &str, results: &RunResult);
+    }
+
+    pub(super) struct VerboseReporter;
+
+    impl Reporter for VerboseReporter {
+        fn benchmark_finished(&self, name: &str, results: &RunResult) {
+            clear_progress_line();
+
+            let base = results.baseline;
+            let candidate = results.candidate;
+
+            let significant = results.diff_estimate.significant;
+
+            println!(
+                "{}  (n: {}, outliers: {})",
+                name.bold().stream(Stream::Stdout),
+                results.diff.n,
+                results.outliers
+            );
+
+            println!(
+                "    {:12}   {:>15} {:>15} {:>15}",
+                "",
+                "baseline".bold().stream(Stream::Stdout),
+                "candidate".bold().stream(Stream::Stdout),
+                "∆".bold().stream(Stream::Stdout),
+            );
+            println!(
+                "    {:12} ╭────────────────────────────────────────────────",
+                ""
+            );
+            println!(
+                "    {:12} │ {:>15} {:>15} {:>15}  {:+4.2}{}{}",
+                "mean",
+                HumanTime(base.mean),
+                HumanTime(candidate.mean),
+                colorize(
+                    HumanTime(results.diff.mean),
+                    significant,
+                    results.diff.mean < 0.
+                ),
+                colorize(
+                    results.diff_estimate.pct,
+                    significant,
+                    results.diff.mean < 0.
+                ),
+                colorize("%", significant, results.diff.mean < 0.),
+                if significant { "*" } else { "" },
+            );
+            println!(
+                "    {:12} │ {:>15} {:>15} {:>15}",
+                "min",
+                HumanTime(base.min),
+                HumanTime(candidate.min),
+                HumanTime(candidate.min - base.min)
+            );
+            println!(
+                "    {:12} │ {:>15} {:>15} {:>15}",
+                "max",
+                HumanTime(base.max),
+                HumanTime(candidate.max),
+                HumanTime(candidate.max - base.max),
+            );
+            println!(
+                "    {:12} │ {:>15} {:>15} {:>15}",
+                "std. dev.",
+                HumanTime(base.variance.sqrt()),
+                HumanTime(candidate.variance.sqrt()),
+                HumanTime(results.diff.variance.sqrt()),
+            );
+            println!();
+        }
+    }
+
+    pub(super) struct DefaultReporter;
+
+    impl Reporter for DefaultReporter {
+        fn benchmark_finished(&self, name: &str, results: &RunResult) {
+            clear_progress_line();
+
+            let base = results.baseline;
+            let candidate = results.candidate;
+            let diff = results.diff;
+
+            let significant = results.diff_estimate.significant;
+
+            let speedup = results.diff_estimate.pct;
+            let candidate_faster = diff.mean < 0.;
+            println!(
+                "{:50} [ {:>8} ... {:>8} ]    {:>+7.2}{}{}",
+                colorize(name, significant, candidate_faster),
+                HumanTime(base.mean),
+                colorize(HumanTime(candidate.mean), significant, candidate_faster),
+                colorize(speedup, significant, candidate_faster),
+                colorize("%", significant, candidate_faster),
+                if significant { "*" } else { "" },
+            )
+        }
     }
 
     pub(super) fn default_reporter_solo(name: &str, results: &Summary<f64>) {
@@ -924,13 +1036,13 @@ mod reporting {
         )
     }
 
-    pub(super) fn report_system_time_bias(result: &RunResult, rusage: &RUsage) {
+    pub(super) fn report_system_time_bias(name: &str, rusage: &RUsage) {
         const RED: Style = Style::new().fg(ansi::Red).const_into_runtime_style();
 
         eprintln!(
             "{}: {} benchmark spent too much time in system mode (sys: {:?}, usr: {:?}). Results may be inaccurate",
             "WARN".into_style_with(RED).stream(Stream::Stderr),
-            &result.name,
+            name,
             rusage.system_time,
             rusage.user_time
         );

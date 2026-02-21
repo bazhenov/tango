@@ -391,7 +391,7 @@ pub const DEFAULT_SETTINGS: MeasurementSettings = MeasurementSettings {
     filter_outliers: false,
     samples_per_haystack: 1,
     min_iterations_per_sample: 1,
-    max_iterations_per_sample: 5000,
+    max_iterations_per_sample: usize::MAX,
     sampler_type: SampleLengthKind::Random,
     cache_firewall: None,
     yield_before_sample: false,
@@ -491,8 +491,7 @@ impl SampleLength for RandomSampleLength {
 /// Calculates the result of the benchmarking run
 ///
 /// Return None if no measurements were made
-pub(crate) fn calculate_run_result<N: Into<String>>(
-    name: N,
+pub(crate) fn calculate_run_result(
     baseline: &[u64],
     candidate: &[u64],
     iterations_per_sample: &[usize],
@@ -566,7 +565,6 @@ pub(crate) fn calculate_run_result<N: Into<String>>(
         baseline: baseline_summary,
         candidate: candidate_summary,
         diff: diff_summary,
-        name: name.into(),
         diff_estimate,
         outliers: n - diff_summary.n,
     })
@@ -607,9 +605,6 @@ impl DiffEstimate {
 
 /// Describes the results of a single benchmark run
 pub(crate) struct RunResult {
-    /// name of a test
-    name: String,
-
     /// statistical summary of baseline function measurements
     baseline: Summary<f64>,
 
