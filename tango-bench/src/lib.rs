@@ -790,6 +790,67 @@ pub mod metrics {
             }
         }
     }
+
+    /// Metric that measures CPU time consumed by the current thread.
+    ///
+    /// Unlike [`WallClock`], this metric excludes time spent sleeping, blocking on I/O,
+    /// or waiting for locks. It measures only the time the thread was actively running on a CPU.
+    pub struct CpuTime;
+
+    impl Metric for CpuTime {
+        #[cfg(target_family = "unix")]
+        fn measure_fn(mut f: impl FnMut()) -> u64 {
+            use std::mem::MaybeUninit;
+
+            let mut start_ts = unsafe { MaybeUninit::<libc::timespec>::zeroed().assume_init() };
+            let mut end_ts = unsafe { MaybeUninit::<libc::timespec>::zeroed().assume_init() };
+
+            unsafe { libc::clock_gettime(libc::CLOCK_THREAD_CPUTIME_ID, &mut start_ts) };
+            f();
+            unsafe { libc::clock_gettime(libc::CLOCK_THREAD_CPUTIME_ID, &mut end_ts) };
+
+            let start_nanos = start_ts.tv_sec as u64 * 1_000_000_000 + start_ts.tv_nsec as u64;
+            let end_nanos = end_ts.tv_sec as u64 * 1_000_000_000 + end_ts.tv_nsec as u64;
+            end_nanos - start_nanos
+        }
+
+        #[cfg(target_os = "windows")]
+        fn measure_fn(mut f: impl FnMut()) -> u64 {
+            use windows::Win32::{
+                Foundation::FILETIME,
+                System::Threading::{GetCurrentThread, GetThreadTimes},
+            };
+
+            fn thread_cpu_nanos() -> u64 {
+                let mut dummy = FILETIME::default();
+                let mut kernel_time = FILETIME::default();
+                let mut user_time = FILETIME::default();
+                unsafe {
+                    GetThreadTimes(
+                        GetCurrentThread(),
+                        &mut dummy,
+                        &mut dummy,
+                        &mut kernel_time,
+                        &mut user_time,
+                    )
+                }
+                .unwrap();
+                // FILETIME is in 100ns units; convert to nanoseconds
+                let kernel = ((kernel_time.dwHighDateTime as u64) << 32
+                    | kernel_time.dwLowDateTime as u64)
+                    * 100;
+                let user = ((user_time.dwHighDateTime as u64) << 32
+                    | user_time.dwLowDateTime as u64)
+                    * 100;
+                kernel + user
+            }
+
+            let start = thread_cpu_nanos();
+            f();
+            let end = thread_cpu_nanos();
+            end - start
+        }
+    }
 }
 
 #[cfg(feature = "async")]
@@ -1017,6 +1078,26 @@ mod tests {
 
         let median = median_execution_time(&mut target, 10).as_millis() as u64;
         assert!(median < expected_delay * 10, "Median {median} is too large");
+    }
+
+    /// Verify CpuTime returns non-zero for CPU-bound work
+    #[test]
+    fn check_cpu_time_metric() {
+        use metrics::CpuTime;
+
+        let mut target = benchmark_fn("cpu_work", |b| {
+            b.metric::<CpuTime>().iter(|| {
+                let mut sum = 0u64;
+                for i in 0..100_000 {
+                    sum = sum.wrapping_add(i);
+                }
+                black_box(sum);
+            })
+        });
+        target.prepare_state(0);
+
+        let median = median_execution_time(&mut target, 10).as_nanos() as u64;
+        assert!(median > 0, "CpuTime should report non-zero for CPU-bound work");
     }
 
     struct RngIterator<T>(T);
