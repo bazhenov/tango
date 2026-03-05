@@ -610,6 +610,7 @@ mod paired_test {
     /// and `c_1..c_n` are candidate time measurements
     ///
     /// Returns a statistical results of a test run and path to raw samples of sample dump was requested
+    #[allow(clippy::too_many_arguments)]
     fn run_paired_test(
         baseline: &mut Spi,
         candidate: &mut Spi,

@@ -833,9 +833,27 @@ pub mod metrics {
             let mut end_kernel = FILETIME::default();
             let mut end_user = FILETIME::default();
 
-            unsafe { GetThreadTimes(thread, &mut dummy, &mut dummy, &mut start_kernel, &mut start_user) }.unwrap();
+            unsafe {
+                GetThreadTimes(
+                    thread,
+                    &mut dummy,
+                    &mut dummy,
+                    &mut start_kernel,
+                    &mut start_user,
+                )
+            }
+            .unwrap();
             f();
-            unsafe { GetThreadTimes(thread, &mut dummy, &mut dummy, &mut end_kernel, &mut end_user) }.unwrap();
+            unsafe {
+                GetThreadTimes(
+                    thread,
+                    &mut dummy,
+                    &mut dummy,
+                    &mut end_kernel,
+                    &mut end_user,
+                )
+            }
+            .unwrap();
 
             let start = filetime_to_nanos(&start_kernel) + filetime_to_nanos(&start_user);
             let end = filetime_to_nanos(&end_kernel) + filetime_to_nanos(&end_user);
@@ -1088,7 +1106,10 @@ mod tests {
         target.prepare_state(0);
 
         let median = median_execution_time(&mut target, 10).as_nanos() as u64;
-        assert!(median > 0, "CpuTime should report non-zero for CPU-bound work");
+        assert!(
+            median > 0,
+            "CpuTime should report non-zero for CPU-bound work"
+        );
     }
 
     /// CpuTime should report near-zero during sleep (only wall time passes, not CPU time).
