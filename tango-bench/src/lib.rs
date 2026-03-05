@@ -790,6 +790,58 @@ pub mod metrics {
             }
         }
     }
+
+    /// Metric that measures CPU time consumed by the current thread.
+    ///
+    /// Unlike [`WallClock`], this metric excludes time spent sleeping, blocking on I/O,
+    /// or waiting for locks. It measures only the time the thread was actively running on a CPU.
+    pub struct CpuTime;
+
+    impl Metric for CpuTime {
+        #[cfg(target_family = "unix")]
+        fn measure_fn(mut f: impl FnMut()) -> u64 {
+            use std::mem::MaybeUninit;
+
+            let mut start_ts = unsafe { MaybeUninit::<libc::timespec>::zeroed().assume_init() };
+            let mut end_ts = unsafe { MaybeUninit::<libc::timespec>::zeroed().assume_init() };
+
+            unsafe { libc::clock_gettime(libc::CLOCK_THREAD_CPUTIME_ID, &mut start_ts) };
+            f();
+            unsafe { libc::clock_gettime(libc::CLOCK_THREAD_CPUTIME_ID, &mut end_ts) };
+
+            let start_nanos = start_ts.tv_sec as u64 * 1_000_000_000 + start_ts.tv_nsec as u64;
+            let end_nanos = end_ts.tv_sec as u64 * 1_000_000_000 + end_ts.tv_nsec as u64;
+            end_nanos - start_nanos
+        }
+
+        #[cfg(target_os = "windows")]
+        fn measure_fn(mut f: impl FnMut()) -> u64 {
+            use windows::Win32::{
+                Foundation::FILETIME,
+                System::Threading::{GetCurrentThread, GetThreadTimes},
+            };
+
+            fn filetime_to_nanos(ft: &FILETIME) -> u64 {
+                ((ft.dwHighDateTime as u64) << 32 | ft.dwLowDateTime as u64) * 100
+            }
+
+            let thread = unsafe { GetCurrentThread() };
+
+            let mut dummy = FILETIME::default();
+            let mut start_kernel = FILETIME::default();
+            let mut start_user = FILETIME::default();
+            let mut end_kernel = FILETIME::default();
+            let mut end_user = FILETIME::default();
+
+            unsafe { GetThreadTimes(thread, &mut dummy, &mut dummy, &mut start_kernel, &mut start_user) }.unwrap();
+            f();
+            unsafe { GetThreadTimes(thread, &mut dummy, &mut dummy, &mut end_kernel, &mut end_user) }.unwrap();
+
+            let start = filetime_to_nanos(&start_kernel) + filetime_to_nanos(&start_user);
+            let end = filetime_to_nanos(&end_kernel) + filetime_to_nanos(&end_user);
+            end - start
+        }
+    }
 }
 
 #[cfg(feature = "async")]
@@ -1017,6 +1069,66 @@ mod tests {
 
         let median = median_execution_time(&mut target, 10).as_millis() as u64;
         assert!(median < expected_delay * 10, "Median {median} is too large");
+    }
+
+    /// Verify CpuTime returns non-zero for CPU-bound work
+    #[test]
+    fn check_cpu_time_metric() {
+        use metrics::CpuTime;
+
+        let mut target = benchmark_fn("cpu_work", |b| {
+            b.metric::<CpuTime>().iter(|| {
+                let mut sum = 0u64;
+                for i in 0..100_000 {
+                    sum = sum.wrapping_add(i);
+                }
+                sum
+            })
+        });
+        target.prepare_state(0);
+
+        let median = median_execution_time(&mut target, 10).as_nanos() as u64;
+        assert!(median > 0, "CpuTime should report non-zero for CPU-bound work");
+    }
+
+    /// CpuTime should report near-zero during sleep (only wall time passes, not CPU time).
+    #[test]
+    fn cpu_time_excludes_sleep() {
+        use metrics::CpuTime;
+
+        let cpu_nanos = CpuTime::measure_fn(|| {
+            thread::sleep(Duration::from_millis(50));
+        });
+
+        // 50ms of sleep should consume very little CPU time — well under 1ms.
+        assert!(
+            cpu_nanos < 1_000_000,
+            "CpuTime during 50ms sleep should be < 1ms, got {cpu_nanos} ns"
+        );
+    }
+
+    /// CpuTime should track wall-clock time closely during a pure CPU-bound loop.
+    #[test]
+    fn cpu_time_tracks_wall_clock_during_busy_work() {
+        use metrics::CpuTime;
+        use std::time::Instant;
+
+        let target_duration = Duration::from_millis(10);
+        let deadline = Instant::now() + target_duration;
+
+        let cpu_nanos = CpuTime::measure_fn(|| {
+            while Instant::now() < deadline {
+                black_box(0u64);
+            }
+        });
+
+        let wall_nanos = target_duration.as_nanos() as f64;
+        let cpu = cpu_nanos as f64;
+        let error = ((cpu - wall_nanos) / wall_nanos).abs();
+        assert!(
+            error < 0.01,
+            "CPU time ({cpu_nanos} ns) should be within 1% of wall time ({wall_nanos} ns), error: {error:.4}"
+        );
     }
 
     struct RngIterator<T>(T);
