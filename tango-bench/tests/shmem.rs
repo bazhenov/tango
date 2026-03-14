@@ -9,6 +9,7 @@ use std::{
 fn main() {
     let (shmem, child) = if let Ok(shmem_name) = env::var("SHMEM") {
         let shmem = ShmemConf::new().os_id(shmem_name).open().unwrap();
+        println!("Creating shared memory: {}", shmem.get_os_id());
         (shmem, None)
     } else {
         let shmem = ShmemConf::new().size(4096).create().unwrap();
