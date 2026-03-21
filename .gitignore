@@ -15,3 +15,10 @@ Cargo.lock
 /rust-toolchain.toml
 .sandbox
 .claude
+
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+.terraform/
+.ssh/

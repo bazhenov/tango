@@ -4,8 +4,9 @@ resolver = "2"
 members = [
     "tango-bench",
     "examples",
-    "criterion-comparison",
-    "tango-test"]
+    "tango-comparison",
+    "tango-test"
+]
 
 [profile.bench]
 debug = true

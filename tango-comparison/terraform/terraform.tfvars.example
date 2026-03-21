@@ -1,0 +1,16 @@
+# Copy this file to terraform.tfvars and fill in your values.
+# terraform.tfvars is gitignored by convention — don't commit it.
+
+aws_region       = "us-east-1"
+project_name     = "my-rust-vm"
+public_key_path  = "~/.ssh/id_ed25519.pub"
+
+# Restrict SSH to your own IP for security (recommended).
+# Find your IP: https://checkip.amazonaws.com
+# Then set: "YOUR_IP/32"
+allowed_ssh_cidr = "0.0.0.0/0"
+
+# AMI IDs are region-specific. Default is Ubuntu 24.04 LTS in us-east-1.
+# If you change the region, look up the correct AMI at:
+# https://cloud-images.ubuntu.com/locator/ec2/
+# ami_id = "ami-xxxxxxxxxxxxxxxxx"

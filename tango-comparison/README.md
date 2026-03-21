@@ -4,4 +4,4 @@ Criterions is well established benchmark harness in the Rust ecosustem. Here is 
 
 ## Methodology
 
-Comparison is done on the same machine on the same benchmark
+Comparison is done on the same machine on the same benchmark.
