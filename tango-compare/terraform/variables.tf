@@ -20,10 +20,14 @@ variable "ami_id" {
   default     = "ami-005f97cc4a61dd3b4" # Ubuntu Server 24.04 LTS (HVM), SSD Volume Type
 }
 
+variable "instance_type" {
+  description = "Type of the EC2 instane (eg. t2.micro)"
+  type        = string
+}
+
 variable "public_key_path" {
   description = "Path to your local SSH public key, e.g. ~/.ssh/id_ed25519.pub"
   type        = string
-  default     = "~/.ssh/aws.pub"
 }
 
 variable "allowed_ssh_cidr" {

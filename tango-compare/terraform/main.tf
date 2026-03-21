@@ -37,7 +37,7 @@ resource "aws_security_group" "vm_sg" {
 # --- EC2 Instance (free tier: t2.micro) ---
 resource "aws_instance" "vm" {
   ami                    = var.ami_id
-  instance_type          = "t2.micro"
+  instance_type          = var.instance_type
   key_name               = aws_key_pair.deployer.key_name
   vpc_security_group_ids = [aws_security_group.vm_sg.id]
 

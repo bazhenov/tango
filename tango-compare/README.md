@@ -32,7 +32,7 @@ Toolchain is created to do comparison in the AWS cloud, but can be hacked to run
 3. Run benchmarks on the target machine
 
    ```console
-   $ ssh -i .ssh/key ubuntu@[AWS-IP]
+   $ ssh -i .ssh/key ubuntu@$(terraform output -raw public_ip)
    $ cd tango
    $ screen
    $ ./tango-compare/run.sh
@@ -42,7 +42,7 @@ Toolchain is created to do comparison in the AWS cloud, but can be hacked to run
 4. Copy results locally once enough data has been gathered
 
    ```console
-   $ scp -i .ssh/key ubuntu@[AWS-IP]:~/tango/target/benches/*.txt ./
+   $ scp -i .ssh/key "ubuntu@$(terraform output -raw public_ip):~/tango/target/benches/*.txt"
    ```
 
 5. Run the analysis script

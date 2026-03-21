@@ -10,6 +10,8 @@ public_key_path  = "~/.ssh/id_ed25519.pub"
 # Then set: "YOUR_IP/32"
 allowed_ssh_cidr = "0.0.0.0/0"
 
+instance_type = "t3.micro"
+
 # AMI IDs are region-specific. Default is Ubuntu 24.04 LTS in us-east-1.
 # If you change the region, look up the correct AMI at:
 # https://cloud-images.ubuntu.com/locator/ec2/

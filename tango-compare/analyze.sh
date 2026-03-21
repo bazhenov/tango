@@ -2,7 +2,7 @@
 
 set -eo pipefail
 
-WORKDIR=../target/benches
+WORKDIR=.
 cd "$WORKDIR"
 
 paste -d, \
