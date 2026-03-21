@@ -32,11 +32,11 @@ cp ./tango ./tango-2
 ./criterion --save-baseline=main --bench -n > /dev/null
 
 while true; do
-    ./criterion --bench --baseline=main -n -v >> criterion.txt
+    ./criterion --bench --baseline=main -n -v >> ./criterion.txt
 
     ./criterion --save-baseline=in-place --bench -n > /dev/null
-    ./criterion --bench --baseline=in-place -n -v >> criterion-in-place.txt
+    ./criterion --bench --baseline=in-place -n -v >> ./criterion-in-place.txt
 
-    ./tango-1 compare ./tango-2 -f 'str_length/random_limited' -t 1 -p >> tango.txt
+    ./tango-1 compare ./tango-2 -t 1 -p >> ./tango.txt
     sleep 10
 done
