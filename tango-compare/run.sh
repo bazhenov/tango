@@ -38,5 +38,4 @@ while true; do
     ./criterion --bench --baseline=in-place -n -v >> ./criterion-in-place.txt
 
     ./tango-1 compare ./tango-2 -t 1 -p >> ./tango.txt
-    sleep 10
 done
