@@ -1,0 +1,2071 @@
+str                     time:   [2.9652 µs 3.0167 µs 3.0821 µs]
+                        change: [−3.4074% −0.6973% +1.6749%] (p = 0.62 > 0.05)
+                        No change in performance detected.
+Found 10 outliers among 100 measurements (10.00%)
+  10 (10.00%) high severe
+slope  [2.9652 µs 3.0821 µs] R^2            [0.5523027 0.5442316]
+mean   [2.9587 µs 3.0220 µs] std. dev.      [67.674 ns 237.68 ns]
+median [2.9430 µs 2.9465 µs] med. abs. dev. [8.2154 ns 13.667 ns]
+
+str                     time:   [2.9397 µs 2.9417 µs 2.9437 µs]
+                        change: [−4.6238% −2.1262% −0.1295%] (p = 0.04 < 0.05)
+                        Change within noise threshold.
+Found 7 outliers among 100 measurements (7.00%)
+  5 (5.00%) high mild
+  2 (2.00%) high severe
+slope  [2.9397 µs 2.9437 µs] R^2            [0.9988521 0.9988501]
+mean   [2.9412 µs 2.9465 µs] std. dev.      [8.6104 ns 19.211 ns]
+median [2.9393 µs 2.9429 µs] med. abs. dev. [5.7249 ns 10.342 ns]
+
+str                     time:   [2.9383 µs 2.9399 µs 2.9415 µs]
+                        change: [−4.7305% −2.2110% −0.2157%] (p = 0.04 < 0.05)
+                        Change within noise threshold.
+Found 7 outliers among 100 measurements (7.00%)
+  1 (1.00%) low severe
+  1 (1.00%) low mild
+  3 (3.00%) high mild
+  2 (2.00%) high severe
+slope  [2.9383 µs 2.9415 µs] R^2            [0.9991232 0.9991232]
+mean   [2.9381 µs 2.9449 µs] std. dev.      [7.7183 ns 26.432 ns]
+median [2.9367 µs 2.9404 µs] med. abs. dev. [5.1716 ns 8.4173 ns]
+
+str                     time:   [2.9388 µs 2.9411 µs 2.9432 µs]
+                        change: [−4.7445% −2.2141% −0.2147%] (p = 0.03 < 0.05)
+                        Change within noise threshold.
+Found 4 outliers among 100 measurements (4.00%)
+  3 (3.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9388 µs 2.9432 µs] R^2            [0.9988487 0.9988581]
+mean   [2.9389 µs 2.9437 µs] std. dev.      [7.1071 ns 18.193 ns]
+median [2.9372 µs 2.9401 µs] med. abs. dev. [5.2028 ns 9.4967 ns]
+
+str                     time:   [2.9420 µs 2.9439 µs 2.9457 µs]
+                        change: [−4.5182% −2.0351% −0.0337%] (p = 0.07 > 0.05)
+                        No change in performance detected.
+Found 4 outliers among 100 measurements (4.00%)
+  2 (2.00%) low mild
+  1 (1.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9420 µs 2.9457 µs] R^2            [0.9990228 0.9990264]
+mean   [2.9429 µs 2.9515 µs] std. dev.      [8.3595 ns 36.732 ns]
+median [2.9424 µs 2.9454 µs] med. abs. dev. [6.1278 ns 11.282 ns]
+
+str                     time:   [2.9408 µs 2.9424 µs 2.9440 µs]
+                        change: [−4.6829% −2.1353% −0.1398%] (p = 0.04 < 0.05)
+                        Change within noise threshold.
+Found 2 outliers among 100 measurements (2.00%)
+  1 (1.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9408 µs 2.9440 µs] R^2            [0.9992135 0.9992099]
+mean   [2.9411 µs 2.9462 µs] std. dev.      [7.7718 ns 18.877 ns]
+median [2.9395 µs 2.9434 µs] med. abs. dev. [7.2346 ns 11.306 ns]
+
+str                     time:   [2.9414 µs 2.9439 µs 2.9465 µs]
+                        change: [−4.7200% −2.2172% −0.2190%] (p = 0.03 < 0.05)
+                        Change within noise threshold.
+Found 2 outliers among 100 measurements (2.00%)
+  1 (1.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9414 µs 2.9465 µs] R^2            [0.9983484 0.9983454]
+mean   [2.9389 µs 2.9433 µs] std. dev.      [7.6304 ns 14.763 ns]
+median [2.9357 µs 2.9414 µs] med. abs. dev. [5.8780 ns 10.863 ns]
+
+str                     time:   [2.9387 µs 2.9402 µs 2.9418 µs]
+                        change: [−4.6490% −2.1853% −0.1841%] (p = 0.04 < 0.05)
+                        Change within noise threshold.
+Found 8 outliers among 100 measurements (8.00%)
+  6 (6.00%) high mild
+  2 (2.00%) high severe
+slope  [2.9387 µs 2.9418 µs] R^2            [0.9992825 0.9992739]
+mean   [2.9396 µs 2.9446 µs] std. dev.      [7.2575 ns 18.754 ns]
+median [2.9373 µs 2.9406 µs] med. abs. dev. [4.7829 ns 7.8318 ns]
+
+str                     time:   [2.9405 µs 2.9419 µs 2.9432 µs]
+                        change: [−4.6874% −2.1881% −0.1879%] (p = 0.04 < 0.05)
+                        Change within noise threshold.
+Found 4 outliers among 100 measurements (4.00%)
+  1 (1.00%) low mild
+  1 (1.00%) high mild
+  2 (2.00%) high severe
+slope  [2.9405 µs 2.9432 µs] R^2            [0.9994196 0.9994192]
+mean   [2.9395 µs 2.9448 µs] std. dev.      [6.3692 ns 21.500 ns]
+median [2.9387 µs 2.9424 µs] med. abs. dev. [5.5996 ns 8.4904 ns]
+
+str                     time:   [2.9494 µs 2.9526 µs 2.9566 µs]
+                        change: [−4.3627% −1.8439% +0.1534%] (p = 0.11 > 0.05)
+                        No change in performance detected.
+Found 5 outliers among 100 measurements (5.00%)
+  3 (3.00%) high mild
+  2 (2.00%) high severe
+slope  [2.9494 µs 2.9566 µs] R^2            [0.9972317 0.9971296]
+mean   [2.9497 µs 2.9549 µs] std. dev.      [10.038 ns 16.668 ns]
+median [2.9472 µs 2.9528 µs] med. abs. dev. [8.3245 ns 13.756 ns]
+
+str                     time:   [2.9388 µs 2.9400 µs 2.9412 µs]
+                        change: [−4.7453% −2.2459% −0.2532%] (p = 0.03 < 0.05)
+                        Change within noise threshold.
+Found 3 outliers among 100 measurements (3.00%)
+  1 (1.00%) low mild
+  1 (1.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9388 µs 2.9412 µs] R^2            [0.9995900 0.9995918]
+mean   [2.9381 µs 2.9428 µs] std. dev.      [5.3858 ns 19.127 ns]
+median [2.9368 µs 2.9396 µs] med. abs. dev. [4.2682 ns 7.4128 ns]
+
+str                     time:   [2.9996 µs 3.0694 µs 3.1628 µs]
+                        change: [+3.9218% +9.1648% +16.255%] (p = 0.00 < 0.05)
+                        Performance has regressed.
+Found 22 outliers among 100 measurements (22.00%)
+  8 (8.00%) high mild
+  14 (14.00%) high severe
+slope  [2.9996 µs 3.1628 µs] R^2            [0.1402955 0.1388712]
+mean   [3.1257 µs 3.4675 µs] std. dev.      [564.81 ns 1.1244 µs]
+median [2.9405 µs 2.9526 µs] med. abs. dev. [8.6250 ns 28.839 ns]
+
+str                     time:   [2.9422 µs 2.9439 µs 2.9456 µs]
+                        change: [−4.5962% −2.0610% −0.0672%] (p = 0.06 > 0.05)
+                        No change in performance detected.
+Found 5 outliers among 100 measurements (5.00%)
+  2 (2.00%) low mild
+  1 (1.00%) high mild
+  2 (2.00%) high severe
+slope  [2.9422 µs 2.9456 µs] R^2            [0.9990815 0.9990752]
+mean   [2.9424 µs 2.9495 µs] std. dev.      [10.159 ns 26.822 ns]
+median [2.9410 µs 2.9452 µs] med. abs. dev. [7.1577 ns 12.882 ns]
+
+str                     time:   [2.9399 µs 2.9413 µs 2.9427 µs]
+                        change: [−4.6451% −2.1332% −0.1364%] (p = 0.04 < 0.05)
+                        Change within noise threshold.
+Found 5 outliers among 100 measurements (5.00%)
+  1 (1.00%) low mild
+  2 (2.00%) high mild
+  2 (2.00%) high severe
+slope  [2.9399 µs 2.9427 µs] R^2            [0.9993984 0.9993976]
+mean   [2.9410 µs 2.9468 µs] std. dev.      [6.6929 ns 23.764 ns]
+median [2.9402 µs 2.9434 µs] med. abs. dev. [5.1877 ns 8.8144 ns]
+
+str                     time:   [2.9979 µs 3.0614 µs 3.1326 µs]
+                        change: [−3.0933% −0.3654% +1.9722%] (p = 0.80 > 0.05)
+                        No change in performance detected.
+Found 13 outliers among 100 measurements (13.00%)
+  13 (13.00%) high severe
+slope  [2.9979 µs 3.1326 µs] R^2            [0.5497565 0.5453817]
+mean   [2.9666 µs 3.0332 µs] std. dev.      [93.601 ns 232.71 ns]
+median [2.9404 µs 2.9459 µs] med. abs. dev. [8.4175 ns 15.498 ns]
+
+str                     time:   [2.9387 µs 2.9401 µs 2.9415 µs]
+                        change: [−4.7318% −2.2144% −0.2229%] (p = 0.03 < 0.05)
+                        Change within noise threshold.
+Found 5 outliers among 100 measurements (5.00%)
+  1 (1.00%) low mild
+  3 (3.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9387 µs 2.9415 µs] R^2            [0.9994199 0.9994221]
+mean   [2.9387 µs 2.9439 µs] std. dev.      [7.2704 ns 20.150 ns]
+median [2.9369 µs 2.9400 µs] med. abs. dev. [4.3043 ns 8.2794 ns]
+
+str                     time:   [2.9375 µs 2.9406 µs 2.9457 µs]
+                        change: [−4.7237% −2.1907% −0.2015%] (p = 0.04 < 0.05)
+                        Change within noise threshold.
+Found 8 outliers among 100 measurements (8.00%)
+  1 (1.00%) low mild
+  4 (4.00%) high mild
+  3 (3.00%) high severe
+slope  [2.9375 µs 2.9457 µs] R^2            [0.9959810 0.9957162]
+mean   [2.9391 µs 2.9449 µs] std. dev.      [7.6507 ns 20.750 ns]
+median [2.9378 µs 2.9404 µs] med. abs. dev. [4.5899 ns 8.5528 ns]
+
+str                     time:   [2.9422 µs 2.9438 µs 2.9453 µs]
+                        change: [−4.6536% −2.1376% −0.1367%] (p = 0.04 < 0.05)
+                        Change within noise threshold.
+Found 3 outliers among 100 measurements (3.00%)
+  2 (2.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9422 µs 2.9453 µs] R^2            [0.9993327 0.9993357]
+mean   [2.9413 µs 2.9457 µs] std. dev.      [6.8346 ns 16.209 ns]
+median [2.9398 µs 2.9441 µs] med. abs. dev. [5.9827 ns 9.9256 ns]
+
+str                     time:   [3.0920 µs 3.2114 µs 3.3377 µs]
+                        change: [−1.1208% +2.0819% +5.0130%] (p = 0.20 > 0.05)
+                        No change in performance detected.
+Found 18 outliers among 100 measurements (18.00%)
+  2 (2.00%) high mild
+  16 (16.00%) high severe
+slope  [3.0920 µs 3.3377 µs] R^2            [0.2079804 0.2066688]
+mean   [3.0099 µs 3.1388 µs] std. dev.      [228.27 ns 412.59 ns]
+median [2.9394 µs 2.9452 µs] med. abs. dev. [7.4890 ns 14.724 ns]
+
+str                     time:   [2.9418 µs 2.9438 µs 2.9461 µs]
+                        change: [−4.5804% −2.1135% −0.1075%] (p = 0.05 < 0.05)
+                        Change within noise threshold.
+Found 4 outliers among 100 measurements (4.00%)
+  2 (2.00%) high mild
+  2 (2.00%) high severe
+slope  [2.9418 µs 2.9461 µs] R^2            [0.9990063 0.9989799]
+mean   [2.9418 µs 2.9468 µs] std. dev.      [6.9184 ns 19.150 ns]
+median [2.9405 µs 2.9433 µs] med. abs. dev. [4.2807 ns 8.6856 ns]
+
+str                     time:   [2.9354 µs 2.9369 µs 2.9383 µs]
+                        change: [−4.8027% −2.2874% −0.2929%] (p = 0.03 < 0.05)
+                        Change within noise threshold.
+Found 2 outliers among 100 measurements (2.00%)
+  1 (1.00%) low mild
+  1 (1.00%) high severe
+slope  [2.9354 µs 2.9383 µs] R^2            [0.9994168 0.9994157]
+mean   [2.9367 µs 2.9419 µs] std. dev.      [5.5993 ns 21.999 ns]
+median [2.9356 µs 2.9381 µs] med. abs. dev. [4.5918 ns 7.8111 ns]
+
+str                     time:   [2.9411 µs 2.9434 µs 2.9464 µs]
+                        change: [−4.5597% −2.0583% −0.0744%] (p = 0.06 > 0.05)
+                        No change in performance detected.
+Found 8 outliers among 100 measurements (8.00%)
+  2 (2.00%) low mild
+  2 (2.00%) high mild
+  4 (4.00%) high severe
+slope  [2.9411 µs 2.9464 µs] R^2            [0.9980973 0.9980278]
+mean   [2.9425 µs 2.9495 µs] std. dev.      [10.466 ns 24.374 ns]
+median [2.9404 µs 2.9450 µs] med. abs. dev. [6.8187 ns 10.347 ns]
+
+str                     time:   [2.9412 µs 2.9426 µs 2.9440 µs]
+                        change: [−4.6217% −2.1260% −0.1316%] (p = 0.05 < 0.05)
+                        Change within noise threshold.
+Found 3 outliers among 100 measurements (3.00%)
+  1 (1.00%) low mild
+  2 (2.00%) high severe
+slope  [2.9412 µs 2.9440 µs] R^2            [0.9992853 0.9992870]
+mean   [2.9407 µs 2.9473 µs] std. dev.      [8.7278 ns 25.190 ns]
+median [2.9413 µs 2.9450 µs] med. abs. dev. [6.2511 ns 11.119 ns]
+
+str                     time:   [2.9402 µs 2.9416 µs 2.9432 µs]
+                        change: [−4.6707% −2.1535% −0.1624%] (p = 0.04 < 0.05)
+                        Change within noise threshold.
+Found 5 outliers among 100 measurements (5.00%)
+  4 (4.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9402 µs 2.9432 µs] R^2            [0.9993162 0.9993120]
+mean   [2.9406 µs 2.9455 µs] std. dev.      [7.3167 ns 18.613 ns]
+median [2.9381 µs 2.9427 µs] med. abs. dev. [5.9477 ns 9.9974 ns]
+
+str                     time:   [2.9424 µs 2.9441 µs 2.9460 µs]
+                        change: [−4.6541% −2.1246% −0.1267%] (p = 0.04 < 0.05)
+                        Change within noise threshold.
+Found 3 outliers among 100 measurements (3.00%)
+  1 (1.00%) high mild
+  2 (2.00%) high severe
+slope  [2.9424 µs 2.9460 µs] R^2            [0.9992311 0.9992275]
+mean   [2.9417 µs 2.9461 µs] std. dev.      [6.8773 ns 15.434 ns]
+median [2.9395 µs 2.9429 µs] med. abs. dev. [5.3912 ns 9.1581 ns]
+
+str                     time:   [2.9353 µs 2.9376 µs 2.9401 µs]
+                        change: [−3.5136% −0.8437% +1.5138%] (p = 0.55 > 0.05)
+                        No change in performance detected.
+Found 16 outliers among 100 measurements (16.00%)
+  1 (1.00%) low mild
+  15 (15.00%) high severe
+slope  [2.9353 µs 2.9401 µs] R^2            [0.9857370 0.9857171]
+mean   [2.9543 µs 3.0174 µs] std. dev.      [67.964 ns 234.92 ns]
+median [2.9362 µs 2.9399 µs] med. abs. dev. [4.8305 ns 9.0438 ns]
+
+str                     time:   [2.9388 µs 2.9408 µs 2.9428 µs]
+                        change: [−4.6793% −2.1738% −0.1756%] (p = 0.04 < 0.05)
+                        Change within noise threshold.
+Found 4 outliers among 100 measurements (4.00%)
+  1 (1.00%) low mild
+  2 (2.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9388 µs 2.9428 µs] R^2            [0.9990057 0.9990052]
+mean   [2.9398 µs 2.9456 µs] std. dev.      [6.3408 ns 24.410 ns]
+median [2.9386 µs 2.9425 µs] med. abs. dev. [5.3758 ns 9.0185 ns]
+
+str                     time:   [2.9374 µs 2.9391 µs 2.9407 µs]
+                        change: [−4.7612% −2.2779% −0.2819%] (p = 0.03 < 0.05)
+                        Change within noise threshold.
+Found 3 outliers among 100 measurements (3.00%)
+  1 (1.00%) low mild
+  2 (2.00%) high severe
+slope  [2.9374 µs 2.9407 µs] R^2            [0.9992841 0.9992889]
+mean   [2.9368 µs 2.9421 µs] std. dev.      [5.7283 ns 21.371 ns]
+median [2.9358 µs 2.9392 µs] med. abs. dev. [5.2593 ns 8.1343 ns]
+
+str                     time:   [3.0634 µs 3.3202 µs 3.6368 µs]
+                        change: [−0.6137% +4.5576% +9.6042%] (p = 0.13 > 0.05)
+                        No change in performance detected.
+Found 15 outliers among 100 measurements (15.00%)
+  1 (1.00%) high mild
+  14 (14.00%) high severe
+slope  [3.0634 µs 3.6368 µs] R^2            [0.0388939 0.0378644]
+mean   [3.0084 µs 3.3203 µs] std. dev.      [267.19 ns 1.1575 µs]
+median [2.9442 µs 2.9500 µs] med. abs. dev. [9.6382 ns 17.261 ns]
+
+str                     time:   [2.9379 µs 2.9391 µs 2.9403 µs]
+                        change: [−4.6970% −2.2307% −0.2320%] (p = 0.03 < 0.05)
+                        Change within noise threshold.
+Found 5 outliers among 100 measurements (5.00%)
+  3 (3.00%) high mild
+  2 (2.00%) high severe
+slope  [2.9379 µs 2.9403 µs] R^2            [0.9995142 0.9995114]
+mean   [2.9382 µs 2.9437 µs] std. dev.      [5.8583 ns 22.653 ns]
+median [2.9365 µs 2.9391 µs] med. abs. dev. [3.6523 ns 6.7159 ns]
+
+str                     time:   [2.9395 µs 2.9417 µs 2.9439 µs]
+                        change: [−4.6382% −2.1065% −0.1141%] (p = 0.05 < 0.05)
+                        Change within noise threshold.
+Found 6 outliers among 100 measurements (6.00%)
+  1 (1.00%) low mild
+  3 (3.00%) high mild
+  2 (2.00%) high severe
+slope  [2.9395 µs 2.9439 µs] R^2            [0.9988426 0.9988453]
+mean   [2.9418 µs 2.9472 µs] std. dev.      [8.1695 ns 19.972 ns]
+median [2.9404 µs 2.9446 µs] med. abs. dev. [6.4047 ns 11.078 ns]
+
+str                     time:   [2.9430 µs 2.9446 µs 2.9464 µs]
+                        change: [−4.5819% −2.0900% −0.0933%] (p = 0.05 > 0.05)
+                        No change in performance detected.
+Found 2 outliers among 100 measurements (2.00%)
+  1 (1.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9430 µs 2.9464 µs] R^2            [0.9991293 0.9991229]
+mean   [2.9423 µs 2.9478 µs] std. dev.      [8.3218 ns 20.624 ns]
+median [2.9401 µs 2.9456 µs] med. abs. dev. [7.0382 ns 11.688 ns]
+
+str                     time:   [2.9402 µs 2.9419 µs 2.9437 µs]
+                        change: [−4.5313% −2.0921% −0.0936%] (p = 0.05 > 0.05)
+                        No change in performance detected.
+Found 1 outliers among 100 measurements (1.00%)
+  1 (1.00%) high severe
+slope  [2.9402 µs 2.9437 µs] R^2            [0.9991519 0.9991509]
+mean   [2.9404 µs 2.9519 µs] std. dev.      [7.3489 ns 53.880 ns]
+median [2.9392 µs 2.9431 µs] med. abs. dev. [6.4424 ns 10.036 ns]
+
+str                     time:   [2.9402 µs 2.9421 µs 2.9442 µs]
+                        change: [−4.6021% −2.1108% −0.1132%] (p = 0.05 < 0.05)
+                        Change within noise threshold.
+Found 5 outliers among 100 measurements (5.00%)
+  3 (3.00%) high mild
+  2 (2.00%) high severe
+slope  [2.9402 µs 2.9442 µs] R^2            [0.9988585 0.9988438]
+mean   [2.9417 µs 2.9468 µs] std. dev.      [8.9426 ns 17.395 ns]
+median [2.9387 µs 2.9448 µs] med. abs. dev. [7.7424 ns 11.583 ns]
+
+str                     time:   [2.9396 µs 2.9423 µs 2.9463 µs]
+                        change: [−4.5614% −2.0374% −0.0481%] (p = 0.06 > 0.05)
+                        No change in performance detected.
+Found 9 outliers among 100 measurements (9.00%)
+  4 (4.00%) high mild
+  5 (5.00%) high severe
+slope  [2.9396 µs 2.9463 µs] R^2            [0.9967660 0.9966245]
+mean   [2.9426 µs 2.9511 µs] std. dev.      [10.063 ns 32.608 ns]
+median [2.9392 µs 2.9431 µs] med. abs. dev. [5.5305 ns 9.5269 ns]
+
+str                     time:   [2.9403 µs 2.9418 µs 2.9433 µs]
+                        change: [−4.7261% −2.1971% −0.2081%] (p = 0.03 < 0.05)
+                        Change within noise threshold.
+Found 6 outliers among 100 measurements (6.00%)
+  2 (2.00%) low severe
+  3 (3.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9403 µs 2.9433 µs] R^2            [0.9992287 0.9992251]
+mean   [2.9387 µs 2.9449 µs] std. dev.      [8.5464 ns 23.721 ns]
+median [2.9372 µs 2.9423 µs] med. abs. dev. [6.6795 ns 10.590 ns]
+
+str                     time:   [2.9392 µs 2.9406 µs 2.9419 µs]
+                        change: [−4.7186% −2.2005% −0.1973%] (p = 0.03 < 0.05)
+                        Change within noise threshold.
+Found 6 outliers among 100 measurements (6.00%)
+  1 (1.00%) low mild
+  3 (3.00%) high mild
+  2 (2.00%) high severe
+slope  [2.9392 µs 2.9419 µs] R^2            [0.9994537 0.9994536]
+mean   [2.9394 µs 2.9438 µs] std. dev.      [6.7990 ns 15.603 ns]
+median [2.9384 µs 2.9408 µs] med. abs. dev. [4.7088 ns 8.7743 ns]
+
+str                     time:   [2.9421 µs 2.9440 µs 2.9461 µs]
+                        change: [−4.6134% −2.0811% −0.0877%] (p = 0.05 > 0.05)
+                        No change in performance detected.
+Found 3 outliers among 100 measurements (3.00%)
+  2 (2.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9421 µs 2.9461 µs] R^2            [0.9989069 0.9989012]
+mean   [2.9426 µs 2.9478 µs] std. dev.      [8.6389 ns 18.620 ns]
+median [2.9418 µs 2.9459 µs] med. abs. dev. [7.0276 ns 11.933 ns]
+
+str                     time:   [2.9358 µs 2.9371 µs 2.9386 µs]
+                        change: [−4.7296% −2.2376% −0.2426%] (p = 0.03 < 0.05)
+                        Change within noise threshold.
+Found 5 outliers among 100 measurements (5.00%)
+  3 (3.00%) high mild
+  2 (2.00%) high severe
+slope  [2.9358 µs 2.9386 µs] R^2            [0.9994766 0.9994718]
+mean   [2.9372 µs 2.9450 µs] std. dev.      [6.2579 ns 33.675 ns]
+median [2.9351 µs 2.9378 µs] med. abs. dev. [4.1600 ns 7.0049 ns]
+
+str                     time:   [2.9376 µs 2.9389 µs 2.9401 µs]
+                        change: [−4.7576% −2.2725% −0.2808%] (p = 0.03 < 0.05)
+                        Change within noise threshold.
+Found 4 outliers among 100 measurements (4.00%)
+  3 (3.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9376 µs 2.9401 µs] R^2            [0.9995778 0.9995766]
+mean   [2.9372 µs 2.9422 µs] std. dev.      [5.3858 ns 21.304 ns]
+median [2.9357 µs 2.9387 µs] med. abs. dev. [4.2385 ns 7.1530 ns]
+
+str                     time:   [2.9420 µs 2.9442 µs 2.9467 µs]
+                        change: [−4.6056% −2.1108% −0.1114%] (p = 0.05 < 0.05)
+                        Change within noise threshold.
+Found 3 outliers among 100 measurements (3.00%)
+  1 (1.00%) high mild
+  2 (2.00%) high severe
+slope  [2.9420 µs 2.9467 µs] R^2            [0.9985843 0.9985617]
+mean   [2.9418 µs 2.9469 µs] std. dev.      [8.1393 ns 18.218 ns]
+median [2.9396 µs 2.9435 µs] med. abs. dev. [5.5644 ns 10.975 ns]
+
+str                     time:   [2.9469 µs 2.9498 µs 2.9526 µs]
+                        change: [−4.6342% −2.1173% −0.1255%] (p = 0.05 < 0.05)
+                        Change within noise threshold.
+Found 2 outliers among 100 measurements (2.00%)
+  1 (1.00%) low mild
+  1 (1.00%) high severe
+slope  [2.9469 µs 2.9526 µs] R^2            [0.9979995 0.9980086]
+mean   [2.9410 µs 2.9472 µs] std. dev.      [10.792 ns 21.766 ns]
+median [2.9387 µs 2.9454 µs] med. abs. dev. [9.1010 ns 14.693 ns]
+
+str                     time:   [3.0780 µs 3.3159 µs 3.6141 µs]
+                        change: [−0.7654% +3.9667% +9.2974%] (p = 0.14 > 0.05)
+                        No change in performance detected.
+Found 15 outliers among 100 measurements (15.00%)
+  1 (1.00%) high mild
+  14 (14.00%) high severe
+slope  [3.0780 µs 3.6141 µs] R^2            [0.0476092 0.0461812]
+mean   [3.0087 µs 3.2808 µs] std. dev.      [274.34 ns 1.0613 µs]
+median [2.9387 µs 2.9442 µs] med. abs. dev. [8.0319 ns 13.923 ns]
+
+str                     time:   [2.9387 µs 2.9400 µs 2.9413 µs]
+                        change: [−4.7369% −2.2097% −0.2162%] (p = 0.03 < 0.05)
+                        Change within noise threshold.
+Found 7 outliers among 100 measurements (7.00%)
+  5 (5.00%) high mild
+  2 (2.00%) high severe
+slope  [2.9387 µs 2.9413 µs] R^2            [0.9994609 0.9994570]
+mean   [2.9390 µs 2.9439 µs] std. dev.      [6.0492 ns 19.366 ns]
+median [2.9375 µs 2.9406 µs] med. abs. dev. [4.4260 ns 7.3575 ns]
+
+str                     time:   [2.9378 µs 2.9392 µs 2.9406 µs]
+                        change: [−4.7053% −2.2556% −0.2585%] (p = 0.03 < 0.05)
+                        Change within noise threshold.
+Found 3 outliers among 100 measurements (3.00%)
+  1 (1.00%) low mild
+  1 (1.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9378 µs 2.9406 µs] R^2            [0.9995113 0.9995088]
+mean   [2.9372 µs 2.9439 µs] std. dev.      [5.5123 ns 29.733 ns]
+median [2.9357 µs 2.9391 µs] med. abs. dev. [4.5731 ns 7.1960 ns]
+
+str                     time:   [2.9388 µs 2.9400 µs 2.9411 µs]
+                        change: [−4.7499% −2.1903% −0.2048%] (p = 0.04 < 0.05)
+                        Change within noise threshold.
+Found 5 outliers among 100 measurements (5.00%)
+  1 (1.00%) low mild
+  3 (3.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9388 µs 2.9411 µs] R^2            [0.9995935 0.9995917]
+mean   [2.9394 µs 2.9452 µs] std. dev.      [5.5419 ns 24.907 ns]
+median [2.9376 µs 2.9413 µs] med. abs. dev. [4.4465 ns 7.3515 ns]
+
+str                     time:   [2.9333 µs 2.9352 µs 2.9370 µs]
+                        change: [−4.8727% −2.3496% −0.3560%] (p = 0.02 < 0.05)
+                        Change within noise threshold.
+Found 12 outliers among 100 measurements (12.00%)
+  3 (3.00%) low severe
+  4 (4.00%) low mild
+  3 (3.00%) high mild
+  2 (2.00%) high severe
+slope  [2.9333 µs 2.9370 µs] R^2            [0.9990555 0.9990650]
+mean   [2.9346 µs 2.9399 µs] std. dev.      [6.8204 ns 20.915 ns]
+median [2.9349 µs 2.9370 µs] med. abs. dev. [3.2070 ns 6.1262 ns]
+
+str                     time:   [2.9423 µs 2.9440 µs 2.9462 µs]
+                        change: [−4.6536% −2.1251% −0.1256%] (p = 0.05 < 0.05)
+                        Change within noise threshold.
+Found 2 outliers among 100 measurements (2.00%)
+  1 (1.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9423 µs 2.9462 µs] R^2            [0.9991208 0.9990921]
+mean   [2.9413 µs 2.9470 µs] std. dev.      [6.5411 ns 22.972 ns]
+median [2.9403 µs 2.9432 µs] med. abs. dev. [5.3649 ns 9.5194 ns]
+
+str                     time:   [2.9361 µs 2.9374 µs 2.9387 µs]
+                        change: [−4.6949% −2.2439% −0.2401%] (p = 0.03 < 0.05)
+                        Change within noise threshold.
+Found 11 outliers among 100 measurements (11.00%)
+  1 (1.00%) low severe
+  2 (2.00%) low mild
+  4 (4.00%) high mild
+  4 (4.00%) high severe
+slope  [2.9361 µs 2.9387 µs] R^2            [0.9994031 0.9994019]
+mean   [2.9371 µs 2.9437 µs] std. dev.      [8.8682 ns 23.431 ns]
+median [2.9358 µs 2.9382 µs] med. abs. dev. [3.9622 ns 7.1160 ns]
+
+str                     time:   [2.9421 µs 2.9438 µs 2.9457 µs]
+                        change: [−4.6035% −2.0709% −0.0753%] (p = 0.06 > 0.05)
+                        No change in performance detected.
+Found 5 outliers among 100 measurements (5.00%)
+  3 (3.00%) high mild
+  2 (2.00%) high severe
+slope  [2.9421 µs 2.9457 µs] R^2            [0.9991861 0.9991761]
+mean   [2.9426 µs 2.9491 µs] std. dev.      [6.7517 ns 27.107 ns]
+median [2.9404 µs 2.9443 µs] med. abs. dev. [4.9013 ns 8.1645 ns]
+
+str                     time:   [2.9403 µs 2.9414 µs 2.9426 µs]
+                        change: [−4.7094% −2.1781% −0.1858%] (p = 0.04 < 0.05)
+                        Change within noise threshold.
+Found 2 outliers among 100 measurements (2.00%)
+  1 (1.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9403 µs 2.9426 µs] R^2            [0.9995843 0.9995817]
+mean   [2.9401 µs 2.9449 µs] std. dev.      [5.6233 ns 19.652 ns]
+median [2.9386 µs 2.9418 µs] med. abs. dev. [4.3595 ns 7.4936 ns]
+
+str                     time:   [2.9411 µs 2.9446 µs 2.9494 µs]
+                        change: [−4.7026% −2.1542% −0.1585%] (p = 0.04 < 0.05)
+                        Change within noise threshold.
+Found 4 outliers among 100 measurements (4.00%)
+  1 (1.00%) high mild
+  3 (3.00%) high severe
+slope  [2.9411 µs 2.9494 µs] R^2            [0.9956470 0.9954829]
+mean   [2.9402 µs 2.9461 µs] std. dev.      [5.6073 ns 21.837 ns]
+median [2.9388 µs 2.9419 µs] med. abs. dev. [4.5992 ns 7.5185 ns]
+
+str                     time:   [2.9403 µs 2.9422 µs 2.9443 µs]
+                        change: [−4.5829% −2.0645% −0.0672%] (p = 0.06 > 0.05)
+                        No change in performance detected.
+Found 8 outliers among 100 measurements (8.00%)
+  4 (4.00%) high mild
+  4 (4.00%) high severe
+slope  [2.9403 µs 2.9443 µs] R^2            [0.9985837 0.9985705]
+mean   [2.9428 µs 2.9486 µs] std. dev.      [9.1004 ns 19.749 ns]
+median [2.9406 µs 2.9433 µs] med. abs. dev. [5.0724 ns 8.5589 ns]
+
+str                     time:   [2.9364 µs 2.9382 µs 2.9402 µs]
+                        change: [−4.5279% −1.9964% +0.0360%] (p = 0.09 > 0.05)
+                        No change in performance detected.
+Found 11 outliers among 100 measurements (11.00%)
+  1 (1.00%) low severe
+  1 (1.00%) low mild
+  5 (5.00%) high mild
+  4 (4.00%) high severe
+slope  [2.9364 µs 2.9402 µs] R^2            [0.9920669 0.9920554]
+mean   [2.9370 µs 2.9657 µs] std. dev.      [8.6491 ns 135.55 ns]
+median [2.9347 µs 2.9374 µs] med. abs. dev. [3.7285 ns 6.1636 ns]
+
+str                     time:   [2.9381 µs 2.9400 µs 2.9418 µs]
+                        change: [−4.7164% −2.2373% −0.2401%] (p = 0.03 < 0.05)
+                        Change within noise threshold.
+Found 8 outliers among 100 measurements (8.00%)
+  2 (2.00%) low mild
+  5 (5.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9381 µs 2.9418 µs] R^2            [0.9989182 0.9989207]
+mean   [2.9382 µs 2.9427 µs] std. dev.      [8.0017 ns 15.206 ns]
+median [2.9363 µs 2.9404 µs] med. abs. dev. [5.5190 ns 8.8455 ns]
+
+str                     time:   [2.9344 µs 2.9366 µs 2.9387 µs]
+                        change: [−4.7374% −2.2595% −0.2683%] (p = 0.03 < 0.05)
+                        Change within noise threshold.
+Found 8 outliers among 100 measurements (8.00%)
+  2 (2.00%) low severe
+  4 (4.00%) high mild
+  2 (2.00%) high severe
+slope  [2.9344 µs 2.9387 µs] R^2            [0.9987948 0.9988061]
+mean   [2.9365 µs 2.9441 µs] std. dev.      [7.5511 ns 31.157 ns]
+median [2.9351 µs 2.9382 µs] med. abs. dev. [4.4367 ns 7.6098 ns]
+
+str                     time:   [2.9528 µs 2.9801 µs 3.0128 µs]
+                        change: [−3.9433% −1.3913% +0.6683%] (p = 0.29 > 0.05)
+                        No change in performance detected.
+Found 14 outliers among 100 measurements (14.00%)
+  4 (4.00%) high mild
+  10 (10.00%) high severe
+slope  [2.9528 µs 3.0128 µs] R^2            [0.8146189 0.8111165]
+mean   [2.9500 µs 2.9848 µs] std. dev.      [49.969 ns 120.66 ns]
+median [2.9355 µs 2.9432 µs] med. abs. dev. [6.3731 ns 14.416 ns]
+
+str                     time:   [2.9419 µs 2.9435 µs 2.9450 µs]
+                        change: [−4.6191% −2.1212% −0.1182%] (p = 0.04 < 0.05)
+                        Change within noise threshold.
+Found 6 outliers among 100 measurements (6.00%)
+  2 (2.00%) low mild
+  3 (3.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9419 µs 2.9450 µs] R^2            [0.9993085 0.9993076]
+mean   [2.9412 µs 2.9469 µs] std. dev.      [8.4833 ns 20.595 ns]
+median [2.9401 µs 2.9447 µs] med. abs. dev. [6.5784 ns 10.168 ns]
+
+str                     time:   [2.9353 µs 2.9374 µs 2.9398 µs]
+                        change: [−4.8422% −2.3512% −0.3561%] (p = 0.02 < 0.05)
+                        Change within noise threshold.
+Found 11 outliers among 100 measurements (11.00%)
+  2 (2.00%) low severe
+  1 (1.00%) low mild
+  4 (4.00%) high mild
+  4 (4.00%) high severe
+slope  [2.9353 µs 2.9398 µs] R^2            [0.9988542 0.9988327]
+mean   [2.9345 µs 2.9400 µs] std. dev.      [6.2320 ns 22.295 ns]
+median [2.9340 µs 2.9359 µs] med. abs. dev. [2.9838 ns 5.3175 ns]
+
+str                     time:   [2.9388 µs 2.9403 µs 2.9417 µs]
+                        change: [−4.6381% −2.1297% −0.1327%] (p = 0.04 < 0.05)
+                        Change within noise threshold.
+Found 7 outliers among 100 measurements (7.00%)
+  1 (1.00%) low mild
+  3 (3.00%) high mild
+  3 (3.00%) high severe
+slope  [2.9388 µs 2.9417 µs] R^2            [0.9993713 0.9993690]
+mean   [2.9404 µs 2.9477 µs] std. dev.      [8.0535 ns 29.131 ns]
+median [2.9385 µs 2.9429 µs] med. abs. dev. [6.1594 ns 9.0465 ns]
+
+str                     time:   [2.9426 µs 2.9445 µs 2.9465 µs]
+                        change: [−4.5618% −2.0753% −0.0775%] (p = 0.05 > 0.05)
+                        No change in performance detected.
+Found 6 outliers among 100 measurements (6.00%)
+  3 (3.00%) high mild
+  3 (3.00%) high severe
+slope  [2.9426 µs 2.9465 µs] R^2            [0.9990722 0.9990681]
+mean   [2.9425 µs 2.9484 µs] std. dev.      [8.3493 ns 21.265 ns]
+median [2.9410 µs 2.9436 µs] med. abs. dev. [6.0744 ns 10.238 ns]
+
+str                     time:   [2.9418 µs 2.9440 µs 2.9466 µs]
+                        change: [−4.5050% −1.9949% +0.0113%] (p = 0.07 > 0.05)
+                        No change in performance detected.
+Found 7 outliers among 100 measurements (7.00%)
+  1 (1.00%) low mild
+  5 (5.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9418 µs 2.9466 µs] R^2            [0.9983236 0.9982905]
+mean   [2.9439 µs 2.9526 µs] std. dev.      [11.158 ns 34.832 ns]
+median [2.9413 µs 2.9448 µs] med. abs. dev. [7.6516 ns 12.779 ns]
+
+str                     time:   [2.9463 µs 2.9480 µs 2.9497 µs]
+                        change: [−4.4872% −1.9858% +0.0121%] (p = 0.07 > 0.05)
+                        No change in performance detected.
+Found 8 outliers among 100 measurements (8.00%)
+  3 (3.00%) low mild
+  5 (5.00%) high mild
+slope  [2.9463 µs 2.9497 µs] R^2            [0.9990613 0.9990648]
+mean   [2.9455 µs 2.9503 µs] std. dev.      [9.7767 ns 14.340 ns]
+median [2.9450 µs 2.9503 µs] med. abs. dev. [6.9928 ns 11.486 ns]
+
+str                     time:   [2.9411 µs 2.9430 µs 2.9451 µs]
+                        change: [−4.5764% −2.0552% −0.0556%] (p = 0.06 > 0.05)
+                        No change in performance detected.
+Found 6 outliers among 100 measurements (6.00%)
+  1 (1.00%) high mild
+  5 (5.00%) high severe
+slope  [2.9411 µs 2.9451 µs] R^2            [0.9989484 0.9989435]
+mean   [2.9428 µs 2.9493 µs] std. dev.      [10.597 ns 22.276 ns]
+median [2.9395 µs 2.9447 µs] med. abs. dev. [6.7463 ns 11.803 ns]
+
+str                     time:   [2.9385 µs 2.9401 µs 2.9417 µs]
+                        change: [−4.8170% −2.2660% −0.2724%] (p = 0.03 < 0.05)
+                        Change within noise threshold.
+Found 5 outliers among 100 measurements (5.00%)
+  4 (4.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9385 µs 2.9417 µs] R^2            [0.9993401 0.9993388]
+mean   [2.9378 µs 2.9415 µs] std. dev.      [5.9100 ns 13.563 ns]
+median [2.9357 µs 2.9386 µs] med. abs. dev. [3.9344 ns 7.3347 ns]
+
+str                     time:   [2.9392 µs 2.9407 µs 2.9422 µs]
+                        change: [−4.7462% −2.2150% −0.2258%] (p = 0.03 < 0.05)
+                        Change within noise threshold.
+Found 4 outliers among 100 measurements (4.00%)
+  2 (2.00%) high mild
+  2 (2.00%) high severe
+slope  [2.9392 µs 2.9422 µs] R^2            [0.9994083 0.9994055]
+mean   [2.9392 µs 2.9432 µs] std. dev.      [6.2900 ns 14.655 ns]
+median [2.9388 µs 2.9404 µs] med. abs. dev. [4.4692 ns 7.8655 ns]
+
+str                     time:   [2.9437 µs 2.9455 µs 2.9473 µs]
+                        change: [−4.5801% −2.0780% −0.0787%] (p = 0.05 > 0.05)
+                        No change in performance detected.
+Found 5 outliers among 100 measurements (5.00%)
+  1 (1.00%) low mild
+  2 (2.00%) high mild
+  2 (2.00%) high severe
+slope  [2.9437 µs 2.9473 µs] R^2            [0.9991094 0.9991089]
+mean   [2.9425 µs 2.9483 µs] std. dev.      [8.1238 ns 21.924 ns]
+median [2.9419 µs 2.9454 µs] med. abs. dev. [6.5984 ns 10.606 ns]
+
+str                     time:   [2.9321 µs 2.9345 µs 2.9367 µs]
+                        change: [−4.3781% −1.6570% +0.6922%] (p = 0.26 > 0.05)
+                        No change in performance detected.
+Found 19 outliers among 100 measurements (19.00%)
+  3 (3.00%) low severe
+  6 (6.00%) low mild
+  4 (4.00%) high mild
+  6 (6.00%) high severe
+slope  [2.9321 µs 2.9367 µs] R^2            [0.9977601 0.9977722]
+mean   [2.9346 µs 3.0006 µs] std. dev.      [11.784 ns 343.33 ns]
+median [2.9332 µs 2.9355 µs] med. abs. dev. [3.3484 ns 6.4561 ns]
+
+str                     time:   [2.9360 µs 2.9380 µs 2.9397 µs]
+                        change: [−4.7783% −2.2763% −0.2815%] (p = 0.03 < 0.05)
+                        Change within noise threshold.
+Found 4 outliers among 100 measurements (4.00%)
+  1 (1.00%) low mild
+  2 (2.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9360 µs 2.9397 µs] R^2            [0.9991649 0.9991797]
+mean   [2.9373 µs 2.9414 µs] std. dev.      [6.1790 ns 15.344 ns]
+median [2.9366 µs 2.9388 µs] med. abs. dev. [5.0236 ns 8.2804 ns]
+
+str                     time:   [2.9376 µs 2.9393 µs 2.9410 µs]
+                        change: [−4.6749% −2.2097% −0.2067%] (p = 0.03 < 0.05)
+                        Change within noise threshold.
+Found 6 outliers among 100 measurements (6.00%)
+  5 (5.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9376 µs 2.9410 µs] R^2            [0.9992607 0.9992596]
+mean   [2.9392 µs 2.9433 µs] std. dev.      [6.8890 ns 14.644 ns]
+median [2.9374 µs 2.9416 µs] med. abs. dev. [5.3338 ns 8.6330 ns]
+
+str                     time:   [3.0573 µs 3.3107 µs 3.6348 µs]
+                        change: [−1.3155% +2.9220% +7.6466%] (p = 0.23 > 0.05)
+                        No change in performance detected.
+Found 18 outliers among 100 measurements (18.00%)
+  4 (4.00%) high mild
+  14 (14.00%) high severe
+slope  [3.0573 µs 3.6348 µs] R^2            [0.0503983 0.0484368]
+mean   [2.9922 µs 3.2302 µs] std. dev.      [196.46 ns 944.97 ns]
+median [2.9405 µs 2.9481 µs] med. abs. dev. [9.0433 ns 17.361 ns]
+
+str                     time:   [2.9395 µs 2.9418 µs 2.9438 µs]
+                        change: [−4.6615% −2.1390% −0.1390%] (p = 0.04 < 0.05)
+                        Change within noise threshold.
+Found 3 outliers among 100 measurements (3.00%)
+  1 (1.00%) low mild
+  2 (2.00%) high severe
+slope  [2.9395 µs 2.9438 µs] R^2            [0.9988609 0.9988768]
+mean   [2.9409 µs 2.9461 µs] std. dev.      [8.0828 ns 18.730 ns]
+median [2.9395 µs 2.9434 µs] med. abs. dev. [6.0466 ns 10.380 ns]
+
+str                     time:   [2.9422 µs 2.9443 µs 2.9466 µs]
+                        change: [−4.6451% −2.1194% −0.1246%] (p = 0.04 < 0.05)
+                        Change within noise threshold.
+Found 6 outliers among 100 measurements (6.00%)
+  1 (1.00%) low severe
+  2 (2.00%) high mild
+  3 (3.00%) high severe
+slope  [2.9422 µs 2.9466 µs] R^2            [0.9986110 0.9985847]
+mean   [2.9410 µs 2.9473 µs] std. dev.      [8.4837 ns 22.773 ns]
+median [2.9402 µs 2.9434 µs] med. abs. dev. [5.6427 ns 10.004 ns]
+
+str                     time:   [2.9392 µs 2.9408 µs 2.9426 µs]
+                        change: [−4.6241% −2.1329% −0.1369%] (p = 0.04 < 0.05)
+                        Change within noise threshold.
+Found 1 outliers among 100 measurements (1.00%)
+  1 (1.00%) high severe
+slope  [2.9392 µs 2.9426 µs] R^2            [0.9991355 0.9991279]
+mean   [2.9405 µs 2.9476 µs] std. dev.      [7.9618 ns 29.374 ns]
+median [2.9390 µs 2.9432 µs] med. abs. dev. [7.6328 ns 12.021 ns]
+
+str                     time:   [2.9442 µs 2.9460 µs 2.9479 µs]
+                        change: [−4.4936% −1.9997% +0.0016%] (p = 0.07 > 0.05)
+                        No change in performance detected.
+Found 2 outliers among 100 measurements (2.00%)
+  1 (1.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9442 µs 2.9479 µs] R^2            [0.9990390 0.9990371]
+mean   [2.9447 µs 2.9514 µs] std. dev.      [7.7084 ns 27.814 ns]
+median [2.9436 µs 2.9484 µs] med. abs. dev. [6.9218 ns 10.854 ns]
+
+str                     time:   [2.9477 µs 2.9501 µs 2.9528 µs]
+                        change: [−4.3860% −1.8918% +0.1080%] (p = 0.10 > 0.05)
+                        No change in performance detected.
+Found 2 outliers among 100 measurements (2.00%)
+  1 (1.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9477 µs 2.9528 µs] R^2            [0.9984520 0.9984318]
+mean   [2.9482 µs 2.9534 µs] std. dev.      [10.320 ns 16.347 ns]
+median [2.9466 µs 2.9502 µs] med. abs. dev. [7.9235 ns 13.586 ns]
+
+str                     time:   [2.9383 µs 2.9397 µs 2.9411 µs]
+                        change: [−4.7688% −2.2551% −0.2595%] (p = 0.03 < 0.05)
+                        Change within noise threshold.
+Found 6 outliers among 100 measurements (6.00%)
+  5 (5.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9383 µs 2.9411 µs] R^2            [0.9994475 0.9994466]
+mean   [2.9377 µs 2.9427 µs] std. dev.      [6.0175 ns 20.095 ns]
+median [2.9364 µs 2.9392 µs] med. abs. dev. [4.6076 ns 7.7427 ns]
+
+str                     time:   [2.9513 µs 2.9533 µs 2.9552 µs]
+                        change: [−4.3213% −1.8016% +0.2031%] (p = 0.11 > 0.05)
+                        No change in performance detected.
+Found 6 outliers among 100 measurements (6.00%)
+  1 (1.00%) low mild
+  4 (4.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9513 µs 2.9552 µs] R^2            [0.9988918 0.9988955]
+mean   [2.9511 µs 2.9559 µs] std. dev.      [9.5327 ns 15.527 ns]
+median [2.9502 µs 2.9549 µs] med. abs. dev. [6.9588 ns 12.550 ns]
+
+str                     time:   [2.9398 µs 2.9413 µs 2.9429 µs]
+                        change: [−4.6123% −2.1497% −0.1549%] (p = 0.04 < 0.05)
+                        Change within noise threshold.
+Found 3 outliers among 100 measurements (3.00%)
+  2 (2.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9398 µs 2.9429 µs] R^2            [0.9992470 0.9992440]
+mean   [2.9402 µs 2.9468 µs] std. dev.      [7.2132 ns 27.063 ns]
+median [2.9385 µs 2.9425 µs] med. abs. dev. [5.9775 ns 9.9557 ns]
+
+str                     time:   [2.9438 µs 2.9454 µs 2.9470 µs]
+                        change: [−4.4489% −1.9469% +0.0556%] (p = 0.09 > 0.05)
+                        No change in performance detected.
+Found 3 outliers among 100 measurements (3.00%)
+  3 (3.00%) high severe
+slope  [2.9438 µs 2.9470 µs] R^2            [0.9992055 0.9992059]
+mean   [2.9457 µs 2.9531 µs] std. dev.      [8.7280 ns 27.050 ns]
+median [2.9442 µs 2.9481 µs] med. abs. dev. [7.2284 ns 12.076 ns]
+
+str                     time:   [2.9394 µs 2.9408 µs 2.9421 µs]
+                        change: [−4.6934% −2.1775% −0.1790%] (p = 0.04 < 0.05)
+                        Change within noise threshold.
+Found 4 outliers among 100 measurements (4.00%)
+  3 (3.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9394 µs 2.9421 µs] R^2            [0.9995061 0.9995036]
+mean   [2.9402 µs 2.9447 µs] std. dev.      [5.9384 ns 17.814 ns]
+median [2.9384 µs 2.9423 µs] med. abs. dev. [5.2980 ns 8.4765 ns]
+
+str                     time:   [2.9778 µs 3.0155 µs 3.0673 µs]
+                        change: [+5.4078% +13.036% +21.878%] (p = 0.00 < 0.05)
+                        Performance has regressed.
+Found 19 outliers among 100 measurements (19.00%)
+  5 (5.00%) high mild
+  14 (14.00%) high severe
+slope  [2.9778 µs 3.0673 µs] R^2            [0.1988588 0.1979334]
+mean   [3.1975 µs 3.6401 µs] std. dev.      [675.68 ns 1.5239 µs]
+median [2.9354 µs 2.9448 µs] med. abs. dev. [6.2447 ns 23.472 ns]
+
+str                     time:   [2.9414 µs 2.9429 µs 2.9444 µs]
+                        change: [−4.5639% −2.0863% −0.0905%] (p = 0.05 < 0.05)
+                        Change within noise threshold.
+Found 2 outliers among 100 measurements (2.00%)
+  1 (1.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9414 µs 2.9444 µs] R^2            [0.9994024 0.9994019]
+mean   [2.9426 µs 2.9477 µs] std. dev.      [7.2267 ns 19.350 ns]
+median [2.9414 µs 2.9443 µs] med. abs. dev. [5.0866 ns 8.8195 ns]
+
+str                     time:   [2.9376 µs 2.9393 µs 2.9410 µs]
+                        change: [−4.6817% −2.1805% −0.1856%] (p = 0.04 < 0.05)
+                        Change within noise threshold.
+Found 8 outliers among 100 measurements (8.00%)
+  2 (2.00%) low mild
+  2 (2.00%) high mild
+  4 (4.00%) high severe
+slope  [2.9376 µs 2.9410 µs] R^2            [0.9992237 0.9992249]
+mean   [2.9396 µs 2.9450 µs] std. dev.      [7.9802 ns 19.669 ns]
+median [2.9386 µs 2.9413 µs] med. abs. dev. [4.9188 ns 8.5990 ns]
+
+str                     time:   [2.9664 µs 3.0270 µs 3.1069 µs]
+                        change: [−3.6077% −0.8415% +1.6293%] (p = 0.57 > 0.05)
+                        No change in performance detected.
+Found 15 outliers among 100 measurements (15.00%)
+  3 (3.00%) high mild
+  12 (12.00%) high severe
+slope  [2.9664 µs 3.1069 µs] R^2            [0.4501601 0.4410213]
+mean   [2.9496 µs 3.0257 µs] std. dev.      [50.641 ns 296.82 ns]
+median [2.9351 µs 2.9392 µs] med. abs. dev. [5.6438 ns 11.090 ns]
+
+str                     time:   [2.9376 µs 2.9389 µs 2.9402 µs]
+                        change: [−4.7803% −2.2657% −0.2730%] (p = 0.03 < 0.05)
+                        Change within noise threshold.
+Found 7 outliers among 100 measurements (7.00%)
+  2 (2.00%) low mild
+  4 (4.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9376 µs 2.9402 µs] R^2            [0.9995097 0.9995058]
+mean   [2.9376 µs 2.9417 µs] std. dev.      [6.3373 ns 15.157 ns]
+median [2.9362 µs 2.9384 µs] med. abs. dev. [3.9343 ns 6.8485 ns]
+
+str                     time:   [2.9347 µs 2.9362 µs 2.9376 µs]
+                        change: [−4.8182% −2.3287% −0.3392%] (p = 0.02 < 0.05)
+                        Change within noise threshold.
+Found 9 outliers among 100 measurements (9.00%)
+  2 (2.00%) low severe
+  1 (1.00%) low mild
+  3 (3.00%) high mild
+  3 (3.00%) high severe
+slope  [2.9347 µs 2.9376 µs] R^2            [0.9993388 0.9993435]
+mean   [2.9354 µs 2.9400 µs] std. dev.      [6.9072 ns 16.085 ns]
+median [2.9346 µs 2.9370 µs] med. abs. dev. [3.3845 ns 5.5022 ns]
+
+str                     time:   [2.9393 µs 2.9408 µs 2.9424 µs]
+                        change: [−4.6923% −2.1573% −0.1621%] (p = 0.04 < 0.05)
+                        Change within noise threshold.
+Found 6 outliers among 100 measurements (6.00%)
+  1 (1.00%) low mild
+  4 (4.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9393 µs 2.9424 µs] R^2            [0.9992246 0.9992218]
+mean   [2.9405 µs 2.9453 µs] std. dev.      [7.7442 ns 17.385 ns]
+median [2.9394 µs 2.9424 µs] med. abs. dev. [5.2678 ns 9.4498 ns]
+
+str                     time:   [2.9482 µs 2.9505 µs 2.9529 µs]
+                        change: [−4.3897% −1.8900% +0.1073%] (p = 0.10 > 0.05)
+                        No change in performance detected.
+Found 3 outliers among 100 measurements (3.00%)
+  1 (1.00%) low mild
+  1 (1.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9482 µs 2.9529 µs] R^2            [0.9984864 0.9984792]
+mean   [2.9481 µs 2.9536 µs] std. dev.      [10.538 ns 18.300 ns]
+median [2.9463 µs 2.9514 µs] med. abs. dev. [7.7972 ns 13.878 ns]
+
+str                     time:   [2.9405 µs 2.9474 µs 2.9597 µs]
+                        change: [−4.5877% −2.0933% −0.1029%] (p = 0.06 > 0.05)
+                        No change in performance detected.
+Found 4 outliers among 100 measurements (4.00%)
+  1 (1.00%) high mild
+  3 (3.00%) high severe
+slope  [2.9405 µs 2.9597 µs] R^2            [0.9718912 0.9703897]
+mean   [2.9389 µs 2.9531 µs] std. dev.      [7.0933 ns 60.421 ns]
+median [2.9358 µs 2.9406 µs] med. abs. dev. [5.4209 ns 9.8294 ns]
+
+str                     time:   [2.9443 µs 2.9460 µs 2.9477 µs]
+                        change: [−4.4728% −1.9622% +0.0334%] (p = 0.08 > 0.05)
+                        No change in performance detected.
+Found 6 outliers among 100 measurements (6.00%)
+  4 (4.00%) high mild
+  2 (2.00%) high severe
+slope  [2.9443 µs 2.9477 µs] R^2            [0.9990349 0.9990401]
+mean   [2.9456 µs 2.9519 µs] std. dev.      [11.059 ns 21.450 ns]
+median [2.9439 µs 2.9487 µs] med. abs. dev. [7.5257 ns 14.105 ns]
+
+str                     time:   [2.9410 µs 2.9429 µs 2.9449 µs]
+                        change: [−4.7085% −2.1698% −0.1784%] (p = 0.04 < 0.05)
+                        Change within noise threshold.
+Found 3 outliers among 100 measurements (3.00%)
+  2 (2.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9410 µs 2.9449 µs] R^2            [0.9989949 0.9989920]
+mean   [2.9399 µs 2.9453 µs] std. dev.      [8.0667 ns 19.668 ns]
+median [2.9376 µs 2.9424 µs] med. abs. dev. [6.6787 ns 10.378 ns]
+
+str                     time:   [2.9389 µs 2.9407 µs 2.9429 µs]
+                        change: [−4.7562% −2.2376% −0.2471%] (p = 0.03 < 0.05)
+                        Change within noise threshold.
+Found 7 outliers among 100 measurements (7.00%)
+  6 (6.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9389 µs 2.9429 µs] R^2            [0.9990151 0.9989964]
+mean   [2.9381 µs 2.9433 µs] std. dev.      [6.8062 ns 20.709 ns]
+median [2.9368 µs 2.9403 µs] med. abs. dev. [5.1802 ns 8.8865 ns]
+
+str                     time:   [2.9426 µs 2.9445 µs 2.9465 µs]
+                        change: [−4.5791% −2.0979% −0.0979%] (p = 0.05 > 0.05)
+                        No change in performance detected.
+Found 5 outliers among 100 measurements (5.00%)
+  1 (1.00%) low mild
+  4 (4.00%) high severe
+slope  [2.9426 µs 2.9465 µs] R^2            [0.9987645 0.9987583]
+mean   [2.9416 µs 2.9481 µs] std. dev.      [8.2827 ns 23.767 ns]
+median [2.9400 µs 2.9441 µs] med. abs. dev. [6.0788 ns 9.8113 ns]
+
+str                     time:   [2.9365 µs 2.9377 µs 2.9391 µs]
+                        change: [−4.7759% −2.2519% −0.2581%] (p = 0.03 < 0.05)
+                        Change within noise threshold.
+Found 4 outliers among 100 measurements (4.00%)
+  1 (1.00%) low mild
+  1 (1.00%) high mild
+  2 (2.00%) high severe
+slope  [2.9365 µs 2.9391 µs] R^2            [0.9994688 0.9994655]
+mean   [2.9378 µs 2.9426 µs] std. dev.      [6.6796 ns 18.388 ns]
+median [2.9360 µs 2.9393 µs] med. abs. dev. [4.7436 ns 8.6684 ns]
+
+str                     time:   [3.0202 µs 3.0943 µs 3.1915 µs]
+                        change: [+4.2489% +9.8526% +16.351%] (p = 0.00 < 0.05)
+                        Performance has regressed.
+Found 24 outliers among 100 measurements (24.00%)
+  1 (1.00%) high mild
+  23 (23.00%) high severe
+slope  [3.0202 µs 3.1915 µs] R^2            [0.1312302 0.1299097]
+mean   [3.1509 µs 3.4767 µs] std. dev.      [590.05 ns 1.0481 µs]
+median [2.9349 µs 2.9456 µs] med. abs. dev. [5.7528 ns 20.135 ns]
+
+str                     time:   [2.9398 µs 2.9413 µs 2.9430 µs]
+                        change: [−4.7153% −2.1867% −0.1906%] (p = 0.04 < 0.05)
+                        Change within noise threshold.
+Found 5 outliers among 100 measurements (5.00%)
+  2 (2.00%) low mild
+  2 (2.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9398 µs 2.9430 µs] R^2            [0.9993404 0.9993349]
+mean   [2.9399 µs 2.9440 µs] std. dev.      [7.0693 ns 14.048 ns]
+median [2.9390 µs 2.9429 µs] med. abs. dev. [5.7622 ns 9.0257 ns]
+
+str                     time:   [2.9367 µs 2.9379 µs 2.9392 µs]
+                        change: [−4.7816% −2.2484% −0.2557%] (p = 0.03 < 0.05)
+                        Change within noise threshold.
+Found 6 outliers among 100 measurements (6.00%)
+  1 (1.00%) low mild
+  2 (2.00%) high mild
+  3 (3.00%) high severe
+slope  [2.9367 µs 2.9392 µs] R^2            [0.9995611 0.9995606]
+mean   [2.9380 µs 2.9424 µs] std. dev.      [6.8231 ns 15.842 ns]
+median [2.9366 µs 2.9391 µs] med. abs. dev. [4.7381 ns 7.5390 ns]
+
+str                     time:   [2.9405 µs 2.9714 µs 3.0353 µs]
+                        change: [−4.2775% −1.6241% +0.5865%] (p = 0.24 > 0.05)
+                        No change in performance detected.
+Found 9 outliers among 100 measurements (9.00%)
+  1 (1.00%) low severe
+  3 (3.00%) low mild
+  2 (2.00%) high mild
+  3 (3.00%) high severe
+slope  [2.9405 µs 3.0353 µs] R^2            [0.5869072 0.5699458]
+mean   [2.9404 µs 2.9924 µs] std. dev.      [13.426 ns 266.36 ns]
+median [2.9376 µs 2.9429 µs] med. abs. dev. [6.6062 ns 12.445 ns]
+
+str                     time:   [2.9390 µs 2.9404 µs 2.9419 µs]
+                        change: [−4.7028% −2.2466% −0.2534%] (p = 0.03 < 0.05)
+                        Change within noise threshold.
+Found 3 outliers among 100 measurements (3.00%)
+  1 (1.00%) high mild
+  2 (2.00%) high severe
+slope  [2.9390 µs 2.9419 µs] R^2            [0.9994283 0.9994231]
+mean   [2.9383 µs 2.9423 µs] std. dev.      [5.5522 ns 15.346 ns]
+median [2.9365 µs 2.9395 µs] med. abs. dev. [4.4188 ns 7.9802 ns]
+
+str                     time:   [2.9360 µs 2.9374 µs 2.9389 µs]
+                        change: [−4.6613% −2.1956% −0.2050%] (p = 0.04 < 0.05)
+                        Change within noise threshold.
+Found 7 outliers among 100 measurements (7.00%)
+  5 (5.00%) high mild
+  2 (2.00%) high severe
+slope  [2.9360 µs 2.9389 µs] R^2            [0.9993023 0.9992902]
+mean   [2.9387 µs 2.9459 µs] std. dev.      [6.8094 ns 30.196 ns]
+median [2.9363 µs 2.9393 µs] med. abs. dev. [4.3956 ns 7.7294 ns]
+
+str                     time:   [2.9379 µs 2.9393 µs 2.9407 µs]
+                        change: [−4.6590% −2.1672% −0.1745%] (p = 0.04 < 0.05)
+                        Change within noise threshold.
+Found 4 outliers among 100 measurements (4.00%)
+  3 (3.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9379 µs 2.9407 µs] R^2            [0.9994070 0.9994051]
+mean   [2.9393 µs 2.9469 µs] std. dev.      [7.3399 ns 31.787 ns]
+median [2.9378 µs 2.9404 µs] med. abs. dev. [5.0765 ns 8.6329 ns]
+
+str                     time:   [2.9398 µs 2.9414 µs 2.9430 µs]
+                        change: [−4.6998% −2.2014% −0.2078%] (p = 0.04 < 0.05)
+                        Change within noise threshold.
+Found 4 outliers among 100 measurements (4.00%)
+  1 (1.00%) low mild
+  2 (2.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9398 µs 2.9430 µs] R^2            [0.9992707 0.9992684]
+mean   [2.9393 µs 2.9443 µs] std. dev.      [6.1894 ns 20.030 ns]
+median [2.9376 µs 2.9415 µs] med. abs. dev. [5.3404 ns 8.6886 ns]
+
+str                     time:   [2.9428 µs 2.9445 µs 2.9463 µs]
+                        change: [−4.5645% −2.0627% −0.0645%] (p = 0.06 > 0.05)
+                        No change in performance detected.
+Found 5 outliers among 100 measurements (5.00%)
+  3 (3.00%) high mild
+  2 (2.00%) high severe
+slope  [2.9428 µs 2.9463 µs] R^2            [0.9992211 0.9992166]
+mean   [2.9433 µs 2.9482 µs] std. dev.      [8.0155 ns 17.000 ns]
+median [2.9403 µs 2.9450 µs] med. abs. dev. [4.8633 ns 9.4152 ns]
+
+str                     time:   [2.9436 µs 2.9454 µs 2.9474 µs]
+                        change: [−4.5055% −1.9805% +0.0147%] (p = 0.07 > 0.05)
+                        No change in performance detected.
+Found 4 outliers among 100 measurements (4.00%)
+  3 (3.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9436 µs 2.9474 µs] R^2            [0.9989316 0.9989221]
+mean   [2.9456 µs 2.9507 µs] std. dev.      [10.038 ns 15.818 ns]
+median [2.9432 µs 2.9483 µs] med. abs. dev. [8.0493 ns 12.806 ns]
+
+str                     time:   [2.9435 µs 2.9453 µs 2.9472 µs]
+                        change: [−4.4737% −1.9678% +0.0230%] (p = 0.08 > 0.05)
+                        No change in performance detected.
+Found 11 outliers among 100 measurements (11.00%)
+  1 (1.00%) low severe
+  2 (2.00%) low mild
+  4 (4.00%) high mild
+  4 (4.00%) high severe
+slope  [2.9435 µs 2.9472 µs] R^2            [0.9990113 0.9989982]
+mean   [2.9443 µs 2.9538 µs] std. dev.      [10.128 ns 37.630 ns]
+median [2.9420 µs 2.9468 µs] med. abs. dev. [5.7443 ns 10.618 ns]
+
+str                     time:   [2.9351 µs 2.9374 µs 2.9395 µs]
+                        change: [−4.7803% −2.2818% −0.2917%] (p = 0.03 < 0.05)
+                        Change within noise threshold.
+Found 3 outliers among 100 measurements (3.00%)
+  2 (2.00%) low mild
+  1 (1.00%) high severe
+slope  [2.9351 µs 2.9395 µs] R^2            [0.9988983 0.9989069]
+mean   [2.9363 µs 2.9429 µs] std. dev.      [6.6818 ns 27.901 ns]
+median [2.9341 µs 2.9385 µs] med. abs. dev. [4.8241 ns 8.4747 ns]
+
+str                     time:   [2.9369 µs 2.9381 µs 2.9394 µs]
+                        change: [−4.7392% −2.2380% −0.2463%] (p = 0.03 < 0.05)
+                        Change within noise threshold.
+Found 5 outliers among 100 measurements (5.00%)
+  3 (3.00%) high mild
+  2 (2.00%) high severe
+slope  [2.9369 µs 2.9394 µs] R^2            [0.9995553 0.9995542]
+mean   [2.9384 µs 2.9428 µs] std. dev.      [5.1771 ns 17.267 ns]
+median [2.9374 µs 2.9392 µs] med. abs. dev. [3.6666 ns 6.4130 ns]
+
+str                     time:   [2.9349 µs 2.9364 µs 2.9380 µs]
+                        change: [−4.8604% −2.3529% −0.3633%] (p = 0.02 < 0.05)
+                        Change within noise threshold.
+Found 6 outliers among 100 measurements (6.00%)
+  1 (1.00%) low mild
+  4 (4.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9349 µs 2.9380 µs] R^2            [0.9994743 0.9994695]
+mean   [2.9350 µs 2.9396 µs] std. dev.      [4.4451 ns 19.955 ns]
+median [2.9336 µs 2.9360 µs] med. abs. dev. [3.1296 ns 5.4924 ns]
+
+str                     time:   [2.9462 µs 2.9613 µs 2.9827 µs]
+                        change: [−2.9761% −0.0841% +2.5156%] (p = 0.96 > 0.05)
+                        No change in performance detected.
+Found 16 outliers among 100 measurements (16.00%)
+  1 (1.00%) high mild
+  15 (15.00%) high severe
+slope  [2.9462 µs 2.9827 µs] R^2            [0.7321077 0.7301127]
+mean   [2.9623 µs 3.0599 µs] std. dev.      [84.035 ns 369.70 ns]
+median [2.9352 µs 2.9396 µs] med. abs. dev. [4.3190 ns 9.6986 ns]
+
+str                     time:   [2.9417 µs 2.9441 µs 2.9464 µs]
+                        change: [−4.4398% −1.9113% +0.0912%] (p = 0.09 > 0.05)
+                        No change in performance detected.
+Found 6 outliers among 100 measurements (6.00%)
+  1 (1.00%) low mild
+  3 (3.00%) high mild
+  2 (2.00%) high severe
+slope  [2.9417 µs 2.9464 µs] R^2            [0.9982737 0.9982848]
+mean   [2.9469 µs 2.9539 µs] std. dev.      [10.858 ns 25.410 ns]
+median [2.9444 µs 2.9480 µs] med. abs. dev. [8.0641 ns 13.402 ns]
+
+str                     time:   [2.9379 µs 2.9397 µs 2.9414 µs]
+                        change: [−4.8152% −2.2767% −0.2865%] (p = 0.03 < 0.05)
+                        Change within noise threshold.
+Found 8 outliers among 100 measurements (8.00%)
+  1 (1.00%) low severe
+  4 (4.00%) low mild
+  2 (2.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9379 µs 2.9414 µs] R^2            [0.9990328 0.9990438]
+mean   [2.9370 µs 2.9414 µs] std. dev.      [7.1232 ns 15.135 ns]
+median [2.9365 µs 2.9410 µs] med. abs. dev. [5.1372 ns 8.1282 ns]
+
+str                     time:   [3.0493 µs 3.2247 µs 3.4359 µs]
+                        change: [−1.6818% +1.8907% +5.5856%] (p = 0.36 > 0.05)
+                        No change in performance detected.
+Found 17 outliers among 100 measurements (17.00%)
+  1 (1.00%) low mild
+  2 (2.00%) high mild
+  14 (14.00%) high severe
+slope  [3.0493 µs 3.4359 µs] R^2            [0.0995215 0.0970361]
+mean   [2.9837 µs 3.1699 µs] std. dev.      [177.36 ns 698.92 ns]
+median [2.9372 µs 2.9435 µs] med. abs. dev. [6.7087 ns 13.475 ns]
+
+str                     time:   [2.9392 µs 2.9407 µs 2.9423 µs]
+                        change: [−4.7902% −2.2657% −0.2675%] (p = 0.03 < 0.05)
+                        Change within noise threshold.
+Found 6 outliers among 100 measurements (6.00%)
+  1 (1.00%) low mild
+  4 (4.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9392 µs 2.9423 µs] R^2            [0.9993224 0.9993175]
+mean   [2.9377 µs 2.9416 µs] std. dev.      [6.2040 ns 14.132 ns]
+median [2.9361 µs 2.9396 µs] med. abs. dev. [4.9185 ns 7.9459 ns]
+
+str                     time:   [2.9313 µs 2.9340 µs 2.9367 µs]
+                        change: [−4.9356% −2.3866% −0.4068%] (p = 0.02 < 0.05)
+                        Change within noise threshold.
+Found 17 outliers among 100 measurements (17.00%)
+  7 (7.00%) low severe
+  1 (1.00%) low mild
+  3 (3.00%) high mild
+  6 (6.00%) high severe
+slope  [2.9313 µs 2.9367 µs] R^2            [0.9979396 0.9979454]
+mean   [2.9332 µs 2.9388 µs] std. dev.      [8.4849 ns 19.276 ns]
+median [2.9337 µs 2.9352 µs] med. abs. dev. [3.2743 ns 5.5581 ns]
+
+str                     time:   [2.9371 µs 2.9386 µs 2.9400 µs]
+                        change: [−4.8222% −2.2969% −0.3034%] (p = 0.03 < 0.05)
+                        Change within noise threshold.
+Found 3 outliers among 100 measurements (3.00%)
+  1 (1.00%) high mild
+  2 (2.00%) high severe
+slope  [2.9371 µs 2.9400 µs] R^2            [0.9994256 0.9994230]
+mean   [2.9367 µs 2.9411 µs] std. dev.      [4.8843 ns 17.883 ns]
+median [2.9353 µs 2.9374 µs] med. abs. dev. [3.8412 ns 6.6630 ns]
+
+str                     time:   [2.9325 µs 2.9345 µs 2.9363 µs]
+                        change: [−4.9539% −2.4532% −0.4663%] (p = 0.01 < 0.05)
+                        Change within noise threshold.
+Found 12 outliers among 100 measurements (12.00%)
+  6 (6.00%) low severe
+  2 (2.00%) low mild
+  3 (3.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9325 µs 2.9363 µs] R^2            [0.9991646 0.9991759]
+mean   [2.9312 µs 2.9370 µs] std. dev.      [7.1121 ns 22.780 ns]
+median [2.9328 µs 2.9350 µs] med. abs. dev. [3.1681 ns 5.0346 ns]
+
+str                     time:   [2.9383 µs 2.9450 µs 2.9577 µs]
+                        change: [−4.6375% −2.1253% −0.1417%] (p = 0.05 < 0.05)
+                        Change within noise threshold.
+Found 5 outliers among 100 measurements (5.00%)
+  2 (2.00%) high mild
+  3 (3.00%) high severe
+slope  [2.9383 µs 2.9577 µs] R^2            [0.9801041 0.9783052]
+mean   [2.9397 µs 2.9493 µs] std. dev.      [7.8057 ns 40.287 ns]
+median [2.9365 µs 2.9410 µs] med. abs. dev. [5.3684 ns 9.4108 ns]
+
+str                     time:   [2.9379 µs 2.9395 µs 2.9411 µs]
+                        change: [−4.7839% −2.2838% −0.2900%] (p = 0.03 < 0.05)
+                        Change within noise threshold.
+Found 4 outliers among 100 measurements (4.00%)
+  2 (2.00%) high mild
+  2 (2.00%) high severe
+slope  [2.9379 µs 2.9411 µs] R^2            [0.9992974 0.9992953]
+mean   [2.9368 µs 2.9416 µs] std. dev.      [5.7986 ns 18.935 ns]
+median [2.9347 µs 2.9375 µs] med. abs. dev. [3.5430 ns 6.7352 ns]
+
+str                     time:   [2.9394 µs 2.9412 µs 2.9429 µs]
+                        change: [−4.6960% −2.2083% −0.2105%] (p = 0.03 < 0.05)
+                        Change within noise threshold.
+Found 4 outliers among 100 measurements (4.00%)
+  1 (1.00%) low mild
+  2 (2.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9394 µs 2.9429 µs] R^2            [0.9991259 0.9991284]
+mean   [2.9391 µs 2.9436 µs] std. dev.      [7.2607 ns 16.027 ns]
+median [2.9379 µs 2.9418 µs] med. abs. dev. [6.3481 ns 9.8504 ns]
+
+str                     time:   [2.9420 µs 2.9475 µs 2.9553 µs]
+                        change: [−2.4063% +0.6977% +3.7547%] (p = 0.68 > 0.05)
+                        No change in performance detected.
+Found 16 outliers among 100 measurements (16.00%)
+  2 (2.00%) high mild
+  14 (14.00%) high severe
+slope  [2.9420 µs 2.9553 µs] R^2            [0.8781314 0.8777619]
+mean   [2.9731 µs 3.0965 µs] std. dev.      [160.09 ns 439.82 ns]
+median [2.9366 µs 2.9405 µs] med. abs. dev. [5.3040 ns 11.084 ns]
+
+str                     time:   [2.9358 µs 2.9389 µs 2.9443 µs]
+                        change: [−4.7702% −2.2665% −0.2653%] (p = 0.03 < 0.05)
+                        Change within noise threshold.
+Found 9 outliers among 100 measurements (9.00%)
+  1 (1.00%) low severe
+  4 (4.00%) high mild
+  4 (4.00%) high severe
+slope  [2.9358 µs 2.9443 µs] R^2            [0.9960125 0.9957014]
+mean   [2.9369 µs 2.9425 µs] std. dev.      [7.0590 ns 20.660 ns]
+median [2.9349 µs 2.9368 µs] med. abs. dev. [3.2321 ns 6.1385 ns]
+
+str                     time:   [2.9402 µs 2.9414 µs 2.9427 µs]
+                        change: [−4.6727% −2.1320% −0.1407%] (p = 0.04 < 0.05)
+                        Change within noise threshold.
+Found 4 outliers among 100 measurements (4.00%)
+  3 (3.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9402 µs 2.9427 µs] R^2            [0.9994703 0.9994656]
+mean   [2.9414 µs 2.9462 µs] std. dev.      [6.5543 ns 18.657 ns]
+median [2.9396 µs 2.9429 µs] med. abs. dev. [5.0728 ns 8.1480 ns]
+
+str                     time:   [2.9494 µs 2.9723 µs 3.0073 µs]
+                        change: [−2.8549% +0.0119% +2.6629%] (p = 0.99 > 0.05)
+                        No change in performance detected.
+Found 18 outliers among 100 measurements (18.00%)
+  2 (2.00%) high mild
+  16 (16.00%) high severe
+slope  [2.9494 µs 3.0073 µs] R^2            [0.6180039 0.6135516]
+mean   [2.9653 µs 3.0648 µs] std. dev.      [102.23 ns 394.02 ns]
+median [2.9369 µs 2.9433 µs] med. abs. dev. [6.6715 ns 13.781 ns]
+
+str                     time:   [2.9321 µs 2.9332 µs 2.9343 µs]
+                        change: [−4.9478% −2.4358% −0.4286%] (p = 0.01 < 0.05)
+                        Change within noise threshold.
+Found 14 outliers among 100 measurements (14.00%)
+  3 (3.00%) low severe
+  3 (3.00%) low mild
+  5 (5.00%) high mild
+  3 (3.00%) high severe
+slope  [2.9321 µs 2.9343 µs] R^2            [0.9995950 0.9995982]
+mean   [2.9326 µs 2.9364 µs] std. dev.      [5.2702 ns 14.748 ns]
+median [2.9329 µs 2.9346 µs] med. abs. dev. [2.6378 ns 4.1626 ns]
+
+str                     time:   [2.9347 µs 2.9370 µs 2.9402 µs]
+                        change: [−4.8500% −2.3573% −0.3667%] (p = 0.02 < 0.05)
+                        Change within noise threshold.
+Found 10 outliers among 100 measurements (10.00%)
+  2 (2.00%) low severe
+  2 (2.00%) low mild
+  4 (4.00%) high mild
+  2 (2.00%) high severe
+slope  [2.9347 µs 2.9402 µs] R^2            [0.9959180 0.9958369]
+mean   [2.9333 µs 2.9414 µs] std. dev.      [6.2864 ns 33.704 ns]
+median [2.9329 µs 2.9346 µs] med. abs. dev. [3.0600 ns 5.4092 ns]
+
+str                     time:   [2.9626 µs 3.0253 µs 3.1022 µs]
+                        change: [−3.7888% −1.0742% +1.0840%] (p = 0.44 > 0.05)
+                        No change in performance detected.
+Found 7 outliers among 100 measurements (7.00%)
+  1 (1.00%) high mild
+  6 (6.00%) high severe
+slope  [2.9626 µs 3.1022 µs] R^2            [0.6661453 0.6586079]
+mean   [2.9502 µs 3.0081 µs] std. dev.      [56.839 ns 218.59 ns]
+median [2.9406 µs 2.9441 µs] med. abs. dev. [5.0596 ns 10.419 ns]
+
+str                     time:   [2.9376 µs 2.9395 µs 2.9416 µs]
+                        change: [−4.7740% −2.2609% −0.2681%] (p = 0.03 < 0.05)
+                        Change within noise threshold.
+Found 5 outliers among 100 measurements (5.00%)
+  2 (2.00%) high mild
+  3 (3.00%) high severe
+slope  [2.9376 µs 2.9416 µs] R^2            [0.9988719 0.9988543]
+mean   [2.9372 µs 2.9426 µs] std. dev.      [6.7148 ns 20.392 ns]
+median [2.9351 µs 2.9380 µs] med. abs. dev. [4.9005 ns 8.0888 ns]
+
+str                     time:   [2.9354 µs 2.9369 µs 2.9386 µs]
+                        change: [−4.8821% −2.3618% −0.3672%] (p = 0.02 < 0.05)
+                        Change within noise threshold.
+Found 8 outliers among 100 measurements (8.00%)
+  1 (1.00%) low severe
+  1 (1.00%) low mild
+  3 (3.00%) high mild
+  3 (3.00%) high severe
+slope  [2.9354 µs 2.9386 µs] R^2            [0.9990657 0.9990550]
+mean   [2.9346 µs 2.9391 µs] std. dev.      [5.1188 ns 17.325 ns]
+median [2.9338 µs 2.9358 µs] med. abs. dev. [3.4218 ns 5.5816 ns]
+
+str                     time:   [2.9322 µs 2.9338 µs 2.9352 µs]
+                        change: [−4.9266% −2.3805% −0.3883%] (p = 0.02 < 0.05)
+                        Change within noise threshold.
+Found 7 outliers among 100 measurements (7.00%)
+  3 (3.00%) low mild
+  3 (3.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9322 µs 2.9352 µs] R^2            [0.9995035 0.9995136]
+mean   [2.9340 µs 2.9391 µs] std. dev.      [4.4380 ns 22.232 ns]
+median [2.9331 µs 2.9350 µs] med. abs. dev. [2.3652 ns 4.7507 ns]
+
+str                     time:   [2.9399 µs 2.9412 µs 2.9426 µs]
+                        change: [−4.7012% −2.1785% −0.1884%] (p = 0.04 < 0.05)
+                        Change within noise threshold.
+Found 6 outliers among 100 measurements (6.00%)
+  4 (4.00%) high mild
+  2 (2.00%) high severe
+slope  [2.9399 µs 2.9426 µs] R^2            [0.9995261 0.9995202]
+mean   [2.9400 µs 2.9450 µs] std. dev.      [5.2143 ns 21.038 ns]
+median [2.9384 µs 2.9415 µs] med. abs. dev. [4.1805 ns 6.4454 ns]
+
+str                     time:   [2.9343 µs 2.9362 µs 2.9386 µs]
+                        change: [−4.8918% −2.3666% −0.3752%] (p = 0.02 < 0.05)
+                        Change within noise threshold.
+Found 3 outliers among 100 measurements (3.00%)
+  1 (1.00%) low mild
+  2 (2.00%) high severe
+slope  [2.9343 µs 2.9386 µs] R^2            [0.9991024 0.9990637]
+mean   [2.9346 µs 2.9390 µs] std. dev.      [4.5280 ns 18.511 ns]
+median [2.9337 µs 2.9358 µs] med. abs. dev. [3.5101 ns 6.3126 ns]
+
+str                     time:   [2.9398 µs 2.9414 µs 2.9430 µs]
+                        change: [−4.7241% −2.2320% −0.2350%] (p = 0.03 < 0.05)
+                        Change within noise threshold.
+Found 6 outliers among 100 measurements (6.00%)
+  5 (5.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9398 µs 2.9430 µs] R^2            [0.9993341 0.9993288]
+mean   [2.9384 µs 2.9432 µs] std. dev.      [6.0135 ns 19.108 ns]
+median [2.9373 µs 2.9401 µs] med. abs. dev. [5.0456 ns 7.6865 ns]
+
+str                     time:   [2.9376 µs 2.9389 µs 2.9401 µs]
+                        change: [−4.7773% −2.2394% −0.2427%] (p = 0.03 < 0.05)
+                        Change within noise threshold.
+Found 5 outliers among 100 measurements (5.00%)
+  2 (2.00%) high mild
+  3 (3.00%) high severe
+slope  [2.9376 µs 2.9401 µs] R^2            [0.9995222 0.9995226]
+mean   [2.9385 µs 2.9424 µs] std. dev.      [5.8084 ns 14.657 ns]
+median [2.9368 µs 2.9404 µs] med. abs. dev. [4.8644 ns 7.5918 ns]
+
+str                     time:   [2.9354 µs 2.9366 µs 2.9379 µs]
+                        change: [−4.8380% −2.3018% −0.3096%] (p = 0.03 < 0.05)
+                        Change within noise threshold.
+Found 4 outliers among 100 measurements (4.00%)
+  2 (2.00%) high mild
+  2 (2.00%) high severe
+slope  [2.9354 µs 2.9379 µs] R^2            [0.9995864 0.9995838]
+mean   [2.9365 µs 2.9409 µs] std. dev.      [5.1691 ns 17.345 ns]
+median [2.9349 µs 2.9376 µs] med. abs. dev. [3.9195 ns 6.7096 ns]
+
+str                     time:   [2.9367 µs 2.9379 µs 2.9391 µs]
+                        change: [−4.7324% −2.2611% −0.2745%] (p = 0.03 < 0.05)
+                        Change within noise threshold.
+Found 2 outliers among 100 measurements (2.00%)
+  1 (1.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9367 µs 2.9391 µs] R^2            [0.9996252 0.9996227]
+mean   [2.9377 µs 2.9423 µs] std. dev.      [5.2303 ns 18.706 ns]
+median [2.9361 µs 2.9402 µs] med. abs. dev. [4.5910 ns 7.2360 ns]
+
+str                     time:   [2.9391 µs 2.9406 µs 2.9424 µs]
+                        change: [−4.7148% −2.1647% −0.1858%] (p = 0.04 < 0.05)
+                        Change within noise threshold.
+Found 5 outliers among 100 measurements (5.00%)
+  3 (3.00%) high mild
+  2 (2.00%) high severe
+slope  [2.9391 µs 2.9424 µs] R^2            [0.9982912 0.9982774]
+mean   [2.9392 µs 2.9471 µs] std. dev.      [5.7965 ns 32.259 ns]
+median [2.9374 µs 2.9405 µs] med. abs. dev. [4.1794 ns 6.7458 ns]
+
+str                     time:   [2.9435 µs 2.9593 µs 2.9873 µs]
+                        change: [−2.0965% +3.6417% +11.557%] (p = 0.38 > 0.05)
+                        No change in performance detected.
+Found 16 outliers among 100 measurements (16.00%)
+  2 (2.00%) high mild
+  14 (14.00%) high severe
+slope  [2.9435 µs 2.9873 µs] R^2            [0.3427874 0.3417451]
+mean   [2.9712 µs 3.3570 µs] std. dev.      [107.44 ns 1.7085 µs]
+median [2.9398 µs 2.9431 µs] med. abs. dev. [4.9235 ns 9.8588 ns]
+
+str                     time:   [2.9350 µs 2.9363 µs 2.9377 µs]
+                        change: [−4.8917% −2.3693% −0.3799%] (p = 0.02 < 0.05)
+                        Change within noise threshold.
+Found 9 outliers among 100 measurements (9.00%)
+  1 (1.00%) low severe
+  2 (2.00%) low mild
+  4 (4.00%) high mild
+  2 (2.00%) high severe
+slope  [2.9350 µs 2.9377 µs] R^2            [0.9994822 0.9994784]
+mean   [2.9346 µs 2.9385 µs] std. dev.      [5.9097 ns 14.611 ns]
+median [2.9343 µs 2.9365 µs] med. abs. dev. [3.6354 ns 5.9011 ns]
+
+str                     time:   [2.9352 µs 2.9364 µs 2.9376 µs]
+                        change: [−4.8339% −2.3644% −0.3685%] (p = 0.02 < 0.05)
+                        Change within noise threshold.
+Found 3 outliers among 100 measurements (3.00%)
+  2 (2.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9352 µs 2.9376 µs] R^2            [0.9996635 0.9996613]
+mean   [2.9351 µs 2.9383 µs] std. dev.      [4.1690 ns 12.889 ns]
+median [2.9340 µs 2.9362 µs] med. abs. dev. [3.2416 ns 5.5121 ns]
+
+str                     time:   [3.0281 µs 3.2333 µs 3.4852 µs]
+                        change: [−2.0784% +1.3459% +5.8064%] (p = 0.51 > 0.05)
+                        No change in performance detected.
+Found 21 outliers among 100 measurements (21.00%)
+  5 (5.00%) low severe
+  3 (3.00%) low mild
+  3 (3.00%) high mild
+  10 (10.00%) high severe
+slope  [3.0281 µs 3.4852 µs] R^2            [0.1458617 0.1413815]
+mean   [2.9689 µs 3.1525 µs] std. dev.      [196.54 ns 713.66 ns]
+median [2.9359 µs 2.9393 µs] med. abs. dev. [5.1552 ns 8.2525 ns]
+
+str                     time:   [2.9365 µs 2.9384 µs 2.9402 µs]
+                        change: [−4.8588% −2.3362% −0.3470%] (p = 0.02 < 0.05)
+                        Change within noise threshold.
+Found 4 outliers among 100 measurements (4.00%)
+  2 (2.00%) low severe
+  1 (1.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9365 µs 2.9402 µs] R^2            [0.9991518 0.9991593]
+mean   [2.9351 µs 2.9402 µs] std. dev.      [6.4654 ns 19.880 ns]
+median [2.9341 µs 2.9379 µs] med. abs. dev. [4.6603 ns 7.9571 ns]
+
+str                     time:   [2.9422 µs 2.9436 µs 2.9453 µs]
+                        change: [−4.5916% −2.0813% −0.0813%] (p = 0.05 > 0.05)
+                        No change in performance detected.
+Found 4 outliers among 100 measurements (4.00%)
+  1 (1.00%) high mild
+  3 (3.00%) high severe
+slope  [2.9422 µs 2.9453 µs] R^2            [0.9990943 0.9990847]
+mean   [2.9414 µs 2.9506 µs] std. dev.      [5.9861 ns 40.121 ns]
+median [2.9403 µs 2.9430 µs] med. abs. dev. [4.5797 ns 7.7994 ns]
+
+str                     time:   [2.9413 µs 2.9427 µs 2.9443 µs]
+                        change: [−4.6402% −2.1220% −0.1212%] (p = 0.04 < 0.05)
+                        Change within noise threshold.
+Found 6 outliers among 100 measurements (6.00%)
+  3 (3.00%) high mild
+  3 (3.00%) high severe
+slope  [2.9413 µs 2.9443 µs] R^2            [0.9993150 0.9993117]
+mean   [2.9412 µs 2.9468 µs] std. dev.      [8.0338 ns 20.400 ns]
+median [2.9388 µs 2.9440 µs] med. abs. dev. [6.3496 ns 10.168 ns]
+
+str                     time:   [2.9354 µs 2.9364 µs 2.9374 µs]
+                        change: [−4.8365% −2.3127% −0.3281%] (p = 0.02 < 0.05)
+                        Change within noise threshold.
+Found 6 outliers among 100 measurements (6.00%)
+  3 (3.00%) high mild
+  3 (3.00%) high severe
+slope  [2.9354 µs 2.9374 µs] R^2            [0.9996531 0.9996528]
+mean   [2.9359 µs 2.9412 µs] std. dev.      [4.9679 ns 22.644 ns]
+median [2.9341 µs 2.9362 µs] med. abs. dev. [2.7925 ns 5.5605 ns]
+
+str                     time:   [2.9357 µs 2.9371 µs 2.9387 µs]
+                        change: [−4.7043% −2.2033% −0.2264%] (p = 0.04 < 0.05)
+                        Change within noise threshold.
+Found 4 outliers among 100 measurements (4.00%)
+  3 (3.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9357 µs 2.9387 µs] R^2            [0.9993856 0.9993760]
+mean   [2.9384 µs 2.9458 µs] std. dev.      [6.7756 ns 31.692 ns]
+median [2.9359 µs 2.9394 µs] med. abs. dev. [4.5579 ns 8.5604 ns]
+
+str                     time:   [2.9381 µs 2.9399 µs 2.9416 µs]
+                        change: [−4.7189% −2.2092% −0.2135%] (p = 0.03 < 0.05)
+                        Change within noise threshold.
+Found 2 outliers among 100 measurements (2.00%)
+  1 (1.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9381 µs 2.9416 µs] R^2            [0.9992776 0.9992765]
+mean   [2.9393 µs 2.9434 µs] std. dev.      [6.3765 ns 14.800 ns]
+median [2.9373 µs 2.9417 µs] med. abs. dev. [5.7211 ns 9.5340 ns]
+
+str                     time:   [2.9340 µs 2.9351 µs 2.9363 µs]
+                        change: [−4.8911% −2.3372% −0.3492%] (p = 0.02 < 0.05)
+                        Change within noise threshold.
+Found 12 outliers among 100 measurements (12.00%)
+  2 (2.00%) low mild
+  5 (5.00%) high mild
+  5 (5.00%) high severe
+slope  [2.9340 µs 2.9363 µs] R^2            [0.9996237 0.9996234]
+mean   [2.9357 µs 2.9394 µs] std. dev.      [5.0448 ns 14.466 ns]
+median [2.9344 µs 2.9361 µs] med. abs. dev. [2.5744 ns 4.4649 ns]
+
+str                     time:   [2.9372 µs 2.9388 µs 2.9404 µs]
+                        change: [−4.7746% −2.2634% −0.2603%] (p = 0.03 < 0.05)
+                        Change within noise threshold.
+Found 7 outliers among 100 measurements (7.00%)
+  1 (1.00%) low severe
+  4 (4.00%) high mild
+  2 (2.00%) high severe
+slope  [2.9372 µs 2.9404 µs] R^2            [0.9991989 0.9992000]
+mean   [2.9370 µs 2.9429 µs] std. dev.      [6.7821 ns 23.597 ns]
+median [2.9360 µs 2.9385 µs] med. abs. dev. [4.3552 ns 6.8291 ns]
+
+str                     time:   [2.9376 µs 2.9396 µs 2.9418 µs]
+                        change: [−4.7584% −2.2117% −0.2244%] (p = 0.03 < 0.05)
+                        Change within noise threshold.
+Found 8 outliers among 100 measurements (8.00%)
+  5 (5.00%) high mild
+  3 (3.00%) high severe
+slope  [2.9376 µs 2.9418 µs] R^2            [0.9989658 0.9989464]
+mean   [2.9386 µs 2.9439 µs] std. dev.      [8.2627 ns 18.034 ns]
+median [2.9358 µs 2.9388 µs] med. abs. dev. [4.5353 ns 8.9594 ns]
+
+str                     time:   [2.9382 µs 2.9398 µs 2.9417 µs]
+                        change: [−4.6441% −2.1572% −0.1608%] (p = 0.04 < 0.05)
+                        Change within noise threshold.
+Found 6 outliers among 100 measurements (6.00%)
+  2 (2.00%) high mild
+  4 (4.00%) high severe
+slope  [2.9382 µs 2.9417 µs] R^2            [0.9990901 0.9990718]
+mean   [2.9398 µs 2.9467 µs] std. dev.      [7.8522 ns 27.393 ns]
+median [2.9373 µs 2.9407 µs] med. abs. dev. [4.7913 ns 8.7492 ns]
+
+str                     time:   [3.0383 µs 3.2116 µs 3.4501 µs]
+                        change: [+2.5784% +10.678% +21.672%] (p = 0.01 < 0.05)
+                        Performance has regressed.
+Found 19 outliers among 100 measurements (19.00%)
+  19 (19.00%) high severe
+slope  [3.0383 µs 3.4501 µs] R^2            [0.0343142 0.0336583]
+mean   [3.1008 µs 3.6103 µs] std. dev.      [635.20 ns 1.8344 µs]
+median [2.9347 µs 2.9379 µs] med. abs. dev. [3.9474 ns 7.8291 ns]
+
+str                     time:   [2.9367 µs 2.9384 µs 2.9399 µs]
+                        change: [−4.6919% −2.1797% −0.1831%] (p = 0.04 < 0.05)
+                        Change within noise threshold.
+Found 10 outliers among 100 measurements (10.00%)
+  2 (2.00%) low mild
+  6 (6.00%) high mild
+  2 (2.00%) high severe
+slope  [2.9367 µs 2.9399 µs] R^2            [0.9992825 0.9992913]
+mean   [2.9398 µs 2.9447 µs] std. dev.      [8.1953 ns 17.016 ns]
+median [2.9370 µs 2.9414 µs] med. abs. dev. [4.8076 ns 8.6566 ns]
+
+str                     time:   [2.9368 µs 2.9423 µs 2.9523 µs]
+                        change: [−4.6895% −2.2054% −0.2070%] (p = 0.04 < 0.05)
+                        Change within noise threshold.
+Found 11 outliers among 100 measurements (11.00%)
+  1 (1.00%) low mild
+  7 (7.00%) high mild
+  3 (3.00%) high severe
+slope  [2.9368 µs 2.9523 µs] R^2            [0.9813558 0.9803090]
+mean   [2.9370 µs 2.9481 µs] std. dev.      [6.6039 ns 48.711 ns]
+median [2.9354 µs 2.9380 µs] med. abs. dev. [3.8031 ns 6.8946 ns]
+
+str                     time:   [2.9377 µs 2.9556 µs 2.9831 µs]
+                        change: [−4.5433% −2.0255% −0.0669%] (p = 0.08 > 0.05)
+                        No change in performance detected.
+Found 12 outliers among 100 measurements (12.00%)
+  1 (1.00%) low severe
+  2 (2.00%) low mild
+  4 (4.00%) high mild
+  5 (5.00%) high severe
+slope  [2.9377 µs 2.9831 µs] R^2            [0.8969651 0.8913763]
+mean   [2.9377 µs 2.9597 µs] std. dev.      [12.406 ns 94.216 ns]
+median [2.9353 µs 2.9385 µs] med. abs. dev. [4.2777 ns 7.0491 ns]
+
+str                     time:   [2.9398 µs 2.9420 µs 2.9452 µs]
+                        change: [−4.6838% −2.1968% −0.2099%] (p = 0.04 < 0.05)
+                        Change within noise threshold.
+Found 4 outliers among 100 measurements (4.00%)
+  2 (2.00%) high mild
+  2 (2.00%) high severe
+slope  [2.9398 µs 2.9452 µs] R^2            [0.9981879 0.9980972]
+mean   [2.9393 µs 2.9445 µs] std. dev.      [5.3771 ns 20.528 ns]
+median [2.9374 µs 2.9407 µs] med. abs. dev. [4.4844 ns 7.4470 ns]
+
+str                     time:   [2.9391 µs 2.9418 µs 2.9455 µs]
+                        change: [−4.7724% −2.2543% −0.2561%] (p = 0.03 < 0.05)
+                        Change within noise threshold.
+Found 11 outliers among 100 measurements (11.00%)
+  3 (3.00%) low severe
+  1 (1.00%) low mild
+  3 (3.00%) high mild
+  4 (4.00%) high severe
+slope  [2.9391 µs 2.9455 µs] R^2            [0.9977416 0.9976494]
+mean   [2.9371 µs 2.9427 µs] std. dev.      [9.5611 ns 18.857 ns]
+median [2.9370 µs 2.9393 µs] med. abs. dev. [4.7804 ns 7.7351 ns]
+
+str                     time:   [2.9387 µs 2.9401 µs 2.9416 µs]
+                        change: [−4.6834% −2.1953% −0.1964%] (p = 0.03 < 0.05)
+                        Change within noise threshold.
+Found 4 outliers among 100 measurements (4.00%)
+  2 (2.00%) high mild
+  2 (2.00%) high severe
+slope  [2.9387 µs 2.9416 µs] R^2            [0.9993723 0.9993669]
+mean   [2.9396 µs 2.9438 µs] std. dev.      [6.9127 ns 14.351 ns]
+median [2.9369 µs 2.9414 µs] med. abs. dev. [5.2669 ns 8.7107 ns]
+
+str                     time:   [2.9397 µs 2.9411 µs 2.9426 µs]
+                        change: [−4.6986% −2.2072% −0.2155%] (p = 0.03 < 0.05)
+                        Change within noise threshold.
+Found 6 outliers among 100 measurements (6.00%)
+  5 (5.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9397 µs 2.9426 µs] R^2            [0.9994249 0.9994193]
+mean   [2.9395 µs 2.9432 µs] std. dev.      [5.8991 ns 13.687 ns]
+median [2.9389 µs 2.9410 µs] med. abs. dev. [4.5257 ns 7.7420 ns]
+
+str                     time:   [2.9335 µs 2.9352 µs 2.9369 µs]
+                        change: [−4.8422% −2.3461% −0.3721%] (p = 0.02 < 0.05)
+                        Change within noise threshold.
+Found 12 outliers among 100 measurements (12.00%)
+  1 (1.00%) low severe
+  4 (4.00%) low mild
+  6 (6.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9335 µs 2.9369 µs] R^2            [0.9991327 0.9991321]
+mean   [2.9345 µs 2.9404 µs] std. dev.      [6.5458 ns 23.924 ns]
+median [2.9345 µs 2.9367 µs] med. abs. dev. [3.8562 ns 6.8722 ns]
+
+str                     time:   [2.9474 µs 2.9500 µs 2.9526 µs]
+                        change: [−4.4585% −1.9372% +0.0654%] (p = 0.09 > 0.05)
+                        No change in performance detected.
+Found 3 outliers among 100 measurements (3.00%)
+  2 (2.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9474 µs 2.9526 µs] R^2            [0.9982451 0.9982458]
+mean   [2.9466 µs 2.9525 µs] std. dev.      [10.568 ns 20.200 ns]
+median [2.9430 µs 2.9493 µs] med. abs. dev. [7.5062 ns 13.680 ns]
+
+str                     time:   [2.9424 µs 2.9439 µs 2.9455 µs]
+                        change: [−4.6272% −2.1179% −0.1202%] (p = 0.05 < 0.05)
+                        Change within noise threshold.
+Found 5 outliers among 100 measurements (5.00%)
+  3 (3.00%) high mild
+  2 (2.00%) high severe
+slope  [2.9424 µs 2.9455 µs] R^2            [0.9992997 0.9992944]
+mean   [2.9417 µs 2.9467 µs] std. dev.      [6.7403 ns 18.763 ns]
+median [2.9405 µs 2.9430 µs] med. abs. dev. [4.2158 ns 8.4340 ns]
+
+str                     time:   [2.9345 µs 2.9358 µs 2.9371 µs]
+                        change: [−4.8774% −2.3883% −0.3979%] (p = 0.02 < 0.05)
+                        Change within noise threshold.
+Found 4 outliers among 100 measurements (4.00%)
+  1 (1.00%) low severe
+  2 (2.00%) low mild
+  1 (1.00%) high severe
+slope  [2.9345 µs 2.9371 µs] R^2            [0.9995633 0.9995626]
+mean   [2.9339 µs 2.9385 µs] std. dev.      [4.4918 ns 19.768 ns]
+median [2.9332 µs 2.9351 µs] med. abs. dev. [3.1976 ns 5.3230 ns]
+
+str                     time:   [2.9379 µs 2.9391 µs 2.9403 µs]
+                        change: [−4.7609% −2.2642% −0.2777%] (p = 0.03 < 0.05)
+                        Change within noise threshold.
+Found 3 outliers among 100 measurements (3.00%)
+  2 (2.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9379 µs 2.9403 µs] R^2            [0.9995998 0.9995998]
+mean   [2.9379 µs 2.9415 µs] std. dev.      [5.4775 ns 13.493 ns]
+median [2.9365 µs 2.9396 µs] med. abs. dev. [4.1923 ns 7.1199 ns]
+
+str                     time:   [2.9391 µs 2.9406 µs 2.9421 µs]
+                        change: [−4.8099% −2.2671% −0.2742%] (p = 0.03 < 0.05)
+                        Change within noise threshold.
+Found 9 outliers among 100 measurements (9.00%)
+  2 (2.00%) low severe
+  3 (3.00%) low mild
+  2 (2.00%) high mild
+  2 (2.00%) high severe
+slope  [2.9391 µs 2.9421 µs] R^2            [0.9992195 0.9992176]
+mean   [2.9371 µs 2.9420 µs] std. dev.      [8.5145 ns 16.494 ns]
+median [2.9369 µs 2.9404 µs] med. abs. dev. [5.2210 ns 8.6900 ns]
+
+str                     time:   [2.9434 µs 2.9463 µs 2.9504 µs]
+                        change: [−4.4379% −1.9247% +0.0660%] (p = 0.09 > 0.05)
+                        No change in performance detected.
+Found 7 outliers among 100 measurements (7.00%)
+  2 (2.00%) high mild
+  5 (5.00%) high severe
+slope  [2.9434 µs 2.9504 µs] R^2            [0.9932120 0.9930734]
+mean   [2.9436 µs 2.9580 µs] std. dev.      [10.784 ns 57.626 ns]
+median [2.9393 µs 2.9448 µs] med. abs. dev. [6.8341 ns 11.913 ns]
+
+str                     time:   [2.9602 µs 2.9797 µs 3.0070 µs]
+                        change: [−1.8012% +1.4868% +4.4986%] (p = 0.37 > 0.05)
+                        No change in performance detected.
+Found 17 outliers among 100 measurements (17.00%)
+  2 (2.00%) high mild
+  15 (15.00%) high severe
+slope  [2.9602 µs 3.0070 µs] R^2            [0.6238251 0.6214073]
+mean   [2.9960 µs 3.1197 µs] std. dev.      [174.21 ns 439.02 ns]
+median [2.9453 µs 2.9526 µs] med. abs. dev. [10.845 ns 21.463 ns]
+
+str                     time:   [2.9391 µs 2.9405 µs 2.9421 µs]
+                        change: [−4.6944% −2.1648% −0.1763%] (p = 0.04 < 0.05)
+                        Change within noise threshold.
+Found 5 outliers among 100 measurements (5.00%)
+  1 (1.00%) low severe
+  3 (3.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9391 µs 2.9421 µs] R^2            [0.9993032 0.9992967]
+mean   [2.9392 µs 2.9475 µs] std. dev.      [6.7830 ns 36.259 ns]
+median [2.9384 µs 2.9407 µs] med. abs. dev. [4.3911 ns 7.7797 ns]
+
+str                     time:   [2.9797 µs 3.0320 µs 3.0941 µs]
+                        change: [−3.6153% −1.0365% +1.2049%] (p = 0.45 > 0.05)
+                        No change in performance detected.
+Found 15 outliers among 100 measurements (15.00%)
+  15 (15.00%) high severe
+slope  [2.9797 µs 3.0941 µs] R^2            [0.6990007 0.6929011]
+mean   [2.9540 µs 3.0044 µs] std. dev.      [67.247 ns 188.86 ns]
+median [2.9351 µs 2.9370 µs] med. abs. dev. [3.7503 ns 6.6659 ns]
+
+str                     time:   [2.9353 µs 2.9366 µs 2.9378 µs]
+                        change: [−4.7955% −2.3294% −0.3336%] (p = 0.02 < 0.05)
+                        Change within noise threshold.
+Found 7 outliers among 100 measurements (7.00%)
+  2 (2.00%) low mild
+  3 (3.00%) high mild
+  2 (2.00%) high severe
+slope  [2.9353 µs 2.9378 µs] R^2            [0.9994263 0.9994249]
+mean   [2.9356 µs 2.9402 µs] std. dev.      [5.5625 ns 18.828 ns]
+median [2.9344 µs 2.9369 µs] med. abs. dev. [3.4342 ns 6.1015 ns]
+
+str                     time:   [2.9385 µs 2.9405 µs 2.9426 µs]
+                        change: [−4.6817% −2.1451% −0.1431%] (p = 0.04 < 0.05)
+                        Change within noise threshold.
+Found 7 outliers among 100 measurements (7.00%)
+  1 (1.00%) low mild
+  3 (3.00%) high mild
+  3 (3.00%) high severe
+slope  [2.9385 µs 2.9426 µs] R^2            [0.9986388 0.9986329]
+mean   [2.9407 µs 2.9459 µs] std. dev.      [7.9576 ns 18.040 ns]
+median [2.9386 µs 2.9425 µs] med. abs. dev. [5.4517 ns 9.3966 ns]
+
+str                     time:   [2.9434 µs 2.9461 µs 2.9493 µs]
+                        change: [−4.4619% −1.9905% +0.0096%] (p = 0.07 > 0.05)
+                        No change in performance detected.
+Found 8 outliers among 100 measurements (8.00%)
+  1 (1.00%) low severe
+  1 (1.00%) low mild
+  3 (3.00%) high mild
+  3 (3.00%) high severe
+slope  [2.9434 µs 2.9493 µs] R^2            [0.9980043 0.9979539]
+mean   [2.9448 µs 2.9511 µs] std. dev.      [10.196 ns 22.190 ns]
+median [2.9431 µs 2.9479 µs] med. abs. dev. [6.6138 ns 10.760 ns]
+
+str                     time:   [2.9439 µs 2.9457 µs 2.9477 µs]
+                        change: [−4.5137% −2.0027% +0.0017%] (p = 0.07 > 0.05)
+                        No change in performance detected.
+Found 2 outliers among 100 measurements (2.00%)
+  1 (1.00%) low mild
+  1 (1.00%) high severe
+slope  [2.9439 µs 2.9477 µs] R^2            [0.9989818 0.9989723]
+mean   [2.9448 µs 2.9502 µs] std. dev.      [9.0496 ns 19.744 ns]
+median [2.9432 µs 2.9494 µs] med. abs. dev. [8.7237 ns 13.683 ns]
+
+str                     time:   [2.9343 µs 2.9356 µs 2.9369 µs]
+                        change: [−4.9021% −2.3846% −0.3951%] (p = 0.02 < 0.05)
+                        Change within noise threshold.
+Found 4 outliers among 100 measurements (4.00%)
+  2 (2.00%) low mild
+  1 (1.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9343 µs 2.9369 µs] R^2            [0.9995236 0.9995272]
+mean   [2.9340 µs 2.9386 µs] std. dev.      [4.6807 ns 19.750 ns]
+median [2.9329 µs 2.9353 µs] med. abs. dev. [2.9787 ns 5.6587 ns]
+
+str                     time:   [2.9393 µs 2.9411 µs 2.9430 µs]
+                        change: [−4.6453% −2.1551% −0.1572%] (p = 0.04 < 0.05)
+                        Change within noise threshold.
+Found 9 outliers among 100 measurements (9.00%)
+  2 (2.00%) low mild
+  5 (5.00%) high mild
+  2 (2.00%) high severe
+slope  [2.9393 µs 2.9430 µs] R^2            [0.9989286 0.9989203]
+mean   [2.9397 µs 2.9467 µs] std. dev.      [9.4794 ns 26.830 ns]
+median [2.9382 µs 2.9410 µs] med. abs. dev. [5.0307 ns 10.403 ns]
+
+str                     time:   [2.9403 µs 2.9419 µs 2.9436 µs]
+                        change: [−4.6637% −2.1452% −0.1500%] (p = 0.04 < 0.05)
+                        Change within noise threshold.
+Found 4 outliers among 100 measurements (4.00%)
+  2 (2.00%) high mild
+  2 (2.00%) high severe
+slope  [2.9403 µs 2.9436 µs] R^2            [0.9992442 0.9992424]
+mean   [2.9405 µs 2.9465 µs] std. dev.      [7.3315 ns 23.701 ns]
+median [2.9382 µs 2.9425 µs] med. abs. dev. [5.8657 ns 9.3834 ns]
+
+str                     time:   [2.9376 µs 2.9387 µs 2.9398 µs]
+                        change: [−4.7432% −2.2258% −0.2311%] (p = 0.03 < 0.05)
+                        Change within noise threshold.
+Found 7 outliers among 100 measurements (7.00%)
+  3 (3.00%) high mild
+  4 (4.00%) high severe
+slope  [2.9376 µs 2.9398 µs] R^2            [0.9995605 0.9995575]
+mean   [2.9388 µs 2.9429 µs] std. dev.      [6.6341 ns 14.733 ns]
+median [2.9370 µs 2.9396 µs] med. abs. dev. [4.2268 ns 7.3186 ns]
+
+str                     time:   [2.9386 µs 2.9401 µs 2.9417 µs]
+                        change: [−4.7588% −2.2263% −0.2350%] (p = 0.03 < 0.05)
+                        Change within noise threshold.
+Found 5 outliers among 100 measurements (5.00%)
+  2 (2.00%) low mild
+  2 (2.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9386 µs 2.9417 µs] R^2            [0.9993478 0.9993451]
+mean   [2.9386 µs 2.9428 µs] std. dev.      [7.2439 ns 14.481 ns]
+median [2.9378 µs 2.9408 µs] med. abs. dev. [4.9734 ns 8.6078 ns]
+
+str                     time:   [2.9362 µs 2.9376 µs 2.9391 µs]
+                        change: [−4.8157% −2.2786% −0.2898%] (p = 0.03 < 0.05)
+                        Change within noise threshold.
+Found 8 outliers among 100 measurements (8.00%)
+  1 (1.00%) low mild
+  5 (5.00%) high mild
+  2 (2.00%) high severe
+slope  [2.9362 µs 2.9391 µs] R^2            [0.9993946 0.9993913]
+mean   [2.9370 µs 2.9417 µs] std. dev.      [6.5514 ns 18.150 ns]
+median [2.9353 µs 2.9376 µs] med. abs. dev. [3.4997 ns 6.3004 ns]
+
+str                     time:   [2.9388 µs 2.9492 µs 2.9645 µs]
+                        change: [−3.7651% −1.0043% +1.2368%] (p = 0.48 > 0.05)
+                        No change in performance detected.
+Found 16 outliers among 100 measurements (16.00%)
+  2 (2.00%) low mild
+  2 (2.00%) high mild
+  12 (12.00%) high severe
+slope  [2.9388 µs 2.9645 µs] R^2            [0.8512696 0.8497612]
+mean   [2.9486 µs 3.0143 µs] std. dev.      [54.745 ns 246.64 ns]
+median [2.9346 µs 2.9385 µs] med. abs. dev. [5.1375 ns 8.7955 ns]
+
+str                     time:   [2.9418 µs 2.9439 µs 2.9460 µs]
+                        change: [−4.5585% −2.1122% −0.1204%] (p = 0.05 < 0.05)
+                        Change within noise threshold.
+Found 3 outliers among 100 measurements (3.00%)
+  2 (2.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9418 µs 2.9460 µs] R^2            [0.9988400 0.9988395]
+mean   [2.9413 µs 2.9478 µs] std. dev.      [8.2831 ns 25.807 ns]
+median [2.9394 µs 2.9449 µs] med. abs. dev. [7.3172 ns 11.773 ns]
+
+str                     time:   [2.9408 µs 2.9423 µs 2.9439 µs]
+                        change: [−4.6613% −2.1292% −0.1428%] (p = 0.04 < 0.05)
+                        Change within noise threshold.
+Found 5 outliers among 100 measurements (5.00%)
+  2 (2.00%) high mild
+  3 (3.00%) high severe
+slope  [2.9408 µs 2.9439 µs] R^2            [0.9993952 0.9993871]
+mean   [2.9412 µs 2.9469 µs] std. dev.      [5.9500 ns 23.525 ns]
+median [2.9392 µs 2.9420 µs] med. abs. dev. [3.6267 ns 6.9528 ns]
+
+str                     time:   [3.1243 µs 3.4172 µs 3.7403 µs]
+                        change: [−0.7828% +3.6341% +9.5266%] (p = 0.14 > 0.05)
+                        No change in performance detected.
+Found 11 outliers among 100 measurements (11.00%)
+  11 (11.00%) high severe
+slope  [3.1243 µs 3.7403 µs] R^2            [0.3399109 0.3360339]
+mean   [3.0076 µs 3.2527 µs] std. dev.      [317.62 ns 887.61 ns]
+median [2.9400 µs 2.9440 µs] med. abs. dev. [7.6131 ns 12.483 ns]
+
+str                     time:   [2.9446 µs 2.9462 µs 2.9480 µs]
+                        change: [−4.6067% −2.1010% −0.1083%] (p = 0.05 < 0.05)
+                        Change within noise threshold.
+Found 9 outliers among 100 measurements (9.00%)
+  2 (2.00%) low severe
+  1 (1.00%) low mild
+  4 (4.00%) high mild
+  2 (2.00%) high severe
+slope  [2.9446 µs 2.9480 µs] R^2            [0.9991587 0.9991539]
+mean   [2.9419 µs 2.9472 µs] std. dev.      [8.5653 ns 18.626 ns]
+median [2.9416 µs 2.9453 µs] med. abs. dev. [4.1321 ns 8.3773 ns]
+
+str                     time:   [2.9445 µs 2.9469 µs 2.9495 µs]
+                        change: [−4.5501% −2.0470% −0.0586%] (p = 0.06 > 0.05)
+                        No change in performance detected.
+Found 5 outliers among 100 measurements (5.00%)
+  1 (1.00%) high mild
+  4 (4.00%) high severe
+slope  [2.9445 µs 2.9495 µs] R^2            [0.9979192 0.9979062]
+mean   [2.9430 µs 2.9496 µs] std. dev.      [9.8283 ns 22.876 ns]
+median [2.9398 µs 2.9438 µs] med. abs. dev. [5.8450 ns 9.7180 ns]
+
+str                     time:   [2.9468 µs 2.9489 µs 2.9511 µs]
+                        change: [−4.4480% −1.9136% +0.0869%] (p = 0.09 > 0.05)
+                        No change in performance detected.
+Found 5 outliers among 100 measurements (5.00%)
+  4 (4.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9468 µs 2.9511 µs] R^2            [0.9987555 0.9987502]
+mean   [2.9472 µs 2.9537 µs] std. dev.      [9.3908 ns 24.863 ns]
+median [2.9439 µs 2.9501 µs] med. abs. dev. [7.4452 ns 12.196 ns]
+
+str                     time:   [2.9347 µs 2.9358 µs 2.9370 µs]
+                        change: [−4.9074% −2.3573% −0.3612%] (p = 0.02 < 0.05)
+                        Change within noise threshold.
+Found 10 outliers among 100 measurements (10.00%)
+  2 (2.00%) low mild
+  6 (6.00%) high mild
+  2 (2.00%) high severe
+slope  [2.9347 µs 2.9370 µs] R^2            [0.9996279 0.9996250]
+mean   [2.9350 µs 2.9391 µs] std. dev.      [5.0618 ns 16.523 ns]
+median [2.9337 µs 2.9358 µs] med. abs. dev. [3.2830 ns 5.7235 ns]
+
+str                     time:   [2.9361 µs 2.9381 µs 2.9401 µs]
+                        change: [−4.6981% −2.1649% −0.1776%] (p = 0.04 < 0.05)
+                        Change within noise threshold.
+Found 2 outliers among 100 measurements (2.00%)
+  2 (2.00%) high severe
+slope  [2.9361 µs 2.9401 µs] R^2            [0.9989759 0.9989798]
+mean   [2.9393 µs 2.9469 µs] std. dev.      [7.6652 ns 30.985 ns]
+median [2.9374 µs 2.9425 µs] med. abs. dev. [6.5537 ns 10.070 ns]
+
+str                     time:   [2.9412 µs 2.9434 µs 2.9458 µs]
+                        change: [−4.6089% −2.1182% −0.1161%] (p = 0.05 < 0.05)
+                        Change within noise threshold.
+Found 1 outliers among 100 measurements (1.00%)
+  1 (1.00%) high severe
+slope  [2.9412 µs 2.9458 µs] R^2            [0.9986440 0.9986377]
+mean   [2.9416 µs 2.9464 µs] std. dev.      [8.8211 ns 16.934 ns]
+median [2.9393 µs 2.9455 µs] med. abs. dev. [8.3044 ns 13.150 ns]
+
+str                     time:   [2.9368 µs 2.9385 µs 2.9402 µs]
+                        change: [−4.8110% −2.2906% −0.2950%] (p = 0.03 < 0.05)
+                        Change within noise threshold.
+Found 1 outliers among 100 measurements (1.00%)
+  1 (1.00%) high severe
+slope  [2.9368 µs 2.9402 µs] R^2            [0.9993523 0.9993484]
+mean   [2.9368 µs 2.9414 µs] std. dev.      [5.5142 ns 18.707 ns]
+median [2.9342 µs 2.9369 µs] med. abs. dev. [3.1962 ns 6.7387 ns]
+
+str                     time:   [2.9431 µs 2.9449 µs 2.9466 µs]
+                        change: [−4.5217% −2.0606% −0.0557%] (p = 0.06 > 0.05)
+                        No change in performance detected.
+Found 3 outliers among 100 measurements (3.00%)
+  2 (2.00%) high mild
+  1 (1.00%) high severe
+slope  [2.9431 µs 2.9466 µs] R^2            [0.9991237 0.9991243]
+mean   [2.9432 µs 2.9487 µs] std. dev.      [7.5567 ns 21.475 ns]
+median [2.9413 µs 2.9456 µs] med. abs. dev. [7.1074 ns 11.720 ns]
+
+str                     time:   [2.9448 µs 2.9483 µs 2.9531 µs]
+                        change: [−4.5145% −2.0386% −0.0439%] (p = 0.06 > 0.05)
+                        No change in performance detected.
+Found 3 outliers among 100 measurements (3.00%)
+  1 (1.00%) high mild
+  2 (2.00%) high severe
+slope  [2.9448 µs 2.9531 µs] R^2            [0.9965913 0.9964066]
+mean   [2.9438 µs 2.9493 µs] std. dev.      [8.2488 ns 19.336 ns]
+median [2.9414 µs 2.9468 µs] med. abs. dev. [7.4400 ns 11.331 ns]
+
+str                     time:   [3.0336 µs 3.1982 µs 3.3873 µs]
+                        change: [−1.9807% +1.3336% +5.2724%] (p = 0.46 > 0.05)
+                        No change in performance detected.
+Found 13 outliers among 100 measurements (13.00%)
+  2 (2.00%) high mild
+  11 (11.00%) high severe
+slope  [3.0336 µs 3.3873 µs] R^2            [0.1543379 0.1513740]
+mean   [2.9796 µs 3.1329 µs] std. dev.      [158.68 ns 558.56 ns]
+median [2.9414 µs 2.9483 µs] med. abs. dev. [7.8595 ns 14.293 ns]
+
+str                     time:   [2.9405 µs 2.9471 µs 2.9564 µs]
+                        change: [−3.4713% −0.4723% +2.6955%] (p = 0.77 > 0.05)
+                        No change in performance detected.
+Found 8 outliers among 100 measurements (8.00%)
+  3 (3.00%) high mild
+  5 (5.00%) high severe
+slope  [2.9405 µs 2.9564 µs] R^2            [0.8433906 0.8428885]
+mean   [2.9426 µs 3.0584 µs] std. dev.      [27.241 ns 442.11 ns]
+median [2.9356 µs 2.9417 µs] med. abs. dev. [6.7224 ns 11.469 ns]
+
+str                     time:   [2.9492 µs 2.9511 µs 2.9530 µs]
+                        change: [−4.3953% −1.8822% +0.1220%] (p = 0.10 > 0.05)
+                        No change in performance detected.
+Found 2 outliers among 100 measurements (2.00%)
+  2 (2.00%) high severe
+slope  [2.9492 µs 2.9530 µs] R^2            [0.9989475 0.9989416]
+mean   [2.9471 µs 2.9564 µs] std. dev.      [9.3545 ns 38.068 ns]
+median [2.9449 µs 2.9505 µs] med. abs. dev. [8.1373 ns 13.275 ns]
+
+str                     time:   [2.9375 µs 2.9391 µs 2.9409 µs]
+                        change: [−4.6709% −2.1937% −0.1914%] (p = 0.03 < 0.05)
+                        Change within noise threshold.
+Found 9 outliers among 100 measurements (9.00%)
+  1 (1.00%) low severe
+  5 (5.00%) high mild
+  3 (3.00%) high severe
+slope  [2.9375 µs 2.9409 µs] R^2            [0.9990703 0.9990664]
+mean   [2.9387 µs 2.9449 µs] std. dev.      [9.8432 ns 21.782 ns]
+median [2.9366 µs 2.9408 µs] med. abs. dev. [5.8388 ns 9.8138 ns]
+
+str                     time:   [2.9747 µs 3.0421 µs 3.1210 µs]
+                        change: [−3.3983% −0.7553% +1.6745%] (p = 0.59 > 0.05)
+                        No change in performance detected.
+Found 17 outliers among 100 measurements (17.00%)
+  1 (1.00%) low severe
+  3 (3.00%) low mild
+  2 (2.00%) high mild
+  11 (11.00%) high severe
+slope  [2.9747 µs 3.1210 µs] R^2            [0.4534416 0.4476179]
+mean   [2.9536 µs 3.0244 µs] std. dev.      [67.405 ns 262.85 ns]
+median [2.9383 µs 2.9425 µs] med. abs. dev. [6.0316 ns 10.861 ns]
+
+str                     time:   [2.9388 µs 2.9405 µs 2.9421 µs]
+                        change: [−4.7246% −2.2851% −0.2921%] (p = 0.03 < 0.05)
+                        Change within noise threshold.
+Found 3 outliers among 100 measurements (3.00%)
+  1 (1.00%) low severe
+  1 (1.00%) low mild
+  1 (1.00%) high severe
+slope  [2.9388 µs 2.9421 µs] R^2            [0.9991846 0.9991903]
+mean   [2.9361 µs 2.9426 µs] std. dev.      [6.8559 ns 26.328 ns]
+median [2.9356 µs 2.9391 µs] med. abs. dev. [5.6424 ns 8.8823 ns]
+
