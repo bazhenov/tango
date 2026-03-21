@@ -51,7 +51,7 @@ resource "aws_instance" "vm" {
     apt-get install -y curl git gcc screen
 
     # Install rustup for the default non-root user (ubuntu)
-    sudo -u ubuntu bash -c '
+    sudo -u ubuntu bash -ec '
       curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path
       echo "source \$HOME/.cargo/env" >> $HOME/.bashrc
       echo "source \$HOME/.cargo/env" >> $HOME/.profile
