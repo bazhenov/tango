@@ -48,13 +48,19 @@ resource "aws_instance" "vm" {
 
     # Update packages
     apt-get update -y
-    apt-get install -y curl
+    apt-get install -y curl git
 
     # Install rustup for the default non-root user (ubuntu)
     sudo -u ubuntu bash -c '
       curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path
-      echo "source \$HOME/.cargo/env" >> /home/ubuntu/.bashrc
-      echo "source \$HOME/.cargo/env" >> /home/ubuntu/.profile
+      echo "source \$HOME/.cargo/env" >> $HOME/.bashrc
+      echo "source \$HOME/.cargo/env" >> $HOME/.profile
+    '
+
+    sudo -u ubuntu bash -ec '
+      cd $HOME
+      git clone https://github.com/bazhenov/tango.git
+      cd tango/tango-compare
     '
   EOF
 
