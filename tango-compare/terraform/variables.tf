@@ -7,7 +7,7 @@ variable "aws_region" {
 variable "project_name" {
   description = "Name prefix used for all created resources"
   type        = string
-  default     = "tango-comparison-vm"
+  default     = "tango-compare-vm"
 }
 
 variable "ami_id" {

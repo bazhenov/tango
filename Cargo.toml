@@ -4,7 +4,7 @@ resolver = "2"
 members = [
     "tango-bench",
     "examples",
-    "tango-comparison"
+    "tango-compare"
 ]
 
 [profile.bench]
