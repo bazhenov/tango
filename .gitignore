@@ -1,3 +1,4 @@
+/.zed
 target/
 Cargo.lock
 **/*.rs.bk

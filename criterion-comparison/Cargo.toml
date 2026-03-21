@@ -1,0 +1,19 @@
+[package]
+name = "criterion-comparison"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+
+[dev-dependencies]
+criterion = "0.8.2"
+tango-bench = { path = "../tango-bench" }
+rand = "0.10.0"
+
+[[bench]]
+name = "criterion"
+harness = false
+
+[[bench]]
+name = "tango"
+harness = false
