@@ -12,7 +12,7 @@ set xlabel "observation no"
 
 set title "Difference"
 
-#set yrange [-2:15]
+set yrange [-10:10]
 
 #set ytics 1
 
