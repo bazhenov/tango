@@ -48,7 +48,7 @@ resource "aws_instance" "vm" {
 
     # Update packages
     apt-get update -y
-    apt-get install -y curl git
+    apt-get install -y curl git gcc
 
     # Install rustup for the default non-root user (ubuntu)
     sudo -u ubuntu bash -c '
@@ -59,8 +59,10 @@ resource "aws_instance" "vm" {
 
     sudo -u ubuntu bash -ec '
       cd $HOME
-      git clone https://github.com/bazhenov/tango.git
-      cd tango/tango-compare
+      git clone -b tango-compare https://github.com/bazhenov/tango.git
+      cargo install cargo-export
+      cd tango
+      ./tango-compare/run.sh
     '
   EOF
 
