@@ -37,5 +37,5 @@ while true; do
     ./criterion --save-baseline=in-place --bench -n > /dev/null
     ./criterion --bench --baseline=in-place -n -v >> ./criterion-in-place.txt
 
-    ./tango-1 compare ./tango-2 -t 1 -p >> ./tango.txt
+    ./tango-1 compare ./tango-2 -t 1 >> ./tango.txt
 done
