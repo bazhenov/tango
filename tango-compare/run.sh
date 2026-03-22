@@ -29,13 +29,13 @@ cp ./tango ./tango-1
 cp ./tango ./tango-2
 
 # Saving baseline
-./criterion --save-baseline=main --bench -n > /dev/null
+./criterion --save-baseline=main --confidence-level=0.99 --bench -n > /dev/null
 
 while true; do
-    ./criterion --bench --baseline=main -n -v >> ./criterion.txt
+    ./criterion --bench --baseline=main --confidence-level=0.99 -n -v >> ./criterion.txt
 
-    ./criterion --save-baseline=in-place --bench -n > /dev/null
-    ./criterion --bench --baseline=in-place -n -v >> ./criterion-in-place.txt
+    ./criterion --save-baseline=in-place --confidence-level=0.99 --bench -n > /dev/null
+    ./criterion --bench --baseline=in-place --confidence-level=0.99 -n -v >> ./criterion-in-place.txt
 
-    ./tango-1 compare ./tango-2 -t 1 >> ./tango.txt
+    ./tango-1 compare ./tango-2 -t 1 -p --sampler=flat >> ./tango.txt
 done
