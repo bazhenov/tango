@@ -20,5 +20,5 @@ f(x) = 0
 
 plot f(x) notitle with lines linestyle 1 lc "red" dt 4 lw 1, \
      "data.csv" using ($1) title "Criterion" with linespoints pt 1 ps 0.3 lw 1 lc 'dark-red', \
-     "data.csv" using ($2) title "Criterion in-place" with linespoints pt 1 ps 0.3 lw 1 lc 'red', \
+     "data.csv" using ($2) title "Criterion paired" with linespoints pt 1 ps 0.3 lw 1 lc 'red', \
      "data.csv" using ($3) title "Tango" with linespoints pt 1 ps 0.3 lw 1 lc 'dark-green'
