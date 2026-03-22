@@ -13937,4 +13937,3 @@ Found 14 outliers among 100 measurements (14.00%)
 slope  [2.9394 µs 3.9355 µs] R^2            [0.0212218 0.0186630]
 mean   [2.9391 µs 3.4557 µs] std. dev.      [34.954 ns 2.0013 µs]
 median [2.9312 µs 2.9350 µs] med. abs. dev. [2.4803 ns 7.4311 ns]
-

@@ -8,8 +8,8 @@ fi
 if [[ -f criterion.txt ]]; then
     rm criterion.txt
 fi
-if [[ -f criterion-in-place.txt ]]; then
-    rm criterion.txt
+if [[ -f criterion-paired.txt ]]; then
+    rm criterion-paired.txt
 fi
 
 WORKDIR=./target/benches
@@ -34,8 +34,8 @@ cp ./tango ./tango-2
 while true; do
     ./criterion --bench --baseline=main --confidence-level=0.99 --measurement-time=1 -n -v >> ./criterion.txt
 
-    ./criterion --save-baseline=in-place --confidence-level=0.99 --measurement-time=1 --bench -n > /dev/null
-    ./criterion --bench --baseline=in-place --confidence-level=0.99 --measurement-time=1 -n -v >> ./criterion-in-place.txt
+    ./criterion --save-baseline=paired --confidence-level=0.99 --measurement-time=1 --bench -n > /dev/null
+    ./criterion --bench --baseline=paired --confidence-level=0.99 --measurement-time=1 -n -v >> ./criterion-paired.txt
 
     ./tango-1 compare ./tango-2 -t 1 -p --sampler=flat >> ./tango.txt
 done
