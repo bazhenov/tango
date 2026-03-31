@@ -1,6 +1,6 @@
 Tango benchmarking harness
 
-Usage: tango-test [OPTIONS] [COMMAND]
+Usage: tango-test[EXE] [OPTIONS] [COMMAND]
 
 Commands:
   list     List benchmarks
