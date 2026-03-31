@@ -26,11 +26,14 @@ pub(crate) type StdResult<T, E> = std::result::Result<T, E>;
 
 #[derive(Parser, Debug)]
 enum BenchmarkMode {
+    /// List benchmarks
     List {
         #[command(flatten)]
         bench_flags: CargoBenchFlags,
     },
+    /// Run paired benchmarking to compare two executables
     Compare(PairedOpts),
+    /// Run a single benchmark in a solo (isolated) mode
     Solo(SoloOpts),
 }
 
@@ -192,7 +195,7 @@ impl FromStr for SampleLengthKind {
 /// Definition of the flags required to comply with `cargo bench` calling conventions.
 #[derive(Parser, Debug, Clone)]
 struct CargoBenchFlags {
-    #[arg(long = "bench", default_value_t = true)]
+    #[arg(long = "bench", default_value_t = true, hide = true)]
     bench: bool,
 }
 
