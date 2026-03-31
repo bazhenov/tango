@@ -1,2 +1,4 @@
 bin.name = "tango-test"
-args = ["compare", "../target/debug/tango-test"]
+# This path should be specified relative to the project root - this is where CI runs `cargo test`.
+# I was not able to to make it independent of cwd
+args = ["compare", "target/debug/tango-test"]
