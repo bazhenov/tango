@@ -1,4 +1,3 @@
-bin.name = "tango-test"
-# This path should be specified relative to the project root - this is where CI runs `cargo test`.
-# I was not able to to make it independent of cwd
-args = ["compare", "target/debug/tango-test"]
+# Here we're relying on a little know fact that if you run compare without 2nd executable
+# tango will test first executable against itself
+args = ["compare"]
