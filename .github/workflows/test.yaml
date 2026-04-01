@@ -23,12 +23,23 @@ jobs:
       matrix:
         include:
           - os: ubuntu-22.04
+            toolchain: stable
           - os: macos-14
+            toolchain: stable
           - os: windows-2022
+            toolchain: nightly
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Configure Windows nightly RUSTFLAGS
+        if: runner.os == 'Windows'
+        shell: bash
+        run: cp .cargo/config.windows.toml .cargo/config.toml
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.toolchain }}
       - uses: Swatinem/rust-cache@v2
 
       - name: Run Tests
