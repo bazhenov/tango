@@ -6,7 +6,7 @@ jobs:
   lint:
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: "clippy, rustfmt"
@@ -30,7 +30,7 @@ jobs:
             toolchain: nightly
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # On Windows we need to configure -Zexport-executable-symbols
       - name: Configure Windows nightly RUSTFLAGS
@@ -64,8 +64,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       # Doing checkout 2 times for a current branch and then baseline-branch
-      - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+      - uses: actions/checkout@v6
         with:
           ref: dev
           path: baseline-branch
