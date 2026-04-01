@@ -103,7 +103,7 @@ jobs:
           target/benchmarks/tango${{ matrix.exe }} --color=never compare -v -t 1 --fail-threshold 10 \
             baseline-branch/target/benchmarks/tango${{ matrix.exe }} | tee target/benchmark.txt
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: benchmark-${{ matrix.os }}.txt
           path: target/benchmark.txt
