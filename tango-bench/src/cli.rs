@@ -462,8 +462,9 @@ mod paired_test {
             .expect("No path given");
         if path.is_relative() {
             // Resolving paths relative to PWD if given
-            if let Ok(pwd) = env::var("PWD") {
-                path = PathBuf::from(pwd).join(path)
+
+            if let Ok(pwd) = env::current_dir() {
+                path = pwd.join(path)
             }
         };
 
