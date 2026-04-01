@@ -1,0 +1,3 @@
+# Here we're relying on a feature that when ran without an argument
+# `compare` will benchmark binary against itself
+args = ["compare"]
