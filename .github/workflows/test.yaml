@@ -32,6 +32,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # On Windows we need to configure -Zexport-executable-symbols
       - name: Configure Windows nightly RUSTFLAGS
         if: runner.os == 'Windows'
         shell: bash
@@ -40,6 +41,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.toolchain }}
+
       - uses: Swatinem/rust-cache@v2
 
       - name: Run Tests
@@ -51,8 +53,14 @@ jobs:
       matrix:
         include:
           - os: ubuntu-22.04
+            toolchain: stable
+            exe:
           - os: macos-14
+            toolchain: stable
+            exe:
           - os: windows-2022
+            toolchain: nightly
+            exe: .exe
     runs-on: ${{ matrix.os }}
     steps:
       # Doing checkout 2 times for a current branch and then baseline-branch
@@ -61,13 +69,19 @@ jobs:
         with:
           ref: dev
           path: baseline-branch
-      # on Windows we need nightly to enable exporting symbols from executable files
-      - if: runner.os == 'Windows'
-        uses: dtolnay/rust-toolchain@nightly
-      - if: runner.os != 'Windows'
-        uses: dtolnay/rust-toolchain@stable
+
+      # On Windows we need to configure -Zexport-executable-symbols
+      - name: Configure Windows nightly RUSTFLAGS
+        if: runner.os == 'Windows'
+        shell: bash
+        run: cp .cargo/config.windows.toml .cargo/config.toml
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.toolchain }}
 
       - uses: Swatinem/rust-cache@v2
+
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-export
@@ -76,11 +90,6 @@ jobs:
         shell: bash
         run: |
           set -eo pipefail
-
-          if [[ "$RUNNER_OS" == "Windows" ]]; then
-            # On Windows we need to configure -Zexport-executable-symbols
-            cp .cargo/config.windows.toml .cargo/config.toml
-          fi
 
           cargo export target/benchmarks -- bench --bench=tango
           cd baseline-branch
@@ -91,12 +100,8 @@ jobs:
         run: |
           set -eo pipefail
 
-          if [[ "$RUNNER_OS" == "Windows" ]]; then
-            EXT=.exe
-          fi
-
-          target/benchmarks/tango${EXT} --color=never compare baseline-branch/target/benchmarks/tango${EXT} \
-            -v -t 1 --fail-threshold 10 | tee target/benchmark.txt
+          target/benchmarks/tango${{ matrix.exe }} --color=never compare -v -t 1 --fail-threshold 10 \
+            baseline-branch/target/benchmarks/tango${{ matrix.exe }} | tee target/benchmark.txt
 
       - uses: actions/upload-artifact@v4
         with:
