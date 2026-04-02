@@ -5,11 +5,28 @@ const SLEEP_10: &str = env!("CARGO_BIN_EXE_sleep_10");
 const SLEEP_100: &str = env!("CARGO_BIN_EXE_sleep_100");
 
 #[test]
-fn cli_tests() {
-    trycmd::TestCases::new()
-        .case("tests/cmd/*.toml")
-        .default_bin_name("sleep_10")
-        .run();
+fn tango_help() {
+    Cmd::run(SLEEP_10, &["help"])
+        .assert_success()
+        .assert_stdout_contains("Tango benchmarking harness")
+        .assert_stdout_contains("Usage: {..} [OPTIONS] [COMMAND]")
+        .assert_stdout_contains("Options:")
+        .assert_stdout_contains("Commands:")
+        .assert_stdout_contains("compare{..}Run paired benchmarking to compare two executables");
+}
+
+#[test]
+fn tango_compare() {
+    Cmd::run(SLEEP_10, &["--color", "never", "compare"])
+        .assert_success()
+        .assert_stdout_match("sleep {..} [ {..} ... {..} ]{..}\n");
+}
+
+#[test]
+fn tango_solo() {
+    Cmd::run(SLEEP_10, &["--color", "never", "solo"])
+        .assert_success()
+        .assert_stdout_match("sleep {..} [ {..} ... {..} ... {..} ]  stddev: {..}\n");
 }
 
 /// Run sleep_100 (100ms) as candidate against sleep_10 (10ms) as baseline.
@@ -36,7 +53,7 @@ fn noise_threshold_mutes_regression() {
 fn regression_detected_with_default_noise_threshold() {
     Cmd::run(SLEEP_100, &["--color", "never", "compare", SLEEP_10])
         .assert_failure()
-        .assert_stdout_match("sleep {..} [ {..} ... {..} ] {..} +{..}%*\n");
+        .assert_stdout_match("sleep {..} [ {..} ... {..} ]{..} +{..}%*\n");
 }
 
 struct Cmd {
@@ -81,10 +98,7 @@ impl Cmd {
     }
 
     fn assert_stdout_match(&self, pattern: &str) -> &Self {
-        let parts = pattern.split("{..}").collect::<Vec<_>>();
-        let escaped: Vec<String> = parts.iter().map(|p| regex::escape(p)).collect();
-        let re_pattern = format!("(?s)^{}$", escaped.join(".+"));
-        let re = Regex::new(&re_pattern).expect("Invalid regex");
+        let re = compile_pattern(pattern);
         assert!(
             re.is_match(&self.stdout),
             "Expected stdout to match: {}\nstdout: {}",
@@ -93,4 +107,22 @@ impl Cmd {
         );
         self
     }
+
+    fn assert_stdout_contains(&self, pattern: &str) -> &Self {
+        let re = compile_pattern(pattern);
+        assert!(
+            re.find(&self.stdout).is_some(),
+            "Expected stdout to contain: {}\nstdout: {}",
+            pattern,
+            self.stdout,
+        );
+        self
+    }
+}
+
+fn compile_pattern(pattern: &str) -> Regex {
+    let parts = pattern.split("{..}").collect::<Vec<_>>();
+    let escaped = parts.into_iter().map(regex::escape).collect::<Vec<_>>();
+    let re_pattern = format!("(?s)^{}$", escaped.join(".+"));
+    Regex::new(&re_pattern).expect("Invalid regex")
 }
