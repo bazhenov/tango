@@ -496,6 +496,7 @@ pub(crate) fn calculate_run_result(
     candidate: &[u64],
     iterations_per_sample: &[usize],
     filter_outliers: bool,
+    noise_threshold: f64,
 ) -> Option<RunResult> {
     assert!(baseline.len() == candidate.len());
     assert!(baseline.len() == iterations_per_sample.len());
@@ -559,7 +560,7 @@ pub(crate) fn calculate_run_result(
     let baseline_summary = Summary::from(&baseline)?;
     let candidate_summary = Summary::from(&candidate)?;
 
-    let diff_estimate = DiffEstimate::build(&baseline_summary, &diff_summary);
+    let diff_estimate = DiffEstimate::build(&baseline_summary, &diff_summary, noise_threshold);
 
     Some(RunResult {
         baseline: baseline_summary,
@@ -589,15 +590,16 @@ impl DiffEstimate {
     /// robust to outliers, but it is requiring more iterations.
     ///
     /// It is assumed that baseline and candidate are already normalized by iterations count.
-    fn build(baseline: &Summary<f64>, diff: &Summary<f64>) -> Self {
+    fn build(baseline: &Summary<f64>, diff: &Summary<f64>, noise_threshold: f64) -> Self {
         let std_dev = diff.variance.sqrt();
         let std_err = std_dev / (diff.n as f64).sqrt();
         let z_score = diff.mean / std_err;
 
-        // significant result is far away from 0 and have more than 0.5% base/candidate difference
-        // z_score = 2.6 corresponds to 99% significance level
-        let significant = z_score.abs() >= 2.6 && (diff.mean / baseline.mean).abs() > 0.005;
         let pct = diff.mean / baseline.mean * 100.0;
+
+        // significant result is far away from 0 and exceeds the noise threshold
+        // z_score = 2.6 corresponds to 99% significance level
+        let significant = z_score.abs() >= 2.6 && pct.abs() > noise_threshold;
 
         Self { pct, significant }
     }

@@ -178,8 +178,8 @@ There are several arguments you can pass to the `compare` command to change it b
   - `--gnuplot` – generate plot for each benchmark (requires gnuplot to be installed)
   - `-o`, `--filter-outliers` – additionally filter outliers
   - `-p`, `--parallel` - run base/candidate functions in 2 different threads instead of interleaving in a single thread
-  - `--fail-threshold` – do fail if new version is slower than baseline on a given percentage
-  - `--fail-fast` - do fail after first benchmark exceeding fail threshold, not after the whole suite
+  - `--noise-threshold` – consider benchmark differences below this percentage as noise (default: 0.5%)
+  - `--fail-fast` - terminate early on first statistically significant performance regression
 
 
 ## Contributing
