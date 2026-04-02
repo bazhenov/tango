@@ -69,11 +69,11 @@ struct PairedOpts {
     #[arg(short = 't', long = "time")]
     time: Option<f64>,
 
-    /// Fail if the difference between the two measurements is greater than the given threshold in percent
-    #[arg(long = "fail-threshold")]
-    fail_threshold: Option<f64>,
+    /// Consider benchmark differences below this percentage as noise (default: 0.5%)
+    #[arg(long = "noise-threshold", default_value_t = 0.5)]
+    noise_threshold: f64,
 
-    /// Should we terminate early if --fail-threshold is exceed
+    /// Terminate early on first statistically significant performance regression
     #[arg(long = "fail-fast")]
     fail_fast: bool,
 
@@ -444,7 +444,7 @@ mod paired_test {
             filter_outliers,
             path_to_dump,
             gnuplot,
-            fail_threshold,
+            noise_threshold,
             fail_fast,
             significant_only,
             seed,
@@ -549,6 +549,7 @@ mod paired_test {
                 loop_mode,
                 path_to_dump.as_ref(),
                 reporter,
+                noise_threshold,
             )?;
             if let Some(usage_before) = rusage_before {
                 let rusage = platform::rusage() - usage_before;
@@ -565,19 +566,11 @@ mod paired_test {
                 reporter.benchmark_finished(&func_name, &result);
             }
 
-            if result.diff_estimate.significant {
-                if let Some(threshold) = fail_threshold {
-                    if result.diff_estimate.pct >= threshold {
-                        eprintln!(
-                            "[ERROR] Performance regressed {:+.1}% >= {:.1}%  -  test: {}",
-                            result.diff_estimate.pct, threshold, func_name
-                        );
-                        if fail_fast {
-                            return Ok(ExitCode::FAILURE);
-                        } else {
-                            exit_code = ExitCode::FAILURE;
-                        }
-                    }
+            // If results are significant and candidate is slower
+            if result.diff_estimate.significant && result.diff_estimate.pct > 0. {
+                exit_code = ExitCode::FAILURE;
+                if fail_fast {
+                    return Ok(ExitCode::FAILURE);
                 }
             }
         }
@@ -624,6 +617,7 @@ mod paired_test {
         loop_mode: LoopMode,
         samples_dump_path: Option<&PathBuf>,
         reporter: &dyn Reporter,
+        noise_threshold: f64,
     ) -> Result<(RunResult, Option<PathBuf>)> {
         const TIME_SLICE_MS: u32 = 10;
 
@@ -784,6 +778,7 @@ mod paired_test {
             &b_func.samples,
             &sample_iterations,
             settings.filter_outliers,
+            noise_threshold,
         )
         .ok_or(Error::NoMeasurements)?;
 

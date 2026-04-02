@@ -7,4 +7,4 @@ edition = "2024"
 tango-bench = { path = "../tango-bench" }
 
 [dev-dependencies]
-trycmd = "1.2.0"
+regex = "1.12.3"

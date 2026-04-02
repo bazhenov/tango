@@ -100,7 +100,7 @@ jobs:
         run: |
           set -eo pipefail
 
-          target/benchmarks/tango${{ matrix.exe }} --color=never compare -v -t 1 --fail-threshold 10 \
+          target/benchmarks/tango${{ matrix.exe }} --color=never compare -v -t 1 --noise-threshold 10 \
             baseline-branch/target/benchmarks/tango${{ matrix.exe }} | tee target/benchmark.txt
 
       - uses: actions/upload-artifact@v6
