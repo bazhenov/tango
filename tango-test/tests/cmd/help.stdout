@@ -1,6 +1,6 @@
 Tango benchmarking harness
 
-Usage: tango-test[EXE] [OPTIONS] [COMMAND]
+Usage: sleep_10[EXE] [OPTIONS] [COMMAND]
 
 Commands:
   list     List benchmarks
