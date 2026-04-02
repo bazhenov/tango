@@ -56,8 +56,15 @@ struct Cmd {
     stderr: String,
 }
 
+#[cfg(target_os = "linux")]
+static BENCH_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 impl Cmd {
     fn run(cmd: &str, args: &[&str]) -> Self {
+        // On Linux we create a temporary copy for an executable, to patch PIE.
+        // Without lock there is a race. see. patch_pie_binary_if_needed().
+        #[cfg(target_os = "linux")]
+        let _guard = BENCH_MUTEX.lock().unwrap();
         let output = Command::new(cmd)
             .args(args)
             .output()
@@ -74,7 +81,7 @@ impl Cmd {
         assert!(
             self.status.success(),
             "Expected exit code 0, got {:?}\nstdout: {}\nstderr: {}",
-            self.status.code(),
+            self.status,
             self.stdout,
             self.stderr,
         );
@@ -97,9 +104,10 @@ impl Cmd {
 
         assert!(
             re.is_match(&self.stdout),
-            "Expected stdout to match: {}\nstdout: {}",
+            "Expected stdout to match: {}\nstdout: {}\nstderr: {}",
             pattern.trim(),
             self.stdout,
+            self.stderr,
         );
         self
     }
@@ -108,7 +116,6 @@ impl Cmd {
         let re_pattern = format!("(?s){}", compile_pattern(pattern));
         let re = Regex::new(&re_pattern).expect("Invalid regex");
 
-        dbg!(re.find(&self.stdout));
         assert!(
             re.find(&self.stdout).is_some(),
             "Expected stdout to contain: {}\nstdout: {}",
