@@ -566,11 +566,11 @@ mod paired_test {
                 reporter.benchmark_finished(&func_name, &result);
             }
 
+            // If results are significant and candidate is slower
             if result.diff_estimate.significant && result.diff_estimate.pct > 0. {
+                exit_code = ExitCode::FAILURE;
                 if fail_fast {
                     return Ok(ExitCode::FAILURE);
-                } else {
-                    exit_code = ExitCode::FAILURE;
                 }
             }
         }
