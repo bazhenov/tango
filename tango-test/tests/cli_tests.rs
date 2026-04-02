@@ -5,7 +5,7 @@ const SLEEP_10: &str = env!("CARGO_BIN_EXE_sleep_10");
 const SLEEP_100: &str = env!("CARGO_BIN_EXE_sleep_100");
 
 #[test]
-fn tango_help() {
+fn help() {
     Cmd::run(SLEEP_10, &["help"])
         .assert_success()
         .assert_stdout_contains("Tango benchmarking harness")
@@ -16,15 +16,15 @@ fn tango_help() {
 }
 
 #[test]
-fn tango_compare() {
-    Cmd::run(SLEEP_10, &["--color", "never", "compare"])
+fn compare() {
+    Cmd::run(SLEEP_10, &["compare"])
         .assert_success()
         .assert_stdout_match("sleep {..} [ {..} ... {..} ]{..}\n");
 }
 
 #[test]
-fn tango_solo() {
-    Cmd::run(SLEEP_10, &["--color", "never", "solo"])
+fn solo() {
+    Cmd::run(SLEEP_10, &["solo"])
         .assert_success()
         .assert_stdout_match("sleep {..} [ {..} ... {..} ... {..} ]  stddev: {..}\n");
 }
@@ -35,23 +35,17 @@ fn tango_solo() {
 fn noise_threshold_mutes_regression() {
     Cmd::run(
         SLEEP_100,
-        &[
-            "--color",
-            "never",
-            "compare",
-            SLEEP_10,
-            "--noise-threshold",
-            "99999",
-        ],
+        &["compare", SLEEP_10, "--noise-threshold", "99999"],
     )
-    .assert_success();
+    .assert_success()
+    .assert_stdout_match("sleep {..} [ {..} ... {..} ]{..} +{..}%\n");
 }
 
 /// Run sleep_100 (100ms) as candidate against sleep_10 (10ms) as baseline.
 /// With default noise threshold (0.5%), the ~900% regression should be detected.
 #[test]
 fn regression_detected_with_default_noise_threshold() {
-    Cmd::run(SLEEP_100, &["--color", "never", "compare", SLEEP_10])
+    Cmd::run(SLEEP_100, &["compare", SLEEP_10])
         .assert_failure()
         .assert_stdout_match("sleep {..} [ {..} ... {..} ]{..} +{..}%*\n");
 }
@@ -98,7 +92,9 @@ impl Cmd {
     }
 
     fn assert_stdout_match(&self, pattern: &str) -> &Self {
-        let re = compile_pattern(pattern);
+        let re_pattern = format!("(?s)^{}$", compile_pattern(pattern));
+        let re = Regex::new(&re_pattern).expect("Invalid regex");
+
         assert!(
             re.is_match(&self.stdout),
             "Expected stdout to match: {}\nstdout: {}",
@@ -109,7 +105,10 @@ impl Cmd {
     }
 
     fn assert_stdout_contains(&self, pattern: &str) -> &Self {
-        let re = compile_pattern(pattern);
+        let re_pattern = format!("(?s){}", compile_pattern(pattern));
+        let re = Regex::new(&re_pattern).expect("Invalid regex");
+
+        dbg!(re.find(&self.stdout));
         assert!(
             re.find(&self.stdout).is_some(),
             "Expected stdout to contain: {}\nstdout: {}",
@@ -120,9 +119,8 @@ impl Cmd {
     }
 }
 
-fn compile_pattern(pattern: &str) -> Regex {
+fn compile_pattern(pattern: &str) -> String {
     let parts = pattern.split("{..}").collect::<Vec<_>>();
     let escaped = parts.into_iter().map(regex::escape).collect::<Vec<_>>();
-    let re_pattern = format!("(?s)^{}$", escaped.join(".+"));
-    Regex::new(&re_pattern).expect("Invalid regex")
+    escaped.join(".+")
 }
