@@ -3,6 +3,7 @@ use std::process::{Command, ExitStatus};
 
 const SLEEP_10: &str = env!("CARGO_BIN_EXE_sleep_10");
 const SLEEP_100: &str = env!("CARGO_BIN_EXE_sleep_100");
+const NOT_A_BENCH: &str = env!("CARGO_BIN_EXE_not_a_bench");
 
 #[test]
 fn help() {
@@ -20,6 +21,20 @@ fn compare() {
     Cmd::run(SLEEP_10, &["compare"])
         .assert_success()
         .assert_stdout_match("sleep {..} [ {..} ... {..} ]{..}\n");
+}
+
+#[test]
+fn not_existent_benchmark() {
+    Cmd::run(SLEEP_10, &["compare", "not-existent"])
+        .assert_failure()
+        .assert_stderr_contains("Benchmark not found: {..}");
+}
+
+#[test]
+fn not_a_benchmark() {
+    Cmd::run(SLEEP_10, &["compare", NOT_A_BENCH])
+        .assert_failure()
+        .assert_stderr_contains("Not a valid tango benchmark: {..}");
 }
 
 #[test]
@@ -104,10 +119,9 @@ impl Cmd {
 
         assert!(
             re.is_match(&self.stdout),
-            "Expected stdout to match: {}\nstdout: {}\nstderr: {}",
+            "Expected stdout to match: {}\nstdout: {}",
             pattern.trim(),
             self.stdout,
-            self.stderr,
         );
         self
     }
@@ -121,6 +135,20 @@ impl Cmd {
             "Expected stdout to contain: {}\nstdout: {}",
             pattern,
             self.stdout,
+        );
+        self
+    }
+
+    fn assert_stderr_contains(&self, pattern: &str) -> &Self {
+        let re_pattern = format!("(?s){}", compile_pattern(pattern));
+        let re = Regex::new(&re_pattern).expect("Invalid regex");
+
+        dbg!(re_pattern);
+        assert!(
+            re.find(&self.stderr).is_some(),
+            "Expected stderr to contain: {}\nstderr: {}",
+            pattern,
+            self.stderr,
         );
         self
     }

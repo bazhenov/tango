@@ -468,9 +468,6 @@ mod paired_test {
             }
         };
 
-        #[cfg(target_os = "linux")]
-        let path = crate::linux::patch_pie_binary_if_needed(&path)?.unwrap_or(path);
-
         let mode = if parallel {
             SpiModeKind::Asynchronous
         } else {
@@ -478,12 +475,15 @@ mod paired_test {
         };
 
         let mut spi_self = Spi::for_self(mode).ok_or(Error::SpiSelfWasMoved)?;
-        let mut spi_lib = Spi::for_library(&path, mode).with_context(|| {
-            format!(
-                "Unable to load benchmark: {}. Make sure it exists and it is valid tango benchmark.",
-                path.display()
-            )
-        })?;
+
+        if !fs::exists(&path)? {
+            let description = format!("Benchmark not found: {}", path.display());
+            return Err(io::Error::new(io::ErrorKind::NotFound, description).into());
+        }
+        #[cfg(target_os = "linux")]
+        let path = crate::linux::patch_pie_binary_if_needed(&path)?.unwrap_or(path);
+        let mut spi_lib = Spi::for_library(&path, mode)
+            .with_context(|| format!("Not a valid tango benchmark: {}", path.display()))?;
 
         settings.filter_outliers = filter_outliers;
         settings.cache_firewall = cache_firewall;
