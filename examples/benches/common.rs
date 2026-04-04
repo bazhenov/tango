@@ -1,7 +1,7 @@
 extern crate tango_bench;
 
-use std::{any::type_name, convert::TryFrom, fmt::Debug, iter, marker::PhantomData, usize};
-use tango_bench::{benchmark_fn, IntoBenchmarks, MeasurementSettings, DEFAULT_SETTINGS};
+use std::{any::type_name, convert::TryFrom, fmt::Debug, iter, marker::PhantomData};
+use tango_bench::{benchmark_fn, IntoBenchmarks};
 
 const SIZES: [usize; 14] = [
     8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536,

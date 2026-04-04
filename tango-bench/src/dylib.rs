@@ -256,7 +256,7 @@ fn enumerate_tests(vt: &VTable) -> Result<Vec<NamedFunction>, Error> {
         if length > 0 {
             let slice = unsafe { slice::from_raw_parts(name_ptr as *const u8, length as usize) };
             let name = str::from_utf8(slice)
-                .map_err(Error::InvalidFFIString)?
+                .map_err(Error::InvalidFfiString)?
                 .to_string();
             let idx = idx as usize;
             tests.push(NamedFunction { name, idx });
@@ -352,6 +352,7 @@ pub mod ffi {
     use super::*;
     use std::{
         ffi::{c_int, c_uint, c_ulonglong},
+        mem,
         os::raw::c_char,
         panic::{catch_unwind, UnwindSafe},
         ptr::null,
@@ -505,6 +506,9 @@ pub mod ffi {
                 } else {
                     state.last_error = e.downcast_ref::<String>().cloned();
                 }
+                // If we drop the error, panic might be propagated again
+                // see documentation of `std::panic::catch_unwind()`
+                mem::forget(e);
                 None
             }
         }
@@ -614,13 +618,13 @@ pub mod ffi {
             let mut length = 0;
             let mut name = null();
             if unsafe { (self.get_last_error_fn)(&mut name, &mut length) } != 0 {
-                Err(Error::UnknownFFIError)
+                Err(Error::UnknownFfiError)
             } else {
                 let name = unsafe { slice::from_raw_parts(name as *const u8, length as usize) };
                 str::from_utf8(name)
-                    .map_err(Error::InvalidFFIString)
+                    .map_err(Error::InvalidFfiString)
                     .map(str::to_string)
-                    .map(Error::FFIError)
+                    .map(Error::Panic)
             }
         }
     }
