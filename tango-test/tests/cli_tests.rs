@@ -4,6 +4,7 @@ use std::process::{Command, ExitStatus};
 const SLEEP_10: &str = env!("CARGO_BIN_EXE_sleep_10");
 const SLEEP_100: &str = env!("CARGO_BIN_EXE_sleep_100");
 const NOT_A_BENCH: &str = env!("CARGO_BIN_EXE_not_a_bench");
+const SLEEP_PANIC: &str = env!("CARGO_BIN_EXE_sleep_panic");
 
 #[test]
 fn help() {
@@ -63,6 +64,14 @@ fn regression_detected_with_default_noise_threshold() {
     Cmd::run(SLEEP_100, &["compare", SLEEP_10])
         .assert_failure()
         .assert_stdout_match("sleep {..} [ {..} ... {..} ]{..} +{..}%*\n");
+}
+
+#[test]
+fn benchmark_with_panic() {
+    Cmd::run(SLEEP_10, &["compare", SLEEP_PANIC])
+        .assert_failure()
+        .assert_stderr_contains("Benchmark failed: sleep")
+        .assert_stderr_contains("Intended panic");
 }
 
 struct Cmd {

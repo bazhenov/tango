@@ -31,7 +31,7 @@ pub enum Error {
     NoMeasurements,
 
     #[error("Invalid string pointer from FFI")]
-    InvalidFFIString(Utf8Error),
+    InvalidFfiString(Utf8Error),
 
     #[error("Spi::self() was already called")]
     SpiSelfWasMoved,
@@ -58,11 +58,11 @@ pub enum Error {
     #[error("IO Error")]
     IOError(#[from] io::Error),
 
-    #[error("FFI Error: {0}")]
-    FFIError(String),
+    #[error("Panic: {0}")]
+    Panic(String),
 
     #[error("Unknown FFI Error")]
-    UnknownFFIError,
+    UnknownFfiError,
 
     #[error(
         "Non matching tango version. Expected: {}, got: {0}",

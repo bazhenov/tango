@@ -550,7 +550,8 @@ mod paired_test {
                 path_to_dump.as_ref(),
                 reporter,
                 noise_threshold,
-            )?;
+            )
+            .with_context(|| format!("Benchmark failed: {func_name}"))?;
             if let Some(usage_before) = rusage_before {
                 let rusage = platform::rusage() - usage_before;
                 if detect_system_time_bias(&rusage) {
@@ -643,7 +644,7 @@ mod paired_test {
         let a_iters = a_func
             .spi
             .estimate_iterations(TIME_SLICE_MS)
-            .context("Failed to estimate required iterations number")?;
+            .context("Failed to estimate required number of iterations (baseline)")?;
         let a_estimate = (a_iters / 2).max(1);
 
         b_func
@@ -653,7 +654,7 @@ mod paired_test {
         let b_iters = b_func
             .spi
             .estimate_iterations(TIME_SLICE_MS)
-            .context("Failed to estimate required iterations number")?;
+            .context("Failed to estimate required number of iterations (candidate)")?;
         let b_estimate = (b_iters / 2).max(1);
 
         let mut iterations_per_sample = a_estimate.min(b_estimate);
