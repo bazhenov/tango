@@ -1,53 +1,30 @@
 #[cfg(feature = "async")]
 pub use asynchronous::async_benchmark_fn;
-use core::ptr;
-use dylib::ffi::TANGO_API_VERSION;
 use metrics::WallClock;
 use num_traits::ToPrimitive;
-use rand::{rngs::SmallRng, Rng, SeedableRng};
 use std::{
     cmp::Ordering,
     hint::black_box,
     io,
     marker::PhantomData,
-    mem,
     ops::{Deref, RangeInclusive},
-    str::Utf8Error,
     time::Duration,
 };
 use thiserror::Error;
 
+pub mod child;
 pub mod cli;
-pub mod dylib;
-#[cfg(target_os = "linux")]
-pub mod linux;
+pub mod commpage;
 pub mod platform;
-#[cfg(target_os = "windows")]
-pub mod windows;
+pub mod worker;
 
 #[derive(Debug, Error)]
 pub enum Error {
     #[error("No measurements given")]
     NoMeasurements,
 
-    #[error("Invalid string pointer from FFI")]
-    InvalidFfiString(Utf8Error),
-
-    #[error("Spi::self() was already called")]
-    SpiSelfWasMoved,
-
     #[error("Benchmark is missing")]
     BenchmarkNotFound,
-
-    #[error("Unable to load benchmark")]
-    UnableToLoadBenchmark(#[source] libloading::Error),
-
-    #[cfg(target_os = "windows")]
-    #[error("Unable to patch IAT")]
-    UnableToPatchIat(#[source] windows::Error),
-
-    #[error("Unable to load library symbol: {0}")]
-    UnableToLoadSymbol(String, #[source] libloading::Error),
 
     #[error("Unknown sampler type. Available options are: flat and linear")]
     UnknownSamplerType,
@@ -60,15 +37,6 @@ pub enum Error {
 
     #[error("Panic: {0}")]
     Panic(String),
-
-    #[error("Unknown FFI Error")]
-    UnknownFfiError,
-
-    #[error(
-        "Non matching tango version. Expected: {}, got: {0}",
-        TANGO_API_VERSION
-    )]
-    IncorrectVersion(u32),
 }
 
 /// Registers benchmark in the system
@@ -90,24 +58,17 @@ pub enum Error {
 #[macro_export]
 macro_rules! tango_benchmarks {
     ($($func_expr:expr),+) => {
-        /// Type checking tango_init() function
-        const TANGO_INIT: $crate::dylib::ffi::InitFn = tango_init;
-
-        /// Exported function for initializing the benchmark harness
-        #[no_mangle]
-        unsafe extern "C" fn tango_init() {
+        fn __tango_register_benchmarks() {
             let mut benchmarks = vec![];
             $(benchmarks.extend($crate::IntoBenchmarks::into_benchmarks($func_expr));)*
-            $crate::dylib::__tango_init(benchmarks)
+            $crate::register_benchmarks(benchmarks);
         }
-
     };
 }
 
 /// Main entrypoint for benchmarks
 ///
-/// This macro generate `main()` function for the benchmark harness. Can be used in a form with providing
-/// measurement settings:
+/// This macro generates the `main()` function for the benchmark harness.
 /// ```rust
 /// use tango_bench::{tango_main, tango_benchmarks, MeasurementSettings};
 ///
@@ -115,9 +76,7 @@ macro_rules! tango_benchmarks {
 /// tango_benchmarks!([]);
 ///
 /// tango_main!(MeasurementSettings {
-///     samples_per_haystack: 1000,
-///     min_iterations_per_sample: 10,
-///     max_iterations_per_sample: 10_000,
+///     filter_outliers: true,
 ///     ..Default::default()
 /// });
 /// ```
@@ -125,14 +84,39 @@ macro_rules! tango_benchmarks {
 macro_rules! tango_main {
     ($settings:expr) => {
         fn main() -> $crate::cli::Result<std::process::ExitCode> {
-            // Initialize Tango for SelfVTable usage
-            unsafe { tango_init() };
+            __tango_register_benchmarks();
+
+            // Check for worker mode before normal CLI parsing
+            if std::env::args().any(|a| a == "__worker") {
+                $crate::worker::run_worker();
+                return Ok(std::process::ExitCode::SUCCESS);
+            }
+
             $crate::cli::run($settings)
         }
     };
     () => {
         tango_main! {$crate::MeasurementSettings::default()}
     };
+}
+
+/// Global storage for registered benchmarks.
+///
+/// Safety: Benchmarks are written once from main() before any threads are spawned,
+/// and taken once by either the CLI or worker. There is no concurrent access.
+static BENCHMARKS: BenchmarkStorage = BenchmarkStorage(std::cell::UnsafeCell::new(None));
+
+struct BenchmarkStorage(std::cell::UnsafeCell<Option<Vec<Benchmark>>>);
+unsafe impl Sync for BenchmarkStorage {}
+
+/// Called by `tango_benchmarks!` macro to register benchmarks.
+pub fn register_benchmarks(benchmarks: Vec<Benchmark>) {
+    unsafe { *BENCHMARKS.0.get() = Some(benchmarks) }
+}
+
+/// Takes the registered benchmarks out of global storage. Can only be called once.
+pub fn take_benchmarks() -> Option<Vec<Benchmark>> {
+    unsafe { (*BENCHMARKS.0.get()).take() }
 }
 
 pub struct BenchmarkParams {
@@ -304,187 +288,16 @@ impl IntoBenchmarks for Vec<Benchmark> {
 /// Describes basic settings for the benchmarking process
 ///
 /// This structure is passed to [`cli::run()`].
-///
-/// Should be created only with overriding needed properties, like so:
-/// ```rust
-/// use tango_bench::MeasurementSettings;
-///
-/// let settings = MeasurementSettings {
-///     min_iterations_per_sample: 1000,
-///     ..Default::default()
-/// };
-/// ```
 #[derive(Clone, Copy, Debug)]
 pub struct MeasurementSettings {
     pub filter_outliers: bool,
-
-    /// The number of samples per one generated haystack
-    pub samples_per_haystack: usize,
-
-    /// Minimum number of iterations in a sample for each of 2 tested functions
-    pub min_iterations_per_sample: usize,
-
-    /// The number of iterations in a sample for each of 2 tested functions
-    pub max_iterations_per_sample: usize,
-
-    pub sampler_type: SampleLengthKind,
-
-    /// If true scheduler performs warmup iterations before measuring function
-    pub warmup_enabled: bool,
-
-    /// Size of a CPU cache firewall in KBytes
-    ///
-    /// If set, the scheduler will perform a dummy data read between samples generation to spoil the CPU cache
-    ///
-    /// Cache firewall is a way to reduce the impact of the CPU cache on the benchmarking process. It tries
-    /// to minimize discrepancies in performance between two algorithms due to the CPU cache state.
-    pub cache_firewall: Option<usize>,
-
-    /// If true, scheduler will perform a yield of control back to the OS before taking each sample
-    ///
-    /// Yielding control to the OS is a way to reduce the impact of OS scheduler on the benchmarking process.
-    pub yield_before_sample: bool,
-
-    /// If set, use alloca to allocate a random offset for the stack each sample.
-    /// This to reduce memory alignment effects on the benchmarking process.
-    ///
-    /// May cause UB if the allocation is larger then the thread stack size.
-    pub randomize_stack: Option<usize>,
 }
-
-#[derive(Clone, Copy, Debug)]
-pub enum SampleLengthKind {
-    Flat,
-    Linear,
-    Random,
-}
-
-/// Performs a dummy reads from memory to spoil given amount of CPU cache
-///
-/// Uses cache aligned data arrays to perform minimum amount of reads possible to spoil the cache
-struct CacheFirewall {
-    cache_lines: Vec<CacheLine>,
-}
-
-impl CacheFirewall {
-    fn new(bytes: usize) -> Self {
-        let n = bytes / mem::size_of::<CacheLine>();
-        let cache_lines = vec![CacheLine::default(); n];
-        Self { cache_lines }
-    }
-
-    fn issue_read(&self) {
-        for line in &self.cache_lines {
-            // Because CacheLine is aligned on 64 bytes it is enough to read single element from the array
-            // to spoil the whole cache line
-            unsafe { ptr::read_volatile(&line.0[0]) };
-        }
-    }
-}
-
-#[repr(C)]
-#[repr(align(64))]
-#[derive(Default, Clone, Copy)]
-struct CacheLine([u16; 32]);
-
-pub const DEFAULT_SETTINGS: MeasurementSettings = MeasurementSettings {
-    filter_outliers: false,
-    samples_per_haystack: 1,
-    min_iterations_per_sample: 1,
-    max_iterations_per_sample: usize::MAX,
-    sampler_type: SampleLengthKind::Random,
-    cache_firewall: None,
-    yield_before_sample: false,
-    warmup_enabled: true,
-    randomize_stack: None,
-};
 
 impl Default for MeasurementSettings {
     fn default() -> Self {
-        DEFAULT_SETTINGS
-    }
-}
-
-/// Responsible for determining the number of iterations to run for each sample
-///
-/// Different sampler strategies can influence the results heavily. For example, if function is dependent heavily
-/// on a memory subsystem, then it should be tested with different number of iterations to be representative
-/// for different memory access patterns and cache states.
-trait SampleLength {
-    /// Returns the number of iterations to run for the next sample
-    ///
-    /// Accepts the number of iteration being run starting from 0 and cumulative time spent by both functions
-    fn next_sample_iterations(&mut self, iteration_no: usize, estimate: usize) -> usize;
-}
-
-/// Runs the same number of iterations for each sample
-///
-/// Estimates the number of iterations based on the number of iterations achieved in 10 ms and uses
-/// this number as a base for the number of iterations for each sample.
-struct FlatSampleLength {
-    min: usize,
-    max: usize,
-}
-
-impl FlatSampleLength {
-    fn new(settings: &MeasurementSettings) -> Self {
-        FlatSampleLength {
-            min: settings.min_iterations_per_sample.max(1),
-            max: settings.max_iterations_per_sample,
+        MeasurementSettings {
+            filter_outliers: false,
         }
-    }
-}
-
-impl SampleLength for FlatSampleLength {
-    fn next_sample_iterations(&mut self, _iteration_no: usize, estimate: usize) -> usize {
-        estimate.clamp(self.min, self.max)
-    }
-}
-
-struct LinearSampleLength {
-    min: usize,
-    max: usize,
-}
-
-impl LinearSampleLength {
-    fn new(settings: &MeasurementSettings) -> Self {
-        Self {
-            min: settings.min_iterations_per_sample.max(1),
-            max: settings.max_iterations_per_sample,
-        }
-    }
-}
-
-impl SampleLength for LinearSampleLength {
-    fn next_sample_iterations(&mut self, iteration_no: usize, estimate: usize) -> usize {
-        let estimate = estimate.clamp(self.min, self.max);
-        (iteration_no % estimate) + 1
-    }
-}
-
-/// Sampler that randomly determines the number of iterations to run for each sample
-///
-/// This sampler uses a random number generator to decide the number of iterations for each sample.
-struct RandomSampleLength {
-    rng: SmallRng,
-    min: usize,
-    max: usize,
-}
-
-impl RandomSampleLength {
-    pub fn new(settings: &MeasurementSettings, seed: u64) -> Self {
-        Self {
-            rng: SmallRng::seed_from_u64(seed),
-            min: settings.min_iterations_per_sample.max(1),
-            max: settings.max_iterations_per_sample,
-        }
-    }
-}
-
-impl SampleLength for RandomSampleLength {
-    fn next_sample_iterations(&mut self, _iteration_no: usize, estimate: usize) -> usize {
-        let estimate = estimate.clamp(self.min, self.max);
-        self.rng.gen_range(1..=estimate)
     }
 }
 
