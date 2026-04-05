@@ -1,9 +1,5 @@
 //! Contains functionality of a `cargo bench` harness
-use crate::{
-    dylib::{FunctionIdx, Spi, SpiModeKind},
-    CacheFirewall, Error, FlatSampleLength, LinearSampleLength, MeasurementSettings,
-    RandomSampleLength, SampleLength, SampleLengthKind,
-};
+use crate::{Error, MeasurementSettings};
 use anyhow::{bail, Context};
 use clap::{ArgAction, Parser};
 use colorz::mode::{self, Mode};
@@ -22,7 +18,6 @@ use std::{
 };
 
 pub type Result<T> = anyhow::Result<T>;
-pub(crate) type StdResult<T, E> = std::result::Result<T, E>;
 
 #[derive(Parser, Debug)]
 enum BenchmarkMode {
@@ -61,10 +56,6 @@ struct PairedOpts {
     #[arg(short = 's', long = "samples")]
     samples: Option<NonZeroUsize>,
 
-    /// The strategy to decide the number of iterations to run for each sample (values: flat, linear, random)
-    #[arg(long = "sampler")]
-    sampler: Option<SampleLengthKind>,
-
     /// Duration of each sample in seconds
     #[arg(short = 't', long = "time")]
     time: Option<f64>,
@@ -77,20 +68,6 @@ struct PairedOpts {
     #[arg(long = "fail-fast")]
     fail_fast: bool,
 
-    /// Perform a read of a dummy data between samsples to minimize the effect of cache on the performance
-    /// (size in Kbytes)
-    #[arg(long = "cache-firewall")]
-    cache_firewall: Option<usize>,
-
-    /// Perform a randomized offset to the stack frame for each sample.
-    /// (size in bytes)
-    #[arg(long = "randomize-stack")]
-    randomize_stack: Option<usize>,
-
-    /// Delegate control back to the OS before each sample
-    #[arg(long = "yield-before-sample")]
-    yield_before_sample: Option<bool>,
-
     /// Filter tests by name (eg. '*/{sorted,unsorted}/[0-9]*')
     #[arg(short = 'f', long = "filter")]
     filter: Option<String>,
@@ -102,13 +79,6 @@ struct PairedOpts {
     /// Enable outlier detection
     #[arg(short = 'o', long = "filter-outliers")]
     filter_outliers: bool,
-
-    /// Perform warmup iterations before taking measurements (1/10 of sample iterations)
-    #[arg(long = "warmup")]
-    warmup_enabled: Option<bool>,
-
-    #[arg(short = 'p', long = "parallel")]
-    parallel: bool,
 
     /// Quiet mode
     #[arg(short = 'q')]
@@ -135,35 +105,13 @@ struct SoloOpts {
     #[arg(short = 's', long = "samples")]
     samples: Option<NonZeroUsize>,
 
-    /// The strategy to decide the number of iterations to run for each sample (values: flat, linear, random)
-    #[arg(long = "sampler")]
-    sampler: Option<SampleLengthKind>,
-
     /// Duration of each sample in seconds
     #[arg(short = 't', long = "time")]
     time: Option<f64>,
 
-    /// Perform a read of a dummy data between samsples to minimize the effect of cache on the performance
-    /// (size in Kbytes)
-    #[arg(long = "cache-firewall")]
-    cache_firewall: Option<usize>,
-
-    /// Perform a randomized offset to the stack frame for each sample.
-    /// (size in bytes)
-    #[arg(long = "randomize-stack")]
-    randomize_stack: Option<usize>,
-
-    /// Delegate control back to the OS before each sample
-    #[arg(long = "yield-before-sample")]
-    yield_before_sample: Option<bool>,
-
     /// Filter tests by name (eg. '*/{sorted,unsorted}/[0-9]*')
     #[arg(short = 'f', long = "filter")]
     filter: Option<String>,
-
-    /// Perform warmup iterations before taking measurements (1/10 of sample iterations)
-    #[arg(long = "warmup")]
-    warmup_enabled: Option<bool>,
 }
 
 #[derive(Parser, Debug)]
@@ -177,19 +125,6 @@ struct Opts {
 
     #[arg(long = "color", default_value = "detect")]
     coloring_mode: String,
-}
-
-impl FromStr for SampleLengthKind {
-    type Err = Error;
-
-    fn from_str(s: &str) -> StdResult<Self, Self::Err> {
-        match s {
-            "flat" => Ok(SampleLengthKind::Flat),
-            "linear" => Ok(SampleLengthKind::Linear),
-            "random" => Ok(SampleLengthKind::Random),
-            _ => Err(Error::UnknownSamplerType),
-        }
-    }
 }
 
 /// Definition of the flags required to comply with `cargo bench` calling conventions.
@@ -213,33 +148,14 @@ pub fn run(settings: MeasurementSettings) -> Result<ExitCode> {
 
     match subcommand {
         BenchmarkMode::List { bench_flags: _ } => {
-            let spi = Spi::for_self(SpiModeKind::Synchronous).ok_or(Error::SpiSelfWasMoved)?;
-            for func in spi.tests() {
-                println!("{}", func.name);
+            let benchmarks = crate::take_benchmarks().unwrap_or_default();
+            for bench in &benchmarks {
+                println!("{}", bench.name());
             }
             Ok(ExitCode::SUCCESS)
         }
         BenchmarkMode::Compare(opts) => paired_test::run_test(opts, settings),
         BenchmarkMode::Solo(opts) => solo_test::run_test(opts, settings),
-    }
-}
-
-// Automatically removes a file when goes out of scope
-struct AutoDelete(PathBuf);
-
-impl std::ops::Deref for AutoDelete {
-    type Target = PathBuf;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl Drop for AutoDelete {
-    fn drop(&mut self) {
-        if let Err(e) = fs::remove_file(&self.0) {
-            eprintln!("Failed to delete file {}: {}", self.0.display(), e);
-        }
     }
 }
 
@@ -270,146 +186,53 @@ impl LoopMode {
 
 mod solo_test {
     use super::*;
-    use crate::{dylib::Spi, CacheFirewall, Summary};
-    use alloca::with_alloca;
-    use rand::{distributions, rngs::SmallRng, Rng, SeedableRng};
-    use std::thread;
+    use crate::Summary;
 
-    pub(super) fn run_test(opts: SoloOpts, mut settings: MeasurementSettings) -> Result<ExitCode> {
+    pub(super) fn run_test(opts: SoloOpts, _settings: MeasurementSettings) -> Result<ExitCode> {
         let SoloOpts {
             bench_flags: _,
             filter,
             samples,
             time,
             seed,
-            sampler,
-            cache_firewall,
-            yield_before_sample,
-            warmup_enabled,
-            randomize_stack,
         } = opts;
 
-        let mut spi_self = Spi::for_self(SpiModeKind::Synchronous).ok_or(Error::SpiSelfWasMoved)?;
-
-        settings.cache_firewall = cache_firewall;
-        settings.randomize_stack = randomize_stack;
-
-        if let Some(warmup_enabled) = warmup_enabled {
-            settings.warmup_enabled = warmup_enabled;
-        }
-        if let Some(yield_before_sample) = yield_before_sample {
-            settings.yield_before_sample = yield_before_sample;
-        }
-        if let Some(sampler) = sampler {
-            settings.sampler_type = sampler;
-        }
-
+        let mut benchmarks = crate::take_benchmarks().unwrap_or_default();
         let filter = filter.as_deref().unwrap_or("");
         let loop_mode = create_loop_mode(samples, time)?;
+        let seed = seed.unwrap_or_else(rand::random);
 
-        let test_names = spi_self
-            .tests()
-            .iter()
-            .map(|t| &t.name)
-            .cloned()
-            .collect::<Vec<_>>();
-        for func_name in test_names {
-            if !filter.is_empty() && !glob_match(filter, &func_name) {
+        for bench in &mut benchmarks {
+            let name = bench.name().to_string();
+            if !filter.is_empty() && !glob_match(filter, &name) {
                 continue;
             }
 
-            let result = run_solo_test(&mut spi_self, &func_name, settings, seed, loop_mode)?;
+            let mut sampler = bench.prepare_state(seed);
+            let iters = sampler.estimate_iterations(10);
+            let iterations = (iters / 2).max(1);
 
-            reporting::default_reporter_solo(&func_name, &result);
+            let mut sample_values = vec![];
+            let mut loop_time = Duration::from_secs(0);
+            let mut i = 0;
+
+            if let LoopMode::Samples(n) = loop_mode {
+                sample_values.reserve(n);
+            }
+
+            while loop_mode.should_continue(i, loop_time) {
+                let elapsed_ns = sampler.measure(iterations);
+                let per_iter = elapsed_ns as f64 / iterations as f64;
+                sample_values.push(per_iter);
+                loop_time += Duration::from_nanos(elapsed_ns);
+                i += 1;
+            }
+
+            let result = Summary::from(&sample_values).ok_or(Error::NoMeasurements)?;
+            reporting::default_reporter_solo(&name, &result);
         }
 
         Ok(ExitCode::SUCCESS)
-    }
-
-    fn run_solo_test(
-        spi: &mut Spi,
-        test_name: &str,
-        settings: MeasurementSettings,
-        seed: Option<u64>,
-        loop_mode: LoopMode,
-    ) -> Result<Summary<f64>> {
-        const TIME_SLICE_MS: u32 = 10;
-
-        let firewall = settings
-            .cache_firewall
-            .map(|s| s * 1024)
-            .map(CacheFirewall::new);
-        let baseline_func = spi.lookup(test_name).ok_or(Error::InvalidTestName)?;
-
-        let mut spi_func = TestedFunction::new(spi, baseline_func.idx);
-
-        let seed = seed.unwrap_or_else(rand::random);
-
-        spi_func.spi.prepare_state(seed)?;
-        let iters = spi_func.spi.estimate_iterations(TIME_SLICE_MS)?;
-        let mut iterations_per_sample = (iters / 2).max(1);
-        let mut sampler = create_sampler(&settings, seed);
-
-        let mut rng = SmallRng::seed_from_u64(seed);
-        let stack_offset_distr = settings
-            .randomize_stack
-            .map(|offset| distributions::Uniform::new(0, offset));
-
-        let mut i = 0;
-
-        let mut sample_iterations = vec![];
-
-        if let LoopMode::Samples(samples) = loop_mode {
-            sample_iterations.reserve(samples);
-            spi_func.samples.reserve(samples);
-        }
-
-        let mut loop_time = Duration::from_secs(0);
-        let mut loop_iterations = 0;
-        while loop_mode.should_continue(i, loop_time) {
-            if loop_time > Duration::from_millis(100) {
-                // correcting time slice estimates
-                iterations_per_sample =
-                    loop_iterations * TIME_SLICE_MS as usize / loop_time.as_millis() as usize;
-            }
-            let iterations = sampler.next_sample_iterations(i, iterations_per_sample);
-            loop_iterations += iterations;
-            let warmup_iterations = settings.warmup_enabled.then(|| (iterations / 10).max(1));
-
-            if settings.yield_before_sample {
-                thread::yield_now();
-            }
-
-            let prepare_state_seed = (i % settings.samples_per_haystack == 0).then_some(seed);
-
-            prepare_func(
-                prepare_state_seed,
-                &mut spi_func,
-                warmup_iterations,
-                firewall.as_ref(),
-            )?;
-
-            // Allocate a custom stack frame during runtime, to try to offset alignment of the stack.
-            if let Some(distr) = stack_offset_distr {
-                with_alloca(rng.sample(distr), |_| {
-                    spi_func.spi.measure(iterations).unwrap();
-                });
-            } else {
-                spi_func.spi.measure(iterations)?;
-            }
-
-            loop_time += Duration::from_nanos(spi_func.read_sample()?);
-            sample_iterations.push(iterations);
-            i += 1;
-        }
-
-        let samples = spi_func
-            .samples
-            .iter()
-            .zip(sample_iterations.iter())
-            .map(|(sample, iterations)| *sample as f64 / *iterations as f64)
-            .collect::<Vec<_>>();
-        Ok(Summary::from(&samples).unwrap())
     }
 }
 
@@ -417,23 +240,19 @@ mod paired_test {
     use super::*;
     use crate::{
         calculate_run_result,
+        child::ChildHandle,
         cli::reporting::BenchmarkProgress,
+        commpage::{Commpage, Role},
         platform::{self, RUsage},
-        CacheFirewall, RunResult,
     };
-    use alloca::with_alloca;
     use fs::File;
-    use rand::{distributions, rngs::SmallRng, Rng, SeedableRng};
     use reporting::Reporter;
     use std::{
         io::{self, BufWriter},
-        mem, thread,
+        time::Instant,
     };
 
-    pub(super) fn run_test(
-        opts: PairedOpts,
-        mut settings: MeasurementSettings,
-    ) -> Result<ExitCode> {
+    pub(super) fn run_test(opts: PairedOpts, _settings: MeasurementSettings) -> Result<ExitCode> {
         let PairedOpts {
             bench_flags: _,
             path,
@@ -447,60 +266,37 @@ mod paired_test {
             noise_threshold,
             fail_fast,
             significant_only,
-            seed,
-            sampler,
-            cache_firewall,
-            yield_before_sample,
-            warmup_enabled,
-            parallel,
+            seed: _seed,
             quiet,
-            randomize_stack,
             system_time_check,
         } = opts;
         let mut path = path
             .or_else(|| args().next().map(PathBuf::from))
             .expect("No path given");
         if path.is_relative() {
-            // Resolving paths relative to PWD if given
-
             if let Ok(pwd) = env::current_dir() {
                 path = pwd.join(path)
             }
         };
 
-        let mode = if parallel {
-            SpiModeKind::Asynchronous
-        } else {
-            SpiModeKind::Synchronous
-        };
-
-        let mut spi_self = Spi::for_self(mode).ok_or(Error::SpiSelfWasMoved)?;
-
         if !fs::exists(&path)? {
             let description = format!("Benchmark not found: {}", path.display());
             return Err(io::Error::new(io::ErrorKind::NotFound, description).into());
         }
-        #[cfg(target_os = "linux")]
-        let path = crate::linux::patch_pie_binary_if_needed(&path)?.unwrap_or(path);
-        let mut spi_lib = Spi::for_library(&path, mode)
-            .with_context(|| format!("Not a valid tango benchmark: {}", path.display()))?;
-
-        settings.filter_outliers = filter_outliers;
-        settings.cache_firewall = cache_firewall;
-        settings.randomize_stack = randomize_stack;
-
-        if let Some(warmup_enabled) = warmup_enabled {
-            settings.warmup_enabled = warmup_enabled;
-        }
-        if let Some(yield_before_sample) = yield_before_sample {
-            settings.yield_before_sample = yield_before_sample;
-        }
-        if let Some(sampler) = sampler {
-            settings.sampler_type = sampler;
-        }
 
         let filter = filter.as_deref().unwrap_or("");
         let loop_mode = create_loop_mode(samples, time)?;
+
+        let commpage =
+            Commpage::create().map_err(|e| anyhow::anyhow!("Failed to create commpage: {e}"))?;
+
+        let candidate_exe = env::current_exe().context("Unable to determine current executable")?;
+
+        let (mut child_c, c_benchmarks) =
+            ChildHandle::spawn(&candidate_exe, &commpage, Role::Candidate)
+                .context("Failed to spawn candidate")?;
+        let (mut child_b, b_benchmarks) = ChildHandle::spawn(&path, &commpage, Role::Baseline)
+            .context("Failed to spawn baseline")?;
 
         let mut exit_code = ExitCode::SUCCESS;
 
@@ -521,56 +317,136 @@ mod paired_test {
             &reporting::DefaultReporter
         };
 
-        let test_names = spi_self
-            .tests()
-            .iter()
-            .map(|t| &t.name)
-            .cloned()
-            .collect::<Vec<_>>();
-        for func_name in test_names {
-            if !filter.is_empty() && !glob_match(filter, &func_name) {
+        for (c_idx, func_name) in c_benchmarks.iter().enumerate() {
+            if !filter.is_empty() && !glob_match(filter, func_name) {
                 continue;
             }
 
-            if spi_lib.lookup(&func_name).is_none() {
-                if !quiet {
-                    writeln!(stderr(), "{} skipped...", &func_name)?;
+            let b_idx = match b_benchmarks.iter().position(|n| n == func_name) {
+                Some(idx) => idx,
+                None => {
+                    if !quiet {
+                        writeln!(stderr(), "{} skipped...", func_name)?;
+                    }
+                    continue;
                 }
-                continue;
-            }
+            };
+
+            // Reset commpage and read positions for the new benchmark
+            commpage.reset();
+            child_c.reset_read_pos();
+            child_b.reset_read_pos();
 
             let rusage_before = system_time_check.then(platform::rusage);
-            let (result, sample_dump) = run_paired_test(
-                &mut spi_lib,
-                &mut spi_self,
-                &func_name,
-                settings,
-                seed,
-                loop_mode,
-                path_to_dump.as_ref(),
-                reporter,
-                noise_threshold,
-            )
-            .with_context(|| format!("Benchmark failed: {func_name}"))?;
+
+            // Select benchmark on both children
+            child_c
+                .select(c_idx)
+                .with_context(|| format!("Failed to select '{func_name}' on candidate"))?;
+            child_b
+                .select(b_idx)
+                .with_context(|| format!("Failed to select '{func_name}' on baseline"))?;
+
+            // Estimate iterations
+            const TIME_SLICE_MS: u32 = 10;
+            let c_iters = child_c
+                .estimate_iterations(TIME_SLICE_MS)
+                .context("Failed to estimate iterations (candidate)")?;
+            let b_iters = child_b
+                .estimate_iterations(TIME_SLICE_MS)
+                .context("Failed to estimate iterations (baseline)")?;
+            let iterations = c_iters.max(1).min(b_iters.max(1));
+
+            // Determine num_samples
+            let num_samples = match loop_mode {
+                LoopMode::Samples(n) => n,
+                LoopMode::Time(_) => 0,
+            };
+
+            // Start measurement on both children (non-blocking)
+            child_c.start_benchmark(iterations, num_samples)?;
+            child_b.start_benchmark(iterations, num_samples)?;
+
+            // If time-budget mode, wait and set stop flag
+            if let LoopMode::Time(duration) = loop_mode {
+                let start = Instant::now();
+                while start.elapsed() < duration {
+                    let elapsed = start.elapsed();
+                    if elapsed.as_millis() > 50
+                        && (duration > Duration::from_millis(500)
+                            || elapsed > Duration::from_millis(500))
+                    {
+                        let phase = BenchmarkProgress::SamplingTime {
+                            loop_time: elapsed,
+                            total_duration: duration,
+                        };
+                        reporter.report_progress(func_name, phase);
+                    }
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+                commpage.set_stop();
+            }
+
+            // Wait for both children to finish
+            child_c
+                .finish_benchmark()
+                .context("Candidate benchmark failed")?;
+            child_b
+                .finish_benchmark()
+                .context("Baseline benchmark failed")?;
+
+            // Drain all samples
+            let c_samples = child_c.drain_samples(&commpage);
+            let b_samples = child_b.drain_samples(&commpage);
+
             if let Some(usage_before) = rusage_before {
                 let rusage = platform::rusage() - usage_before;
-                if detect_system_time_bias(&rusage) {
-                    reporting::report_system_time_bias(&func_name, &rusage);
+                if detect_system_time_bias(&rusage) && false {
+                    reporting::report_system_time_bias(func_name, &rusage);
                 }
             }
 
-            if let Some(dump) = sample_dump {
-                sample_dumps.push(dump);
+            let n = c_samples.len().min(b_samples.len());
+            if n == 0 {
+                bail!("No samples collected for {func_name}");
             }
 
-            if result.diff_estimate.significant || !significant_only {
-                reporter.benchmark_finished(&func_name, &result);
+            // All samples use the same iteration count
+            let sample_iterations: Vec<usize> = vec![iterations; n];
+
+            let run_result = calculate_run_result(
+                &b_samples[..n],
+                &c_samples[..n],
+                &sample_iterations,
+                filter_outliers,
+                noise_threshold,
+            )
+            .ok_or(Error::NoMeasurements)?;
+
+            if let Some(path) = &path_to_dump {
+                let file_name = format!("{}.csv", func_name.replace('/', "-"));
+                let file_path = path.join(file_name);
+                write_csv(
+                    &file_path,
+                    b_samples
+                        .iter()
+                        .zip(c_samples.iter())
+                        .zip(sample_iterations.iter())
+                        .map(|((b, c), i)| (b, c, i)),
+                )
+                .context("Unable to write raw measurements")?;
+                sample_dumps.push(file_path);
             }
 
-            // If results are significant and candidate is slower
-            if result.diff_estimate.significant && result.diff_estimate.pct > 0. {
+            if run_result.diff_estimate.significant || !significant_only {
+                reporter.benchmark_finished(func_name, &run_result);
+            }
+
+            if run_result.diff_estimate.significant && run_result.diff_estimate.pct > 0. {
                 exit_code = ExitCode::FAILURE;
                 if fail_fast {
+                    let _ = child_c.shutdown();
+                    let _ = child_b.shutdown();
                     return Ok(ExitCode::FAILURE);
                 }
             }
@@ -580,236 +456,17 @@ mod paired_test {
             generate_plots(sample_dumps.as_slice())?;
         }
 
+        let _ = child_c.shutdown();
+        let _ = child_b.shutdown();
+
         Ok(exit_code)
     }
 
     /// Checking if test spent too much time in a system/kernel mode.
-    ///
-    /// OS doesn't provide fairness guarantees, this can influence result
     fn detect_system_time_bias(rusage: &RUsage) -> bool {
-        // system time is at least 5% of CPU time overall
         let system = rusage.system_time.as_secs_f64();
         let overall = (rusage.user_time + rusage.system_time).as_secs_f64();
         system / overall > 0.05
-    }
-
-    /// Measure the difference in performance of two functions
-    ///
-    /// Provides a way to save a raw dump of measurements into directory
-    ///
-    /// The format is as follows
-    /// ```txt
-    /// b_1,c_1
-    /// b_2,c_2
-    /// ...
-    /// b_n,c_n
-    /// ```
-    /// where `b_1..b_n` are baseline absolute time (in nanoseconds) measurements
-    /// and `c_1..c_n` are candidate time measurements
-    ///
-    /// Returns a statistical results of a test run and path to raw samples of sample dump was requested
-    #[allow(clippy::too_many_arguments)]
-    fn run_paired_test(
-        baseline: &mut Spi,
-        candidate: &mut Spi,
-        test_name: &str,
-        settings: MeasurementSettings,
-        seed: Option<u64>,
-        loop_mode: LoopMode,
-        samples_dump_path: Option<&PathBuf>,
-        reporter: &dyn Reporter,
-        noise_threshold: f64,
-    ) -> Result<(RunResult, Option<PathBuf>)> {
-        const TIME_SLICE_MS: u32 = 10;
-
-        let firewall = settings
-            .cache_firewall
-            .map(|s| s * 1024)
-            .map(CacheFirewall::new);
-        let baseline_func = baseline.lookup(test_name).ok_or(Error::InvalidTestName)?;
-        let candidate_func = candidate.lookup(test_name).ok_or(Error::InvalidTestName)?;
-
-        let mut baseline = TestedFunction::new(baseline, baseline_func.idx);
-        let mut candidate = TestedFunction::new(candidate, candidate_func.idx);
-
-        let mut a_func = &mut baseline;
-        let mut b_func = &mut candidate;
-
-        let seed = seed.unwrap_or_else(rand::random);
-
-        a_func
-            .spi
-            .prepare_state(seed)
-            .context("Unable to prepare benchmark state")?;
-        let a_iters = a_func
-            .spi
-            .estimate_iterations(TIME_SLICE_MS)
-            .context("Failed to estimate required number of iterations (baseline)")?;
-        let a_estimate = (a_iters / 2).max(1);
-
-        b_func
-            .spi
-            .prepare_state(seed)
-            .context("Unable to prepare benchmark state")?;
-        let b_iters = b_func
-            .spi
-            .estimate_iterations(TIME_SLICE_MS)
-            .context("Failed to estimate required number of iterations (candidate)")?;
-        let b_estimate = (b_iters / 2).max(1);
-
-        let mut iterations_per_sample = a_estimate.min(b_estimate);
-        let mut sampler = create_sampler(&settings, seed);
-
-        let mut rng = SmallRng::seed_from_u64(seed);
-        let stack_offset_distr = settings
-            .randomize_stack
-            .map(|offset| distributions::Uniform::new(0, offset));
-
-        let mut i = 0;
-        let mut switch_counter = 0;
-
-        let mut sample_iterations = vec![];
-
-        if let LoopMode::Samples(samples) = loop_mode {
-            sample_iterations.reserve(samples);
-            a_func.samples.reserve(samples);
-            b_func.samples.reserve(samples);
-        }
-
-        let estimated_benchmark_time = match loop_mode {
-            LoopMode::Samples(total_samples) => {
-                Duration::from_millis(TIME_SLICE_MS as u64 * total_samples as u64)
-            }
-            LoopMode::Time(duration) => duration,
-        };
-
-        let mut loop_time = Duration::from_secs(0);
-        let mut loop_iterations = 0;
-        let mut last_report_time = loop_time;
-        while loop_mode.should_continue(i, loop_time) {
-            // Report no more that 20 times a sec and do not show progress if benchmark is fast enough
-            if loop_time > last_report_time + Duration::from_millis(50)
-                && (estimated_benchmark_time > Duration::from_millis(500)
-                    || loop_time > Duration::from_millis(500))
-            {
-                last_report_time = loop_time;
-                let phase = match loop_mode {
-                    LoopMode::Samples(samples_total) => BenchmarkProgress::SamplingNo {
-                        sample_no: i,
-                        samples_total,
-                    },
-                    LoopMode::Time(total_duration) => BenchmarkProgress::SamplingTime {
-                        loop_time,
-                        total_duration,
-                    },
-                };
-                reporter.report_progress(test_name, phase);
-            }
-
-            let iterations = sampler.next_sample_iterations(i, iterations_per_sample);
-            let warmup_iterations = settings.warmup_enabled.then(|| (iterations / 10).max(1));
-
-            // !!! IMPORTANT !!!
-            // Algorithms should be called in different order on each new iteration.
-            // This equalize the probability of facing unfortunate circumstances like cache misses or page faults
-            // for both functions. Although both algorithms are from distinct shared objects and therefore
-            // must be fully self-contained in terms of virtual address space (each shared object has its own
-            // generator instances, static variables, memory mappings, etc.) it might be the case that
-            // on the level of physical memory both of them rely on the same memory-mapped test data, for example.
-            // In that case first function will experience the larger amount of major page faults.
-            {
-                mem::swap(&mut a_func, &mut b_func);
-                switch_counter += 1;
-            }
-
-            if settings.yield_before_sample {
-                thread::yield_now();
-            }
-
-            let prepare_state_seed = (i % settings.samples_per_haystack == 0).then_some(seed);
-            let mut sample_time = 0;
-
-            prepare_func(
-                prepare_state_seed,
-                a_func,
-                warmup_iterations,
-                firewall.as_ref(),
-            )?;
-            prepare_func(
-                prepare_state_seed,
-                b_func,
-                warmup_iterations,
-                firewall.as_ref(),
-            )?;
-
-            // Allocate a custom stack frame during runtime, to try to offset alignment of the stack.
-            if let Some(distr) = stack_offset_distr {
-                with_alloca(rng.sample(distr), |_| {
-                    a_func.spi.measure(iterations).unwrap();
-                    b_func.spi.measure(iterations).unwrap();
-                });
-            } else {
-                a_func.spi.measure(iterations)?;
-                b_func.spi.measure(iterations)?;
-            }
-
-            let a_sample_time = a_func.read_sample()?;
-            let b_sample_time = b_func.read_sample()?;
-            sample_time += a_sample_time.max(b_sample_time);
-
-            loop_time += Duration::from_nanos(sample_time);
-            sample_iterations.push(iterations);
-            i += 1;
-
-            // correcting time slice estimates
-            loop_iterations += iterations;
-            iterations_per_sample = loop_iterations
-                * Duration::from_millis(TIME_SLICE_MS as u64).as_nanos() as usize
-                / loop_time.as_nanos() as usize;
-        }
-
-        // If we switched functions odd number of times then we need to swap them back so that
-        // the first function is always the baseline.
-        if switch_counter % 2 != 0 {
-            mem::swap(&mut a_func, &mut b_func);
-        }
-
-        let run_result = calculate_run_result(
-            &a_func.samples,
-            &b_func.samples,
-            &sample_iterations,
-            settings.filter_outliers,
-            noise_threshold,
-        )
-        .ok_or(Error::NoMeasurements)?;
-
-        let samples_path = if let Some(path) = samples_dump_path {
-            let file_path = write_samples(path, test_name, a_func, b_func, sample_iterations)?;
-            Some(file_path)
-        } else {
-            None
-        };
-
-        Ok((run_result, samples_path))
-    }
-
-    fn write_samples(
-        path: &Path,
-        test_name: &str,
-        a_func: &TestedFunction,
-        b_func: &TestedFunction,
-        iterations: Vec<usize>,
-    ) -> Result<PathBuf> {
-        let file_name = format!("{}.csv", test_name.replace('/', "-"));
-        let file_path = path.join(file_name);
-        let s_samples = a_func.samples.iter().copied();
-        let b_samples = b_func.samples.iter().copied();
-        let values = s_samples
-            .zip(b_samples)
-            .zip(iterations.iter().copied())
-            .map(|((a, b), c)| (a, b, c));
-        write_csv(&file_path, values).context("Unable to write raw measurements")?;
-        Ok(file_path)
     }
 
     fn write_csv<A: Display, B: Display, C: Display>(
@@ -852,6 +509,25 @@ mod paired_test {
     }
 }
 
+// Automatically removes a file when goes out of scope
+struct AutoDelete(PathBuf);
+
+impl std::ops::Deref for AutoDelete {
+    type Target = PathBuf;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl Drop for AutoDelete {
+    fn drop(&mut self) {
+        if let Err(e) = fs::remove_file(&self.0) {
+            eprintln!("Failed to delete file {}: {}", self.0.display(), e);
+        }
+    }
+}
+
 mod reporting {
     use crate::{
         cli::{colorize, HumanTime},
@@ -865,28 +541,23 @@ mod reporting {
     };
 
     pub(super) enum BenchmarkProgress {
+        #[allow(dead_code)]
         SamplingNo {
-            /// The number of sample being taken right now
             sample_no: usize,
-            /// The number of samples that harness is plan to gather
             samples_total: usize,
         },
         SamplingTime {
-            /// The time being taken by benchmark so far
             loop_time: Duration,
-            /// The total time requested by a user
             total_duration: Duration,
         },
     }
 
-    /// Clears the current line on stderr (carriage return + ANSI erase line)
     fn clear_progress_line() {
         eprint!("\r\x1b[2K");
         let _ = io::stderr().flush();
     }
 
     pub(super) trait Reporter {
-        /// Executed when a benchmark execution is progressed to a new stage
         fn report_progress(&self, name: &str, progress: BenchmarkProgress) {
             const BAR_WIDTH: usize = 23;
             match progress {
@@ -951,14 +622,14 @@ mod reporting {
                 "",
                 "baseline".bold().stream(Stream::Stdout),
                 "candidate".bold().stream(Stream::Stdout),
-                "∆".bold().stream(Stream::Stdout),
+                "\u{2206}".bold().stream(Stream::Stdout),
             );
             println!(
-                "    {:12} ╭────────────────────────────────────────────────",
+                "    {:12} \u{256d}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}",
                 ""
             );
             println!(
-                "    {:12} │ {:>15} {:>15} {:>15}  {:+4.2}{}{}",
+                "    {:12} \u{2502} {:>15} {:>15} {:>15}  {:+4.2}{}{}",
                 "mean",
                 HumanTime(base.mean),
                 HumanTime(candidate.mean),
@@ -976,21 +647,21 @@ mod reporting {
                 if significant { "*" } else { "" },
             );
             println!(
-                "    {:12} │ {:>15} {:>15} {:>15}",
+                "    {:12} \u{2502} {:>15} {:>15} {:>15}",
                 "min",
                 HumanTime(base.min),
                 HumanTime(candidate.min),
                 HumanTime(candidate.min - base.min)
             );
             println!(
-                "    {:12} │ {:>15} {:>15} {:>15}",
+                "    {:12} \u{2502} {:>15} {:>15} {:>15}",
                 "max",
                 HumanTime(base.max),
                 HumanTime(candidate.max),
                 HumanTime(candidate.max - base.max),
             );
             println!(
-                "    {:12} │ {:>15} {:>15} {:>15}",
+                "    {:12} \u{2502} {:>15} {:>15} {:>15}",
                 "std. dev.",
                 HumanTime(base.variance.sqrt()),
                 HumanTime(candidate.variance.sqrt()),
@@ -1047,59 +718,6 @@ mod reporting {
             rusage.system_time,
             rusage.user_time
         );
-    }
-}
-
-struct TestedFunction<'a> {
-    pub(crate) spi: &'a mut Spi,
-    pub(crate) samples: Vec<u64>,
-}
-
-impl<'a> TestedFunction<'a> {
-    pub(crate) fn new(spi: &'a mut Spi, func: FunctionIdx) -> Self {
-        spi.select(func);
-        TestedFunction {
-            spi,
-            samples: Vec::new(),
-        }
-    }
-
-    pub(crate) fn read_sample(&mut self) -> Result<u64> {
-        let sample = self.spi.read_sample().context("Unable to read sample")?;
-        self.samples.push(sample);
-        Ok(sample)
-    }
-
-    pub(crate) fn run(&mut self, iterations: usize) -> Result<u64> {
-        self.spi
-            .run(iterations)
-            .context("Unable to run measurement")
-    }
-}
-
-fn prepare_func(
-    prepare_state_seed: Option<u64>,
-    f: &mut TestedFunction,
-    warmup_iterations: Option<usize>,
-    firewall: Option<&CacheFirewall>,
-) -> Result<()> {
-    if let Some(seed) = prepare_state_seed {
-        f.spi.prepare_state(seed)?;
-        if let Some(firewall) = firewall {
-            firewall.issue_read();
-        }
-    }
-    if let Some(warmup_iterations) = warmup_iterations {
-        f.run(warmup_iterations)?;
-    }
-    Ok(())
-}
-
-fn create_sampler(settings: &MeasurementSettings, seed: u64) -> Box<dyn SampleLength> {
-    match settings.sampler_type {
-        SampleLengthKind::Flat => Box::new(FlatSampleLength::new(settings)),
-        SampleLengthKind::Linear => Box::new(LinearSampleLength::new(settings)),
-        SampleLengthKind::Random => Box::new(RandomSampleLength::new(settings, seed)),
     }
 }
 

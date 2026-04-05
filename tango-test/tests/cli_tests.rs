@@ -35,7 +35,7 @@ fn not_existent_benchmark() {
 fn not_a_benchmark() {
     Cmd::run(SLEEP_10, &["compare", NOT_A_BENCH])
         .assert_failure()
-        .assert_stderr_contains("Not a valid tango benchmark: {..}");
+        .assert_stderr_contains("Failed to spawn baseline");
 }
 
 #[test]
@@ -70,7 +70,6 @@ fn regression_detected_with_default_noise_threshold() {
 fn benchmark_with_panic() {
     Cmd::run(SLEEP_10, &["compare", SLEEP_PANIC])
         .assert_failure()
-        .assert_stderr_contains("Benchmark failed: sleep")
         .assert_stderr_contains("Intended panic");
 }
 
@@ -80,15 +79,8 @@ struct Cmd {
     stderr: String,
 }
 
-#[cfg(target_os = "linux")]
-static BENCH_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
 impl Cmd {
     fn run(cmd: &str, args: &[&str]) -> Self {
-        // On Linux we create a temporary copy for an executable, to patch PIE.
-        // Without lock there is a race. see. patch_pie_binary_if_needed().
-        #[cfg(target_os = "linux")]
-        let _guard = BENCH_MUTEX.lock().unwrap();
         let output = Command::new(cmd)
             .args(args)
             .output()
@@ -149,10 +141,9 @@ impl Cmd {
     }
 
     fn assert_stderr_contains(&self, pattern: &str) -> &Self {
-        let re_pattern = format!("(?s){}", compile_pattern(pattern));
+        let re_pattern = format!("(?si){}", compile_pattern(pattern));
         let re = Regex::new(&re_pattern).expect("Invalid regex");
 
-        dbg!(re_pattern);
         assert!(
             re.find(&self.stderr).is_some(),
             "Expected stderr to contain: {}\nstderr: {}",

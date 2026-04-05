@@ -1,7 +1,7 @@
 use rand::{RngExt, SeedableRng, rngs::SmallRng};
-use std::{hint::black_box, usize};
+use std::hint::black_box;
 use tango_bench::{
-    IntoBenchmarks, MeasurementSettings, SampleLengthKind, benchmark_fn, tango_benchmarks,
+    IntoBenchmarks, benchmark_fn, tango_benchmarks,
     tango_main,
 };
 
@@ -27,8 +27,4 @@ fn benchmarks() -> impl IntoBenchmarks {
 }
 
 tango_benchmarks!(benchmarks());
-tango_main!(MeasurementSettings {
-    samples_per_haystack: usize::MAX,
-    sampler_type: SampleLengthKind::Flat,
-    ..Default::default()
-});
+tango_main!();
