@@ -1,2 +1,7 @@
 [files]
-extend-exclude = ["examples/benches/input.txt", "notebooks/*.ipynb"]
+extend-exclude = [
+    "examples/benches/input.txt",
+    "tango-compare/data/input.txt",
+    "tango-compare/graph.ipynb",
+    "notebooks/*.ipynb",
+]

@@ -1,6 +1,8 @@
 extern crate tango_bench;
 
-use std::{any::type_name, convert::TryFrom, fmt::Debug, iter, marker::PhantomData};
+use std::{
+    any::type_name, convert::TryFrom, fmt::Debug, hint::black_box, iter, marker::PhantomData,
+};
 use tango_bench::{benchmark_fn, IntoBenchmarks};
 
 const SIZES: [usize; 14] = [
@@ -111,7 +113,12 @@ where
         benchmarks.push(benchmark_fn(name, move |b| {
             let mut rnd = RandomCollection::<C>::new(size, 1, b.seed);
             let input = rnd.random_collection();
-            b.iter(move || f(&input.collection, rnd.next_needle(&input)))
+            b.iter(move || {
+                f(
+                    black_box(&input.collection),
+                    black_box(rnd.next_needle(&input)),
+                )
+            })
         }));
     }
     benchmarks

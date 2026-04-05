@@ -74,7 +74,7 @@ pub fn factorial(mut n: usize) -> usize {
 #[allow(unused)]
 #[allow(clippy::ptr_arg)]
 pub fn str_take(n: usize, s: &str) -> usize {
-    s.chars().take(black_box(n)).count()
+    black_box(s).chars().take(black_box(n)).count()
 }
 
 #[cfg_attr(feature = "align", repr(align(32)))]
