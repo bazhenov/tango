@@ -21,7 +21,7 @@ variable "ami_id" {
 }
 
 variable "instance_type" {
-  description = "Type of the EC2 instane (eg. t2.micro)"
+  description = "Type of the EC2 instance (eg. t2.micro)"
   type        = string
 }
 
