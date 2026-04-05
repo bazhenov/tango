@@ -314,8 +314,7 @@ Note: R creates a single `Commpage` and passes it to both `ChildHandle`s. Each h
    - R drains all samples from both lanes.
    - The `--parallel` flag is no longer needed (process isolation replaces thread isolation).
 3. **Solo mode stays in-process** -- it is designed for use with system profilers (perf, Instruments, etc.) where an extra fork barrier would complicate profiling and debugging.
-4. Keep the existing `Spi`-based code path behind a `--legacy` flag initially for comparison testing.
-5. Remove PIE patching (`linux.rs`) and IAT patching (`windows.rs`) once the new path is validated -- these are no longer needed since we don't load executables as libraries.
+4. Remove PIE patching (`linux.rs`) and IAT patching (`windows.rs`) once the new path is validated -- these are no longer needed since we don't load executables as libraries.
 
 ### Phase 5: Wire Up `tango_main!` Macro
 
