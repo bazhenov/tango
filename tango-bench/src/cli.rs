@@ -367,12 +367,36 @@ mod paired_test {
             child_c.start_benchmark(iterations, num_samples)?;
             child_b.start_benchmark(iterations, num_samples)?;
 
-            // If time-budget mode, wait and set stop flag
-            if let LoopMode::Time(duration) = loop_mode {
-                let start = Instant::now();
-                while start.elapsed() < duration {
+            // Poll samples from the commpage while children are running.
+            // The ring buffer only holds 128 samples per lane, so R must drain
+            // faster than the children produce to avoid losing data.
+            let mut c_samples = Vec::new();
+            let mut b_samples = Vec::new();
+            let lane_c = commpage.my_lane(Role::Candidate);
+            let lane_b = commpage.my_lane(Role::Baseline);
+
+            let time_budget_start = if let LoopMode::Time(_) = loop_mode {
+                Some(Instant::now())
+            } else {
+                None
+            };
+
+            loop {
+                // Drain whatever is available
+                let c_new = child_c.drain_samples(&commpage);
+                let b_new = child_b.drain_samples(&commpage);
+                c_samples.extend_from_slice(&c_new);
+                b_samples.extend_from_slice(&b_new);
+
+                let c_done = lane_c.is_done();
+                let b_done = lane_b.is_done();
+
+                // In time-budget mode, check if we should signal stop
+                if let (Some(start), LoopMode::Time(duration)) = (time_budget_start, loop_mode) {
                     let elapsed = start.elapsed();
-                    if elapsed.as_millis() > 50
+                    if elapsed >= duration {
+                        commpage.set_stop();
+                    } else if elapsed.as_millis() > 50
                         && (duration > Duration::from_millis(500)
                             || elapsed > Duration::from_millis(500))
                     {
@@ -382,12 +406,16 @@ mod paired_test {
                         };
                         reporter.report_progress(func_name, phase);
                     }
-                    std::thread::sleep(Duration::from_millis(10));
                 }
-                commpage.set_stop();
+
+                if c_done && b_done {
+                    break;
+                }
+
+                std::thread::sleep(Duration::from_millis(1));
             }
 
-            // Wait for both children to finish
+            // Both children are done — read their RPC responses
             child_c
                 .finish_benchmark()
                 .context("Candidate benchmark failed")?;
@@ -395,9 +423,9 @@ mod paired_test {
                 .finish_benchmark()
                 .context("Baseline benchmark failed")?;
 
-            // Drain all samples
-            let c_samples = child_c.drain_samples(&commpage);
-            let b_samples = child_b.drain_samples(&commpage);
+            // Final drain to pick up any samples written between last poll and DONE
+            c_samples.extend_from_slice(&child_c.drain_samples(&commpage));
+            b_samples.extend_from_slice(&child_b.drain_samples(&commpage));
 
             if let Some(usage_before) = rusage_before {
                 let rusage = platform::rusage() - usage_before;

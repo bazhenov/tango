@@ -74,11 +74,7 @@ fn handle_init(req: &JsonRpcRequest, state: &mut WorkerState) -> JsonRpcResponse
     let params: Params = match serde_json::from_value(req.params.clone().unwrap_or_default()) {
         Ok(p) => p,
         Err(e) => {
-            return JsonRpcResponse::error(
-                req.id.clone(),
-                -32602,
-                &format!("Invalid params: {e}"),
-            )
+            return JsonRpcResponse::error(req.id.clone(), -32602, &format!("Invalid params: {e}"))
         }
     };
 
@@ -95,22 +91,14 @@ fn handle_init(req: &JsonRpcRequest, state: &mut WorkerState) -> JsonRpcResponse
             );
         }
         Err(e) => {
-            return JsonRpcResponse::error(
-                req.id.clone(),
-                -32000,
-                &format!("Commpage error: {e}"),
-            );
+            return JsonRpcResponse::error(req.id.clone(), -32000, &format!("Commpage error: {e}"));
         }
     }
 
     let benchmarks = match crate::take_benchmarks() {
         Some(b) => b,
         None => {
-            return JsonRpcResponse::error(
-                req.id.clone(),
-                -32000,
-                "No benchmarks registered",
-            );
+            return JsonRpcResponse::error(req.id.clone(), -32000, "No benchmarks registered");
         }
     };
 
@@ -130,11 +118,7 @@ fn handle_select(req: &JsonRpcRequest, state: &mut WorkerState) -> JsonRpcRespon
     let params: Params = match serde_json::from_value(req.params.clone().unwrap_or_default()) {
         Ok(p) => p,
         Err(e) => {
-            return JsonRpcResponse::error(
-                req.id.clone(),
-                -32602,
-                &format!("Invalid params: {e}"),
-            )
+            return JsonRpcResponse::error(req.id.clone(), -32602, &format!("Invalid params: {e}"))
         }
     };
 
@@ -142,7 +126,11 @@ fn handle_select(req: &JsonRpcRequest, state: &mut WorkerState) -> JsonRpcRespon
         return JsonRpcResponse::error(
             req.id.clone(),
             -32602,
-            &format!("Index {} out of range (have {} benchmarks)", params.index, state.benchmarks.len()),
+            &format!(
+                "Index {} out of range (have {} benchmarks)",
+                params.index,
+                state.benchmarks.len()
+            ),
         );
     }
 
@@ -162,11 +150,7 @@ fn handle_estimate_iterations(req: &JsonRpcRequest, state: &mut WorkerState) -> 
     let params: Params = match serde_json::from_value(req.params.clone().unwrap_or_default()) {
         Ok(p) => p,
         Err(e) => {
-            return JsonRpcResponse::error(
-                req.id.clone(),
-                -32602,
-                &format!("Invalid params: {e}"),
-            )
+            return JsonRpcResponse::error(req.id.clone(), -32602, &format!("Invalid params: {e}"))
         }
     };
 
@@ -195,19 +179,13 @@ fn handle_run_benchmark(req: &JsonRpcRequest, state: &mut WorkerState) -> JsonRp
     let params: Params = match serde_json::from_value(req.params.clone().unwrap_or_default()) {
         Ok(p) => p,
         Err(e) => {
-            return JsonRpcResponse::error(
-                req.id.clone(),
-                -32602,
-                &format!("Invalid params: {e}"),
-            )
+            return JsonRpcResponse::error(req.id.clone(), -32602, &format!("Invalid params: {e}"))
         }
     };
 
     let cp = match &state.commpage {
         Some(c) => c,
-        None => {
-            return JsonRpcResponse::error(req.id.clone(), -32000, "Commpage not initialized")
-        }
+        None => return JsonRpcResponse::error(req.id.clone(), -32000, "Commpage not initialized"),
     };
     let r = match state.role {
         Some(r) => r,

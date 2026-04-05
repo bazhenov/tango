@@ -8,7 +8,7 @@ use shared_memory::{Shmem, ShmemConf};
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
 /// Magic bytes: "TANGOCMP" as a u64
-const MAGIC: u64 = 0x54414E474F_434D50;
+const MAGIC: u64 = 0x54414E47_4F434D50;
 
 /// Protocol version
 const VERSION: u32 = 1;
@@ -86,8 +86,7 @@ impl Commpage {
         }
 
         let lane_b = unsafe {
-            &mut *(ptr
-                .add(std::mem::size_of::<CommpageHeader>() + std::mem::size_of::<Lane>())
+            &mut *(ptr.add(std::mem::size_of::<CommpageHeader>() + std::mem::size_of::<Lane>())
                 as *mut Lane)
         };
         *lane_b.write_cursor.get_mut() = 0;
