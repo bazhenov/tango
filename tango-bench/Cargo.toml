@@ -45,9 +45,5 @@ async-tokio-all-drivers = ["async-tokio", "tokio/full"]
 name = "tango"
 harness = false
 
-[[test]]
-name = "shmem"
-harness = false
-
 [dev-dependencies]
 shared_memory = "0.12.4"
