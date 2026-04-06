@@ -63,8 +63,8 @@ impl ChildHandle {
             benchmarks: Vec<String>,
         }
 
-        let init: InitResult = serde_json::from_value(result)
-            .context("Failed to parse init response")?;
+        let init: InitResult =
+            serde_json::from_value(result).context("Failed to parse init response")?;
 
         Ok((handle, init.benchmarks))
     }
@@ -221,4 +221,3 @@ struct JsonRpcErrorRaw {
     code: i32,
     message: String,
 }
-
