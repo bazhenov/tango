@@ -2,7 +2,6 @@
 
 use crate::commpage::{Commpage, CommpageError, Role};
 use crate::{Benchmark, ErasedSampler};
-use libc::qos_class_t::QOS_CLASS_USER_INTERACTIVE;
 use serde::{Deserialize, Serialize};
 use std::io::{self, BufRead, BufReader, Write};
 
@@ -16,7 +15,11 @@ pub fn run_worker() {
     let mut out = stdout.lock();
     let mut state = WorkerState::default();
 
-    unsafe { libc::pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0) };
+    #[cfg(target_os = "macos")]
+    unsafe {
+        use libc::qos_class_t::QOS_CLASS_USER_INTERACTIVE;
+        libc::pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);
+    }
 
     for line in stdin.lines() {
         let line = match line {

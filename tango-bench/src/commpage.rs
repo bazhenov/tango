@@ -5,7 +5,11 @@
 //! writes to its own lane and reads the peer's write_cursor for synchronization.
 
 use shared_memory::{Shmem, ShmemConf};
-use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use std::{
+    mem::size_of,
+    sync::atomic::{AtomicU32, AtomicU64, Ordering},
+};
+use thiserror::Error;
 
 /// Magic bytes: "TANGOCMP" as a u64
 const MAGIC: u64 = 0x54414E47_4F434D50;
@@ -14,15 +18,15 @@ const MAGIC: u64 = 0x54414E47_4F434D50;
 const VERSION: u32 = 1;
 
 /// Number of sample slots per lane (must be a power of two)
-pub const NUM_SLOTS: usize = 128;
+const NUM_SLOTS: usize = 128;
 
 /// Bit 63 of write_cursor -- set when the child exits the measurement loop
-pub const DONE_BIT: u64 = 1 << 63;
+const DONE_BIT: u64 = 1 << 63;
 
 /// Bit 0 of flags -- set by runner to signal early termination
 const STOP_FLAG: u32 = 1;
 
-/// The commpage header + two lanes, laid out in shared memory.
+/// The commpage memory layout: header + two lanes laid out contiguously.
 ///
 /// ```text
 /// Offset  Size    Field
@@ -35,22 +39,111 @@ const STOP_FLAG: u32 = 1;
 /// 0x420   N*8     samples_b[N]
 /// ```
 #[repr(C)]
-pub struct CommpageHeader {
+struct CommpageLayout {
     magic: u64,
     version: u32,
     flags: AtomicU32,
+    lane_c: Lane,
+    lane_b: Lane,
+}
+
+impl CommpageLayout {
+    /// Initialize all fields to their default values.
+    fn init(&mut self) {
+        self.magic = MAGIC;
+        self.version = VERSION;
+        *self.flags.get_mut() = 0;
+        self.lane_c.init();
+        self.lane_b.init();
+    }
+
+    fn validate(&self) -> Result<(), CommpageError> {
+        if self.magic != MAGIC {
+            return Err(CommpageError::BadMagic);
+        }
+        if self.version != VERSION {
+            return Err(CommpageError::BadVersion {
+                got: self.version,
+                expected: VERSION,
+            });
+        }
+        Ok(())
+    }
 }
 
 /// A single lane in the commpage (write_cursor + ring buffer).
 #[repr(C)]
 pub struct Lane {
-    pub write_cursor: AtomicU64,
-    pub samples: [AtomicU64; NUM_SLOTS],
+    write_cursor: AtomicU64,
+    samples: [AtomicU64; NUM_SLOTS],
 }
 
-/// Total size of the commpage in bytes.
-pub const COMMPAGE_SIZE: usize =
-    std::mem::size_of::<CommpageHeader>() + 2 * std::mem::size_of::<Lane>();
+impl Lane {
+    fn init(&mut self) {
+        *self.write_cursor.get_mut() = 0;
+        for slot in self.samples.iter_mut() {
+            *slot.get_mut() = 0;
+        }
+    }
+
+    /// Read the write_cursor value (without the DONE bit) -- i.e. the sample count.
+    pub fn sample_count(&self) -> u64 {
+        self.write_cursor.load(Ordering::Acquire) & !DONE_BIT
+    }
+
+    /// Check if the DONE bit is set on this lane's write_cursor.
+    pub fn is_done(&self) -> bool {
+        self.write_cursor.load(Ordering::Acquire) & DONE_BIT != 0
+    }
+
+    /// Write a sample and advance the write_cursor. Called by the child in its measurement loop.
+    ///
+    /// `sample_no` is the 0-based index of the sample being written.
+    /// After this call, write_cursor == sample_no + 1.
+    pub fn push_sample(&self, sample_no: u64, elapsed_ns: u64) {
+        let slot = (sample_no as usize) & (NUM_SLOTS - 1);
+        self.samples[slot].store(elapsed_ns, Ordering::Relaxed);
+        // Publish: write_cursor = sample_no + 1
+        self.write_cursor.store(sample_no + 1, Ordering::Release);
+    }
+
+    /// Spin-wait until this lane's write_cursor reaches at least `target`, or the DONE bit is set.
+    ///
+    /// Returns `true` if the cursor caught up, `false` if the writer exited early (DONE).
+    pub fn wait_for_cursor(&self, target: u64) -> bool {
+        loop {
+            let cursor = self.write_cursor.load(Ordering::Acquire);
+            if cursor & DONE_BIT != 0 {
+                return false;
+            }
+            if cursor >= target {
+                return true;
+            }
+            std::hint::spin_loop();
+        }
+    }
+
+    /// Mark this lane as done.
+    pub fn mark_done(&self) {
+        self.write_cursor.fetch_or(DONE_BIT, Ordering::Release);
+    }
+
+    /// Drain samples from `from` (inclusive) up to current write_cursor.
+    /// Returns the values and the new read position.
+    pub fn drain_samples(&self, from: u64) -> (Vec<u64>, u64) {
+        let cursor = self.sample_count();
+        let mut samples = Vec::with_capacity((cursor - from) as usize);
+        for i in from..cursor {
+            let slot = (i as usize) & (NUM_SLOTS - 1);
+            samples.push(self.samples[slot].load(Ordering::Relaxed));
+        }
+        (samples, cursor)
+    }
+
+    fn reset(&self) {
+        self.write_cursor.store(0, Ordering::Release);
+    }
+}
 
 /// Which role a child process plays.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -67,32 +160,14 @@ pub struct Commpage {
 
 impl Commpage {
     /// Create a new commpage with a unique OS name. Initializes header and both lanes.
-    pub fn create() -> Result<Self, shared_memory::ShmemError> {
-        let shmem = ShmemConf::new().size(COMMPAGE_SIZE).create()?;
+    pub fn create() -> Result<Self, CommpageError> {
+        let shmem = ShmemConf::new()
+            .size(size_of::<CommpageLayout>())
+            .create()
+            .map_err(CommpageError::Shmem)?;
 
-        let ptr = shmem.as_ptr();
-
-        // Initialize header
-        let header = unsafe { &mut *(ptr as *mut CommpageHeader) };
-        header.magic = MAGIC;
-        header.version = VERSION;
-        *header.flags.get_mut() = 0;
-
-        // Initialize both lanes to zero
-        let lane_c = unsafe { &mut *(ptr.add(std::mem::size_of::<CommpageHeader>()) as *mut Lane) };
-        *lane_c.write_cursor.get_mut() = 0;
-        for slot in lane_c.samples.iter_mut() {
-            *slot.get_mut() = 0;
-        }
-
-        let lane_b = unsafe {
-            &mut *(ptr.add(std::mem::size_of::<CommpageHeader>() + std::mem::size_of::<Lane>())
-                as *mut Lane)
-        };
-        *lane_b.write_cursor.get_mut() = 0;
-        for slot in lane_b.samples.iter_mut() {
-            *slot.get_mut() = 0;
-        }
+        let layout = unsafe { &mut *(shmem.as_ptr() as *mut CommpageLayout) };
+        layout.init();
 
         Ok(Commpage { shmem })
     }
@@ -104,13 +179,8 @@ impl Commpage {
             .open()
             .map_err(CommpageError::Shmem)?;
 
-        let header = unsafe { &*(shmem.as_ptr() as *const CommpageHeader) };
-        if header.magic != MAGIC {
-            return Err(CommpageError::BadMagic);
-        }
-        if header.version != VERSION {
-            return Err(CommpageError::BadVersion(header.version));
-        }
+        let layout = unsafe { &*(shmem.as_ptr() as *const CommpageLayout) };
+        layout.validate()?;
 
         Ok(Commpage { shmem })
     }
@@ -120,29 +190,18 @@ impl Commpage {
         self.shmem.get_os_id()
     }
 
-    fn header(&self) -> &CommpageHeader {
-        unsafe { &*(self.shmem.as_ptr() as *const CommpageHeader) }
+    fn layout(&self) -> &CommpageLayout {
+        unsafe { &*(self.shmem.as_ptr() as *const CommpageLayout) }
     }
 
-    /// Get lane C (candidate lane, index 0).
+    /// Get lane C (candidate lane).
     pub fn lane_c(&self) -> &Lane {
-        unsafe {
-            &*(self
-                .shmem
-                .as_ptr()
-                .add(std::mem::size_of::<CommpageHeader>()) as *const Lane)
-        }
+        &self.layout().lane_c
     }
 
-    /// Get lane B (baseline lane, index 1).
+    /// Get lane B (baseline lane).
     pub fn lane_b(&self) -> &Lane {
-        unsafe {
-            &*(self
-                .shmem
-                .as_ptr()
-                .add(std::mem::size_of::<CommpageHeader>() + std::mem::size_of::<Lane>())
-                as *const Lane)
-        }
+        &self.layout().lane_b
     }
 
     /// Get the lane a given role writes to.
@@ -163,104 +222,34 @@ impl Commpage {
 
     /// Set the STOP flag. Called by runner to signal time-budget exhaustion.
     pub fn set_stop(&self) {
-        self.header().flags.fetch_or(STOP_FLAG, Ordering::Release);
+        self.layout().flags.fetch_or(STOP_FLAG, Ordering::Release);
     }
 
     /// Check if the STOP flag is set.
     pub fn is_stopped(&self) -> bool {
-        self.header().flags.load(Ordering::Acquire) & STOP_FLAG != 0
+        self.layout().flags.load(Ordering::Acquire) & STOP_FLAG != 0
     }
 
     /// Reset the commpage for a new benchmark run.
     /// Clears flags and resets both lanes' write_cursors to 0.
     pub fn reset(&self) {
-        self.header().flags.store(0, Ordering::Release);
-        self.lane_c().write_cursor.store(0, Ordering::Release);
-        self.lane_b().write_cursor.store(0, Ordering::Release);
+        self.layout().flags.store(0, Ordering::Release);
+        self.lane_c().reset();
+        self.lane_b().reset();
     }
 }
 
-impl Lane {
-    /// Read the write_cursor value (without the DONE bit) -- i.e. the sample count.
-    pub fn sample_count(&self) -> u64 {
-        self.write_cursor.load(Ordering::Acquire) & !DONE_BIT
-    }
-
-    /// Read the raw write_cursor (including DONE bit).
-    pub fn raw_cursor(&self) -> u64 {
-        self.write_cursor.load(Ordering::Acquire)
-    }
-
-    /// Check if the DONE bit is set on this lane's write_cursor.
-    pub fn is_done(&self) -> bool {
-        self.write_cursor.load(Ordering::Acquire) & DONE_BIT != 0
-    }
-
-    /// Write a sample and advance the write_cursor. Called by the child in its measurement loop.
-    ///
-    /// `sample_no` is the 0-based index of the sample being written.
-    /// After this call, write_cursor == sample_no + 1.
-    pub fn push_sample(&self, sample_no: u64, elapsed_ns: u64) {
-        let slot = (sample_no as usize) & (NUM_SLOTS - 1);
-        self.samples[slot].store(elapsed_ns, Ordering::Relaxed);
-        // Publish: write_cursor = sample_no + 1
-        self.write_cursor.store(sample_no + 1, Ordering::Release);
-    }
-
-    /// Spin-wait until the peer's write_cursor reaches at least `target`, or the peer sets DONE.
-    ///
-    /// Returns `true` if the peer caught up, `false` if the peer exited early (DONE).
-    pub fn wait_for_cursor(&self, target: u64) -> bool {
-        loop {
-            let cursor = self.write_cursor.load(Ordering::Acquire);
-            if cursor & DONE_BIT != 0 {
-                return false;
-            }
-            if cursor >= target {
-                return true;
-            }
-            std::hint::spin_loop();
-        }
-    }
-
-    /// Mark this lane as done.
-    pub fn mark_done(&self) {
-        self.write_cursor.fetch_or(DONE_BIT, Ordering::Release);
-    }
-
-    /// Drain samples from `from` (inclusive) up to current write_cursor.
-    /// Returns the elapsed_ns values and the new read position.
-    pub fn drain_samples(&self, from: u64) -> (Vec<u64>, u64) {
-        let cursor = self.sample_count();
-        let mut samples = Vec::with_capacity((cursor - from) as usize);
-        for i in from..cursor {
-            let slot = (i as usize) & (NUM_SLOTS - 1);
-            samples.push(self.samples[slot].load(Ordering::Relaxed));
-        }
-        (samples, cursor)
-    }
-}
-
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum CommpageError {
+    #[error("shared memory error: {0}")]
     Shmem(shared_memory::ShmemError),
+
+    #[error("invalid commpage magic number")]
     BadMagic,
-    BadVersion(u32),
-}
 
-impl std::fmt::Display for CommpageError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            CommpageError::Shmem(e) => write!(f, "shared memory error: {e}"),
-            CommpageError::BadMagic => write!(f, "invalid commpage magic number"),
-            CommpageError::BadVersion(v) => {
-                write!(f, "unsupported commpage version: {v} (expected {VERSION})")
-            }
-        }
-    }
+    #[error("unsupported commpage version: {got} (expected {expected})")]
+    BadVersion { got: u32, expected: u32 },
 }
-
-impl std::error::Error for CommpageError {}
 
 #[cfg(test)]
 mod tests {
@@ -273,6 +262,15 @@ mod tests {
         let id = cp.os_id().to_string();
         let cp2 = Commpage::open(&id).unwrap();
         assert!(!cp2.is_stopped());
+    }
+
+    #[test]
+    fn num_slots_is_a_power_of_2() {
+        assert_eq!(
+            NUM_SLOTS.count_ones(),
+            1,
+            "NUM_SLOTS should be power of two"
+        );
     }
 
     #[test]
@@ -309,6 +307,7 @@ mod tests {
         assert!(!lane.is_done());
         lane.push_sample(0, 42);
         lane.mark_done();
+
         assert!(lane.is_done());
         assert_eq!(lane.sample_count(), 1);
     }
