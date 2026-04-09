@@ -16,6 +16,7 @@ pub mod child;
 pub mod cli;
 pub mod commpage;
 pub mod platform;
+pub mod protocol;
 pub mod worker;
 
 #[derive(Debug, Error)]
@@ -87,7 +88,7 @@ macro_rules! tango_main {
             __tango_register_benchmarks();
 
             // Check for worker mode before normal CLI parsing
-            if std::env::args().any(|a| a == "__worker") {
+            if std::env::args().any(|a| a == $crate::protocol::WORKER_COMMAND) {
                 $crate::worker::run_worker();
                 return Ok(std::process::ExitCode::SUCCESS);
             }

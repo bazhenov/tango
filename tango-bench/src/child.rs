@@ -3,30 +3,29 @@
 //! The runner spawns child processes in worker mode and communicates with them
 //! via JSON-RPC over stdin/stdout. Measurement data flows through the commpage.
 
-use crate::commpage::{Commpage, Role};
-use anyhow::{bail, Context};
+use crate::{
+    commpage::{Commpage, Role},
+    protocol::{self, *},
+};
+use anyhow::{bail, Context, Result};
 use jsonrpc_types::v2::*;
-use serde::Deserialize;
-use std::io::{BufRead, BufReader, Write};
-use std::path::Path;
-use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use serde::Serialize;
+use serde_json::Value;
+use std::{
+    io::{BufRead, BufReader, Write},
+    path::Path,
+    process::{Child, ChildStdin, ChildStdout, Command, Stdio},
+};
 
 pub struct ChildHandle {
     process: Child,
     stdin: ChildStdin,
     stdout: BufReader<ChildStdout>,
     role: Role,
-    next_id: u64,
+    /// Next id for JSON RPC request
+    req_next_id: u64,
     /// Runner's local read position for this child's lane
-    local_read_pos: u64,
-}
-
-fn value_to_params(v: serde_json::Value) -> Option<Params> {
-    match v {
-        serde_json::Value::Object(map) => Some(Params::Map(map)),
-        serde_json::Value::Array(arr) => Some(Params::Array(arr)),
-        _ => None,
-    }
+    read_pos: u64,
 }
 
 impl ChildHandle {
@@ -37,9 +36,9 @@ impl ChildHandle {
         executable: &Path,
         commpage: &Commpage,
         role: Role,
-    ) -> anyhow::Result<(Self, Vec<String>)> {
+    ) -> Result<(Self, Vec<String>)> {
         let mut child = Command::new(executable)
-            .arg("__worker")
+            .arg(WORKER_COMMAND)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
@@ -54,24 +53,16 @@ impl ChildHandle {
             stdin,
             stdout,
             role,
-            next_id: 1,
-            local_read_pos: 0,
+            req_next_id: 1,
+            read_pos: 0,
         };
 
         // Send init
-        let result = handle.call(
-            "init",
-            serde_json::json!({
-                "shmem_name": commpage.os_id(),
-                "role": role,
-            }),
-        )?;
-
-        #[derive(Deserialize)]
-        struct InitResult {
-            benchmarks: Vec<String>,
-        }
-
+        let params = InitParams {
+            shmem_name: commpage.os_id().to_string(),
+            role,
+        };
+        let result = handle.call(protocol::method::INIT, params)?;
         let init: InitResult =
             serde_json::from_value(result).context("Failed to parse init response")?;
 
@@ -79,41 +70,33 @@ impl ChildHandle {
     }
 
     /// Select a benchmark by index.
-    pub fn select(&mut self, idx: usize) -> anyhow::Result<()> {
-        self.call("select", serde_json::json!({ "index": idx }))?;
+    pub fn select(&mut self, idx: usize) -> Result<()> {
+        self.call(protocol::method::SELECT, SelectParams { index: idx })?;
         Ok(())
     }
 
     /// Estimate iterations for a given time budget (in ms).
-    pub fn estimate_iterations(&mut self, time_ms: u32) -> anyhow::Result<usize> {
+    pub fn estimate_iterations(&mut self, time_ms: u32) -> Result<usize> {
         let result = self.call(
-            "estimate_iterations",
-            serde_json::json!({ "time_ms": time_ms }),
+            protocol::method::ESTIMATE_ITERATIONS,
+            EstimateIterationsParams { time_ms },
         )?;
-
-        #[derive(Deserialize)]
-        struct EstResult {
-            iterations: usize,
-        }
-        let est: EstResult = serde_json::from_value(result)?;
+        let est: EstimateIterationsResult = serde_json::from_value(result)?;
         Ok(est.iterations)
     }
 
     /// Start the measurement loop (sends `run_benchmark` RPC without waiting for response).
-    pub fn start_benchmark(
-        &mut self,
-        iterations: usize,
-        num_samples: usize,
-    ) -> anyhow::Result<u64> {
-        let id = self.next_id;
-        self.next_id += 1;
+    pub fn start_benchmark(&mut self, iterations: usize, num_samples: usize) -> Result<u64> {
+        let id = self.req_next_id;
+        self.req_next_id += 1;
+        let params = RunBenchmarkParams {
+            iterations,
+            num_samples,
+        };
         let req = MethodCall {
             jsonrpc: Version::V2_0,
-            method: "run_benchmark".to_string(),
-            params: value_to_params(serde_json::json!({
-                "iterations": iterations,
-                "num_samples": num_samples,
-            })),
+            method: protocol::method::RUN_BENCHMARK.to_string(),
+            params: value_to_params(serde_json::to_value(params)?),
             id: Id::Num(id),
         };
         let line = serde_json::to_string(&req)?;
@@ -123,34 +106,29 @@ impl ChildHandle {
     }
 
     /// Wait for the `run_benchmark` response (blocks until child finishes all samples).
-    pub fn finish_benchmark(&mut self) -> anyhow::Result<u64> {
+    pub fn finish_benchmark(&mut self) -> Result<u64> {
         let resp = self.read_response()?;
-
-        #[derive(Deserialize)]
-        struct RunResult {
-            samples_written: u64,
-        }
-        let r: RunResult = serde_json::from_value(resp)?;
+        let r: RunBenchmarkResult = serde_json::from_value(resp)?;
         Ok(r.samples_written)
     }
 
     /// Reset local read position (call before each new benchmark run).
     pub fn reset_read_pos(&mut self) {
-        self.local_read_pos = 0;
+        self.read_pos = 0;
     }
 
     /// Drain new samples from this child's commpage lane.
     pub fn drain_samples(&mut self, commpage: &Commpage) -> Vec<u64> {
         let lane = commpage.my_lane(self.role);
-        let (samples, new_pos) = lane.drain_samples(self.local_read_pos);
-        self.local_read_pos = new_pos;
+        let (samples, new_pos) = lane.drain_samples(self.read_pos);
+        self.read_pos = new_pos;
         samples
     }
 
     /// Send shutdown and wait for the child to exit.
-    pub fn shutdown(mut self) -> anyhow::Result<()> {
+    pub fn shutdown(mut self) -> Result<()> {
         // Best-effort: send shutdown, ignore write errors (child may have already exited)
-        let _ = self.call("shutdown", serde_json::Value::Null);
+        let _ = self.call(protocol::method::SHUTDOWN, Value::Null);
         self.process.wait()?;
         Ok(())
     }
@@ -161,13 +139,10 @@ impl ChildHandle {
     }
 
     /// Send a JSON-RPC request and wait for the response.
-    fn call(
-        &mut self,
-        method: &str,
-        params: serde_json::Value,
-    ) -> anyhow::Result<serde_json::Value> {
-        let id = self.next_id;
-        self.next_id += 1;
+    fn call<T: Serialize>(&mut self, method: &str, params: T) -> Result<Value> {
+        let params = serde_json::to_value(params)?;
+        let id = self.req_next_id;
+        self.req_next_id += 1;
 
         let req = MethodCall {
             jsonrpc: Version::V2_0,
@@ -184,7 +159,7 @@ impl ChildHandle {
         self.read_response()
     }
 
-    fn read_response(&mut self) -> anyhow::Result<serde_json::Value> {
+    fn read_response(&mut self) -> Result<Value> {
         let mut line = String::new();
         self.stdout
             .read_line(&mut line)
@@ -215,5 +190,13 @@ impl Drop for ChildHandle {
         // Kill child if still running
         let _ = self.process.kill();
         let _ = self.process.wait();
+    }
+}
+
+fn value_to_params(v: Value) -> Option<Params> {
+    match v {
+        Value::Object(map) => Some(Params::Map(map)),
+        Value::Array(arr) => Some(Params::Array(arr)),
+        _ => None,
     }
 }

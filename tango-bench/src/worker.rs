@@ -1,9 +1,10 @@
 //! Child worker mode: reads JSON-RPC commands from stdin, writes samples to commpage.
 
-use crate::commpage::{Commpage, CommpageError, Role};
+use crate::commpage::{Commpage, CommpageError};
+use crate::protocol::{self, *};
 use crate::{Benchmark, ErasedSampler};
 use jsonrpc_types::v2::*;
-use serde::Deserialize;
+use serde::Serialize;
 use std::io::{self, BufRead, BufReader, Write};
 
 /// Entry point for a child process in worker mode.
@@ -48,7 +49,7 @@ pub fn run_worker() {
             }
         };
 
-        let is_shutdown = req.method == "shutdown";
+        let is_shutdown = req.method == protocol::method::SHUTDOWN;
         let resp = dispatch(&req, &mut state);
         let _ = writeln!(out, "{}", serde_json::to_string(&resp).unwrap());
         let _ = out.flush();
@@ -62,55 +63,23 @@ pub fn run_worker() {
 #[derive(Default)]
 struct WorkerState {
     commpage: Option<Commpage>,
-    role: Option<Role>,
+    role: Option<crate::commpage::Role>,
     benchmarks: Vec<Benchmark>,
     sampler: Option<Box<dyn ErasedSampler>>,
 }
 
-fn jsonrpc_error(id: &Id, error: Error) -> Output {
-    Output::failure(error, Some(id.clone()))
-}
-
-fn server_error(id: &Id, message: &str) -> Output {
-    jsonrpc_error(
-        id,
-        Error {
-            code: ErrorCode::ServerError(-32000),
-            message: message.to_string(),
-            data: None,
-        },
-    )
-}
-
-fn params_to_value(params: &Option<Params>) -> Value {
-    params
-        .as_ref()
-        .map(|p| serde_json::to_value(p).unwrap_or_default())
-        .unwrap_or_default()
-}
-
 fn dispatch(req: &MethodCall, state: &mut WorkerState) -> Output {
     match req.method.as_str() {
-        "init" => handle_init(req, state),
-        "select" => handle_select(req, state),
-        "estimate_iterations" => handle_estimate_iterations(req, state),
-        "run_benchmark" => handle_run_benchmark(req, state),
-        "shutdown" => {
-            let id = req.id.clone();
-            let value = Value::Null;
-            Output::success(value, id)
-        }
+        protocol::method::INIT => handle_init(req, state),
+        protocol::method::SELECT => handle_select(req, state),
+        protocol::method::ESTIMATE_ITERATIONS => handle_estimate_iterations(req, state),
+        protocol::method::RUN_BENCHMARK => handle_run_benchmark(req, state),
+        protocol::method::SHUTDOWN => jsonrpc_success(&req.id, Value::Null),
         _ => jsonrpc_error(&req.id, Error::method_not_found()),
     }
 }
 
 fn handle_init(req: &MethodCall, state: &mut WorkerState) -> Output {
-    #[derive(Deserialize)]
-    struct InitParams {
-        shmem_name: String,
-        role: Role,
-    }
-
     let params: InitParams = match serde_json::from_value(params_to_value(&req.params)) {
         Ok(p) => p,
         Err(e) => return jsonrpc_error(&req.id, Error::invalid_params(e)),
@@ -139,19 +108,10 @@ fn handle_init(req: &MethodCall, state: &mut WorkerState) -> Output {
     let names: Vec<String> = benchmarks.iter().map(|b| b.name().to_string()).collect();
     state.benchmarks = benchmarks;
 
-    let result = serde_json::json!({ "benchmarks": names });
-    {
-        let id = req.id.clone();
-        Output::success(result, id)
-    }
+    jsonrpc_success(&req.id, InitResult { benchmarks: names })
 }
 
 fn handle_select(req: &MethodCall, state: &mut WorkerState) -> Output {
-    #[derive(Deserialize)]
-    struct SelectParams {
-        index: usize,
-    }
-
     let params: SelectParams = match serde_json::from_value(params_to_value(&req.params)) {
         Ok(p) => p,
         Err(e) => return jsonrpc_error(&req.id, Error::invalid_params(e)),
@@ -171,46 +131,27 @@ fn handle_select(req: &MethodCall, state: &mut WorkerState) -> Output {
     // Create a sampler (prepares state) for the selected benchmark
     let sampler = state.benchmarks[params.index].prepare_state(0);
     state.sampler = Some(sampler);
-
-    {
-        let id = req.id.clone();
-        let value = Value::Null;
-        Output::success(value, id)
-    }
+    jsonrpc_success(&req.id, Value::Null)
 }
 
 fn handle_estimate_iterations(req: &MethodCall, state: &mut WorkerState) -> Output {
-    #[derive(Deserialize)]
-    struct EstimateParams {
-        time_ms: u32,
-    }
-
-    let params: EstimateParams = match serde_json::from_value(params_to_value(&req.params)) {
-        Ok(p) => p,
-        Err(e) => return jsonrpc_error(&req.id, Error::invalid_params(e)),
-    };
+    let params: EstimateIterationsParams =
+        match serde_json::from_value(params_to_value(&req.params)) {
+            Ok(p) => p,
+            Err(e) => return jsonrpc_error(&req.id, Error::invalid_params(e)),
+        };
 
     let sampler = match &mut state.sampler {
         Some(s) => s,
         None => return server_error(&req.id, "No benchmark selected (call select first)"),
     };
 
-    let iters = sampler.estimate_iterations(params.time_ms);
-    {
-        let id = req.id.clone();
-        let value = serde_json::json!({ "iterations": iters });
-        Output::success(value, id)
-    }
+    let iterations = sampler.estimate_iterations(params.time_ms);
+    jsonrpc_success(&req.id, EstimateIterationsResult { iterations })
 }
 
 fn handle_run_benchmark(req: &MethodCall, state: &mut WorkerState) -> Output {
-    #[derive(Deserialize)]
-    struct RunParams {
-        iterations: usize,
-        num_samples: usize,
-    }
-
-    let params: RunParams = match serde_json::from_value(params_to_value(&req.params)) {
+    let params: RunBenchmarkParams = match serde_json::from_value(params_to_value(&req.params)) {
         Ok(p) => p,
         Err(e) => return jsonrpc_error(&req.id, Error::invalid_params(e)),
     };
@@ -232,10 +173,10 @@ fn handle_run_benchmark(req: &MethodCall, state: &mut WorkerState) -> Output {
     let my_lane = cp.my_lane(r);
     let peer_lane = cp.peer_lane(r);
 
-    let mut sample_no: u64 = 0;
+    let mut samples_written = 0;
     loop {
         // Check termination conditions
-        if params.num_samples > 0 && sample_no >= params.num_samples as u64 {
+        if params.num_samples > 0 && samples_written >= params.num_samples as u64 {
             break;
         }
         if params.num_samples == 0 && cp.is_stopped() {
@@ -246,11 +187,11 @@ fn handle_run_benchmark(req: &MethodCall, state: &mut WorkerState) -> Output {
         let elapsed_ns = sampler.measure(params.iterations);
 
         // Write sample to commpage
-        my_lane.push_sample(sample_no, elapsed_ns);
-        sample_no += 1;
+        my_lane.push_sample(samples_written, elapsed_ns);
+        samples_written += 1;
 
         // Barrier: wait for peer
-        if !peer_lane.wait_for_cursor(sample_no) {
+        if !peer_lane.wait_for_cursor(samples_written) {
             // Peer exited early
             break;
         }
@@ -258,9 +199,32 @@ fn handle_run_benchmark(req: &MethodCall, state: &mut WorkerState) -> Output {
 
     my_lane.mark_done();
 
-    {
-        let id = req.id.clone();
-        let value = serde_json::json!({ "samples_written": sample_no });
-        Output::success(value, id)
-    }
+    jsonrpc_success(&req.id, RunBenchmarkResult { samples_written })
+}
+
+fn jsonrpc_success<T: Serialize>(id: &Id, result: T) -> Output {
+    let result = serde_json::to_value(result).unwrap();
+    Output::success(result, id.clone())
+}
+
+fn jsonrpc_error(id: &Id, error: Error) -> Output {
+    Output::failure(error, Some(id.clone()))
+}
+
+fn server_error(id: &Id, message: &str) -> Output {
+    jsonrpc_error(
+        id,
+        Error {
+            code: ErrorCode::ServerError(-32000),
+            message: message.to_string(),
+            data: None,
+        },
+    )
+}
+
+fn params_to_value(params: &Option<Params>) -> Value {
+    params
+        .as_ref()
+        .map(|p| serde_json::to_value(p).unwrap_or_default())
+        .unwrap_or_default()
 }
