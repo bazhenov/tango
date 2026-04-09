@@ -5,6 +5,7 @@
 
 use crate::commpage::{Commpage, Role};
 use anyhow::{bail, Context};
+use jsonrpc_types::v2::*;
 use serde::Deserialize;
 use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
@@ -18,6 +19,14 @@ pub struct ChildHandle {
     next_id: u64,
     /// Runner's local read position for this child's lane
     local_read_pos: u64,
+}
+
+fn value_to_params(v: serde_json::Value) -> Option<Params> {
+    match v {
+        serde_json::Value::Object(map) => Some(Params::Map(map)),
+        serde_json::Value::Array(arr) => Some(Params::Array(arr)),
+        _ => None,
+    }
 }
 
 impl ChildHandle {
@@ -98,15 +107,15 @@ impl ChildHandle {
     ) -> anyhow::Result<u64> {
         let id = self.next_id;
         self.next_id += 1;
-        let req = serde_json::json!({
-            "jsonrpc": "2.0",
-            "method": "run_benchmark",
-            "params": {
+        let req = MethodCall {
+            jsonrpc: Version::V2_0,
+            method: "run_benchmark".to_string(),
+            params: value_to_params(serde_json::json!({
                 "iterations": iterations,
                 "num_samples": num_samples,
-            },
-            "id": id,
-        });
+            })),
+            id: Id::Num(id),
+        };
         let line = serde_json::to_string(&req)?;
         writeln!(self.stdin, "{}", line)?;
         self.stdin.flush()?;
@@ -160,12 +169,12 @@ impl ChildHandle {
         let id = self.next_id;
         self.next_id += 1;
 
-        let req = serde_json::json!({
-            "jsonrpc": "2.0",
-            "method": method,
-            "params": params,
-            "id": id,
-        });
+        let req = MethodCall {
+            jsonrpc: Version::V2_0,
+            method: method.to_string(),
+            params: value_to_params(params),
+            id: Id::Num(id),
+        };
 
         let line = serde_json::to_string(&req)?;
         writeln!(self.stdin, "{}", line)
@@ -185,15 +194,19 @@ impl ChildHandle {
             bail!("Child process closed stdout unexpectedly");
         }
 
-        let resp: JsonRpcResponseRaw =
+        let resp: Output =
             serde_json::from_str(&line).context("Failed to parse JSON-RPC response")?;
 
-        if let Some(err) = resp.error {
-            bail!("Child RPC error {}: {}", err.code, err.message);
+        match resp {
+            Output::Success(s) => Ok(s.result),
+            Output::Failure(f) => {
+                bail!(
+                    "Child RPC error {}: {}",
+                    f.error.code.code(),
+                    f.error.message
+                )
+            }
         }
-
-        // JSON-RPC result can be null for void methods (e.g. select, shutdown)
-        Ok(resp.result.unwrap_or(serde_json::Value::Null))
     }
 }
 
@@ -203,21 +216,4 @@ impl Drop for ChildHandle {
         let _ = self.process.kill();
         let _ = self.process.wait();
     }
-}
-
-// Minimal JSON-RPC response deserialization for the runner side
-#[derive(Deserialize)]
-struct JsonRpcResponseRaw {
-    #[allow(dead_code)]
-    jsonrpc: Option<String>,
-    result: Option<serde_json::Value>,
-    error: Option<JsonRpcErrorRaw>,
-    #[allow(dead_code)]
-    id: Option<serde_json::Value>,
-}
-
-#[derive(Deserialize)]
-struct JsonRpcErrorRaw {
-    code: i32,
-    message: String,
 }
