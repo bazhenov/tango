@@ -2,6 +2,7 @@ name: Test
 
 on:
   push:
+    branches: main
   pull_request:
 
 jobs:
@@ -64,8 +65,11 @@ jobs:
             toolchain: nightly
             exe: .exe
     runs-on: ${{ matrix.os }}
-    # Do not run benchmarks if current branch has incompatibile protocol with the main.
-    if: ${{ !contains(github.event.pull_request.labels.*.name, 'bench-protocol-changed') }}
+    # Do not run benchmarks if it is push to master or current branch has incompatibile protocol with the main.
+    if: ${{
+      ( github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'bench-protocol-changed') ) ||
+      ( github.event_name == 'push' && github.ref != 'refs/heads/main' )
+      }}
     steps:
       # Doing checkout 2 times for a current branch and then baseline-branch
       - uses: actions/checkout@v6
