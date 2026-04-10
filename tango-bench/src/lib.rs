@@ -67,18 +67,9 @@ macro_rules! tango_benchmarks {
     };
 }
 
-/// Main entrypoint for benchmarks
-///
-/// This macro generates the `main()` function for the benchmark harness.
-/// ```rust
-/// use tango_bench::{tango_main, tango_benchmarks};
-///
-/// // Register benchmarks
-/// tango_benchmarks!([]);
-///
-/// tango_main!();
-/// ```
+/// Main entrypoint for benchmarks. Deprecated. Not needed anymore. Still present for backward compatibility
 #[macro_export]
+#[deprecated]
 macro_rules! tango_main {
     () => {};
 }

@@ -2,7 +2,7 @@
 
 use common::{search_benchmarks, FromSortedVec};
 use std::{collections::BTreeSet, ops::Bound};
-use tango_bench::{tango_benchmarks, tango_main};
+use tango_bench::tango_benchmarks;
 
 mod common;
 
@@ -29,4 +29,3 @@ tango_benchmarks!(
     search_benchmarks(search_btree::<u32>),
     search_benchmarks(search_btree::<u64>)
 );
-tango_main!();

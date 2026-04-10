@@ -1,6 +1,6 @@
 use rand::{RngExt, SeedableRng, rngs::SmallRng};
 use std::hint::black_box;
-use tango_bench::{IntoBenchmarks, benchmark_fn, tango_benchmarks, tango_main};
+use tango_bench::{IntoBenchmarks, benchmark_fn, tango_benchmarks};
 
 pub const INPUT_STRING: &str = include_str!("../data/input.txt");
 
@@ -24,4 +24,3 @@ fn benchmarks() -> impl IntoBenchmarks {
 }
 
 tango_benchmarks!(benchmarks());
-tango_main!();

@@ -1,8 +1,5 @@
 //! Contains functionality of a `cargo bench` harness
-use crate::{
-    protocol::{self, WORKER_COMMAND},
-    worker, Benchmark, Error,
-};
+use crate::{protocol::WORKER_COMMAND, worker, Benchmark, Error};
 use anyhow::{bail, Context};
 use clap::{ArgAction, Parser};
 use colorz::mode::{self, Mode};
