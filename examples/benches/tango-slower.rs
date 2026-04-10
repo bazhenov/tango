@@ -2,7 +2,7 @@
 
 use crate::test_funcs::{factorial, sum};
 use std::rc::Rc;
-use tango_bench::{benchmark_fn, tango_benchmarks, tango_main, IntoBenchmarks};
+use tango_bench::{benchmark_fn, tango_benchmarks, IntoBenchmarks};
 use test_funcs::{
     create_str_benchmark, sort_stable, str_take, vec_benchmarks, IndexedString, INPUT_TEXT,
 };
@@ -30,4 +30,3 @@ tango_benchmarks!(
     num_benchmarks(),
     vec_benchmarks(sort_stable)
 );
-tango_main!();

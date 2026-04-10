@@ -1,7 +1,7 @@
 #![cfg_attr(feature = "align", feature(fn_align))]
 
 use common::search_benchmarks;
-use tango_bench::{tango_benchmarks, tango_main};
+use tango_bench::tango_benchmarks;
 
 mod common;
 
@@ -22,5 +22,3 @@ tango_benchmarks!(
     search_benchmarks(search_vec::<u32>),
     search_benchmarks(search_vec::<u64>)
 );
-
-tango_main!();

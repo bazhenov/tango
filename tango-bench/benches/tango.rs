@@ -1,6 +1,6 @@
 use rand::{distributions::Standard, rngs::SmallRng, Rng, SeedableRng};
 use tango_bench::{
-    benchmark_fn, iqr_variance_thresholds, tango_benchmarks, tango_main, IntoBenchmarks, Summary,
+    benchmark_fn, iqr_variance_thresholds, tango_benchmarks, IntoBenchmarks, Summary,
 };
 
 fn summary_benchmarks() -> impl IntoBenchmarks {
@@ -32,4 +32,3 @@ tango_benchmarks!(
     summary_benchmarks(),
     iqr_interquartile_range_benchmarks()
 );
-tango_main!();
