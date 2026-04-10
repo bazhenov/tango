@@ -7,7 +7,6 @@ use serde::{Deserialize, Serialize};
 pub const WORKER_COMMAND: &str = "__worker";
 
 pub const METHOD_INIT: &str = "init";
-pub const METHOD_SELECT: &str = "select";
 pub const METHOD_ESTIMATE_ITERATIONS: &str = "estimate_iterations";
 pub const METHOD_RUN_BENCHMARK: &str = "run_benchmark";
 pub const METHOD_SHUTDOWN: &str = "shutdown";
@@ -27,15 +26,13 @@ pub struct InitResult {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct SelectParams {
+pub struct EstimateIterationsParams {
     #[serde(rename = "index")]
     pub index: usize,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct EstimateIterationsParams {
     #[serde(rename = "time_ms")]
     pub time_ms: u32,
+    #[serde(rename = "seed")]
+    pub seed: u64,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -46,6 +43,10 @@ pub struct EstimateIterationsResult {
 
 #[derive(Serialize, Deserialize)]
 pub struct RunBenchmarkParams {
+    #[serde(rename = "index")]
+    pub index: usize,
+    #[serde(rename = "seed")]
+    pub seed: u64,
     #[serde(rename = "iterations")]
     pub iterations: usize,
     #[serde(rename = "num_samples")]

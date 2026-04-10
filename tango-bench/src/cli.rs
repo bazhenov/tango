@@ -289,6 +289,7 @@ mod paired_test {
         }
 
         let filter = filter.as_deref().unwrap_or("");
+        let seed = seed.unwrap_or_else(rand::random);
         let loop_mode = create_loop_mode(samples, time)?;
 
         let commpage =
@@ -341,21 +342,13 @@ mod paired_test {
             child_c.reset_read_pos();
             child_b.reset_read_pos();
 
-            // Select benchmark on both children
-            child_c
-                .select(c_idx)
-                .with_context(|| format!("Failed to select '{func_name}' on candidate"))?;
-            child_b
-                .select(b_idx)
-                .with_context(|| format!("Failed to select '{func_name}' on baseline"))?;
-
             // Estimate iterations
             const TIME_SLICE_MS: u32 = 10;
             let c_iters = child_c
-                .estimate_iterations(TIME_SLICE_MS)
+                .estimate_iterations(c_idx, seed, TIME_SLICE_MS)
                 .context("Failed to estimate iterations (candidate)")?;
             let b_iters = child_b
-                .estimate_iterations(TIME_SLICE_MS)
+                .estimate_iterations(b_idx, seed, TIME_SLICE_MS)
                 .context("Failed to estimate iterations (baseline)")?;
             let iterations = c_iters.max(1).min(b_iters.max(1));
 
@@ -366,8 +359,8 @@ mod paired_test {
             };
 
             // Start measurement on both children (non-blocking)
-            child_c.start_benchmark(iterations, num_samples)?;
-            child_b.start_benchmark(iterations, num_samples)?;
+            child_c.start_benchmark(c_idx, seed, iterations, num_samples)?;
+            child_b.start_benchmark(b_idx, seed, iterations, num_samples)?;
 
             // Poll samples from the commpage while children are running.
             // The ring buffer only holds 128 samples per lane, so R must drain
