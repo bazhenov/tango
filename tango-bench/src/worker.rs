@@ -3,7 +3,7 @@
 use crate::{
     commpage::{Commpage, CommpageError},
     protocol::{self, *},
-    Benchmark, ErasedSampler,
+    Benchmark,
 };
 use anyhow::{anyhow, bail, Result};
 use jsonrpc_types::v2::*;
@@ -24,7 +24,6 @@ pub fn run_worker(benchmarks: Vec<Benchmark>) -> Result<ExitCode> {
         benchmarks,
         commpage: None,
         role: None,
-        sampler: None,
     };
 
     // increasing priority of a test thread, to minimize effect of CPU scheduler
@@ -58,12 +57,10 @@ pub fn run_worker(benchmarks: Vec<Benchmark>) -> Result<ExitCode> {
     Ok(ExitCode::SUCCESS)
 }
 
-#[derive(Default)]
 struct WorkerState {
     commpage: Option<Commpage>,
     role: Option<crate::commpage::Role>,
     benchmarks: Vec<Benchmark>,
-    sampler: Option<Box<dyn ErasedSampler>>,
 }
 
 impl WorkerState {
@@ -90,43 +87,31 @@ impl WorkerState {
         Ok(InitResult { benchmarks: names })
     }
 
-    fn select(&mut self, params: SelectParams) -> Result<()> {
-        if params.index >= self.benchmarks.len() {
-            bail!(
-                "Index {} out of range (have {} benchmarks)",
-                params.index,
-                self.benchmarks.len()
-            );
-        }
-
-        let sampler = self.benchmarks[params.index].prepare_state(0);
-        self.sampler = Some(sampler);
-        Ok(())
+    fn prepare_sampler(&mut self, index: usize, seed: u64) -> Result<Box<dyn crate::ErasedSampler>> {
+        let len = self.benchmarks.len();
+        let bench = self
+            .benchmarks
+            .get_mut(index)
+            .ok_or_else(|| anyhow!("Index {index} out of range (have {len} benchmarks)"))?;
+        Ok(bench.prepare_state(seed))
     }
 
     fn estimate_iterations(
         &mut self,
         params: EstimateIterationsParams,
     ) -> Result<EstimateIterationsResult> {
-        let sampler = self
-            .sampler
-            .as_mut()
-            .ok_or_else(|| anyhow!("No benchmark selected (call select first)"))?;
-
+        let mut sampler = self.prepare_sampler(params.index, params.seed)?;
         let iterations = sampler.estimate_iterations(params.time_ms);
         Ok(EstimateIterationsResult { iterations })
     }
 
     fn run_benchmark(&mut self, params: RunBenchmarkParams) -> Result<RunBenchmarkResult> {
+        let mut sampler = self.prepare_sampler(params.index, params.seed)?;
         let cp = self
             .commpage
             .as_ref()
             .ok_or_else(|| anyhow!("Commpage not initialized"))?;
         let r = self.role.ok_or_else(|| anyhow!("Role not set"))?;
-        let sampler = self
-            .sampler
-            .as_mut()
-            .ok_or_else(|| anyhow!("No benchmark selected (call select first)"))?;
 
         let my_lane = cp.get_lane(r);
         let peer_lane = cp.peer_lane(r);
@@ -164,7 +149,6 @@ impl WorkerState {
 fn dispatch(req: &MethodCall, state: &mut WorkerState) -> Output {
     match req.method.as_str() {
         protocol::METHOD_INIT => rpc_handle(req, |p| state.init(p)),
-        protocol::METHOD_SELECT => rpc_handle(req, |p| state.select(p)),
         protocol::METHOD_ESTIMATE_ITERATIONS => rpc_handle(req, |p| state.estimate_iterations(p)),
         protocol::METHOD_RUN_BENCHMARK => rpc_handle(req, |p| state.run_benchmark(p)),
         _ => jsonrpc_error(&req.id, Error::method_not_found()),

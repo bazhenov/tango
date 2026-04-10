@@ -69,27 +69,33 @@ impl ChildHandle {
         Ok((handle, init.benchmarks))
     }
 
-    /// Select a benchmark by index.
-    pub fn select(&mut self, idx: usize) -> Result<()> {
-        self.call(protocol::METHOD_SELECT, SelectParams { index: idx })?;
-        Ok(())
-    }
-
     /// Estimate iterations for a given time budget (in ms).
-    pub fn estimate_iterations(&mut self, time_ms: u32) -> Result<usize> {
+    pub fn estimate_iterations(&mut self, index: usize, seed: u64, time_ms: u32) -> Result<usize> {
         let result = self.call(
             protocol::METHOD_ESTIMATE_ITERATIONS,
-            EstimateIterationsParams { time_ms },
+            EstimateIterationsParams {
+                index,
+                time_ms,
+                seed,
+            },
         )?;
         let est: EstimateIterationsResult = serde_json::from_value(result)?;
         Ok(est.iterations)
     }
 
     /// Start the measurement loop (sends `run_benchmark` RPC without waiting for response).
-    pub fn start_benchmark(&mut self, iterations: usize, num_samples: usize) -> Result<u64> {
+    pub fn start_benchmark(
+        &mut self,
+        index: usize,
+        seed: u64,
+        iterations: usize,
+        num_samples: usize,
+    ) -> Result<u64> {
         let id = self.req_next_id;
         self.req_next_id += 1;
         let params = RunBenchmarkParams {
+            index,
+            seed,
             iterations,
             num_samples,
         };
