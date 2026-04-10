@@ -8,16 +8,24 @@ use crate::{
 use anyhow::{anyhow, bail, Result};
 use jsonrpc_types::v2::*;
 use serde::{de::DeserializeOwned, Serialize};
-use std::io::{self, BufRead, BufReader, Write};
+use std::{
+    io::{self, BufRead, BufReader, Write},
+    process::ExitCode,
+};
 
 /// Entry point for a child process in worker mode.
 ///
 /// Reads newline-delimited JSON-RPC 2.0 from stdin, writes responses to stdout.
 /// Measurement data flows through the commpage, not through JSON-RPC.
-pub fn run_worker() {
+pub fn run_worker(benchmarks: Vec<Benchmark>) -> Result<ExitCode> {
     let stdin = BufReader::new(io::stdin());
     let mut out = io::stdout().lock();
-    let mut state = WorkerState::default();
+    let mut state = WorkerState {
+        benchmarks,
+        commpage: None,
+        role: None,
+        sampler: None,
+    };
 
     // increasing priority of a test thread, to minimize effect of CPU scheduler
     #[cfg(target_os = "macos")]
@@ -47,6 +55,7 @@ pub fn run_worker() {
         let _ = writeln!(out, "{}", serde_json::to_string(&response).unwrap());
         let _ = out.flush();
     }
+    Ok(ExitCode::SUCCESS)
 }
 
 #[derive(Default)]
@@ -72,11 +81,11 @@ impl WorkerState {
             }
         }
 
-        let benchmarks =
-            crate::take_benchmarks().ok_or_else(|| anyhow!("No benchmarks registered"))?;
-
-        let names: Vec<String> = benchmarks.iter().map(|b| b.name().to_string()).collect();
-        self.benchmarks = benchmarks;
+        let names: Vec<String> = self
+            .benchmarks
+            .iter()
+            .map(|b| b.name().to_string())
+            .collect();
 
         Ok(InitResult { benchmarks: names })
     }

@@ -1,5 +1,8 @@
 //! Contains functionality of a `cargo bench` harness
-use crate::Error;
+use crate::{
+    protocol::{self, WORKER_COMMAND},
+    worker, Benchmark, Error,
+};
 use anyhow::{bail, Context};
 use clap::{ArgAction, Parser};
 use colorz::mode::{self, Mode};
@@ -135,28 +138,32 @@ struct CargoBenchFlags {
     bench: bool,
 }
 
-pub fn run() -> Result<ExitCode> {
-    let opts = Opts::parse();
+pub fn run(benchmarks: Vec<Benchmark>) -> Result<ExitCode> {
+    // Check for worker mode before normal CLI parsing
+    if env::args().any(|a| a == WORKER_COMMAND) {
+        worker::run_worker(benchmarks)
+    } else {
+        let opts = Opts::parse();
 
-    match Mode::from_str(&opts.coloring_mode) {
-        Ok(coloring_mode) => mode::set_coloring_mode(coloring_mode),
-        Err(_) => eprintln!("[WARN] Invalid coloring mode: {}", opts.coloring_mode),
-    }
-
-    let subcommand = opts.subcommand.unwrap_or(BenchmarkMode::List {
-        bench_flags: opts.bench_flags,
-    });
-
-    match subcommand {
-        BenchmarkMode::List { bench_flags: _ } => {
-            let benchmarks = crate::take_benchmarks().unwrap_or_default();
-            for bench in &benchmarks {
-                println!("{}", bench.name());
-            }
-            Ok(ExitCode::SUCCESS)
+        match Mode::from_str(&opts.coloring_mode) {
+            Ok(coloring_mode) => mode::set_coloring_mode(coloring_mode),
+            Err(_) => eprintln!("[WARN] Invalid coloring mode: {}", opts.coloring_mode),
         }
-        BenchmarkMode::Compare(opts) => paired_test::run_test(opts),
-        BenchmarkMode::Solo(opts) => solo_test::run_test(opts),
+
+        let subcommand = opts.subcommand.unwrap_or(BenchmarkMode::List {
+            bench_flags: opts.bench_flags,
+        });
+
+        match subcommand {
+            BenchmarkMode::List { bench_flags: _ } => {
+                for bench in &benchmarks {
+                    println!("{}", bench.name());
+                }
+                Ok(ExitCode::SUCCESS)
+            }
+            BenchmarkMode::Compare(opts) => paired_test::run_test(opts),
+            BenchmarkMode::Solo(opts) => solo_test::run_test(opts, benchmarks),
+        }
     }
 }
 
@@ -189,7 +196,7 @@ mod solo_test {
     use super::*;
     use crate::Summary;
 
-    pub(super) fn run_test(opts: SoloOpts) -> Result<ExitCode> {
+    pub(super) fn run_test(opts: SoloOpts, mut benchmarks: Vec<Benchmark>) -> Result<ExitCode> {
         let SoloOpts {
             bench_flags: _,
             filter,
@@ -198,7 +205,6 @@ mod solo_test {
             seed,
         } = opts;
 
-        let mut benchmarks = crate::take_benchmarks().unwrap_or_default();
         let filter = filter.as_deref().unwrap_or("");
         let loop_mode = create_loop_mode(samples, time)?;
         let seed = seed.unwrap_or_else(rand::random);
@@ -553,7 +559,6 @@ mod reporting {
     use colorz::{ansi, mode::Stream, Colorize, Style};
     use std::{
         io::{self, Write},
-        iter,
         time::Duration,
     };
 
