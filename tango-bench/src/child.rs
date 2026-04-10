@@ -29,16 +29,23 @@ pub struct ChildHandle {
 }
 
 impl ChildHandle {
-    /// Spawn a child in worker mode and send the `init` command.
+    /// Spawn a child in worker mode.
     ///
-    /// Returns the list of benchmark names the child reported.
-    pub fn spawn(
-        executable: &Path,
-        commpage: &Commpage,
-        role: Role,
-    ) -> Result<(Self, Vec<String>)> {
+    /// Passes shmem name and role via CLI arguments.
+    pub fn spawn(executable: &Path, commpage: &Commpage, role: Role) -> Result<Self> {
+        let role_str = match role {
+            Role::Candidate => "candidate",
+            Role::Baseline => "baseline",
+        };
+
         let mut child = Command::new(executable)
-            .arg(WORKER_COMMAND)
+            .args([
+                "__worker",
+                "--shmem",
+                commpage.os_id(),
+                "--role",
+                role_str,
+            ])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
@@ -48,25 +55,21 @@ impl ChildHandle {
         let stdin = child.stdin.take().unwrap();
         let stdout = BufReader::new(child.stdout.take().unwrap());
 
-        let mut handle = ChildHandle {
+        Ok(ChildHandle {
             process: child,
             stdin,
             stdout,
             role,
             req_next_id: 1,
             read_pos: 0,
-        };
+        })
+    }
 
-        // Send init
-        let params = InitParams {
-            shmem_name: commpage.os_id().to_string(),
-            role,
-        };
-        let result = handle.call(protocol::METHOD_INIT, params)?;
-        let init: InitResult =
-            serde_json::from_value(result).context("Failed to parse init response")?;
-
-        Ok((handle, init.benchmarks))
+    /// Query the child for its list of benchmark names.
+    pub fn list_benchmarks(&mut self) -> Result<Vec<String>> {
+        let result = self.call(protocol::METHOD_LIST_BENCHMARKS, Value::Null)?;
+        let list: ListBenchmarksResult = serde_json::from_value(result)?;
+        Ok(list.benchmarks)
     }
 
     /// Estimate iterations for a given time budget (in ms).

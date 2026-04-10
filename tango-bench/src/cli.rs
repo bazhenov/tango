@@ -1,5 +1,5 @@
 //! Contains functionality of a `cargo bench` harness
-use crate::{protocol::WORKER_COMMAND, worker, Benchmark, Error};
+use crate::{commpage::Role, worker, Benchmark, Error};
 use anyhow::{bail, Context};
 use clap::{ArgAction, Parser};
 use colorz::mode::{self, Mode};
@@ -21,7 +21,7 @@ use std::{
 pub type Result<T> = anyhow::Result<T>;
 
 #[derive(Parser, Debug)]
-enum BenchmarkMode {
+enum Subcommand {
     /// List benchmarks
     List {
         #[command(flatten)]
@@ -31,6 +31,20 @@ enum BenchmarkMode {
     Compare(PairedOpts),
     /// Run a single benchmark in a solo (isolated) mode
     Solo(SoloOpts),
+    /// Internal worker mode (used by the runner to spawn child processes)
+    #[command(name = "__worker", hide = true)]
+    Worker(WorkerOpts),
+}
+
+#[derive(Parser, Debug)]
+struct WorkerOpts {
+    /// Shared memory name for the commpage
+    #[arg(long = "shmem")]
+    shmem: String,
+
+    /// Role of this worker (candidate or baseline)
+    #[arg(long = "role")]
+    role: String,
 }
 
 #[derive(Parser, Debug)]
@@ -119,7 +133,7 @@ struct SoloOpts {
 #[command(author, version, about, long_about = None)]
 struct Opts {
     #[command(subcommand)]
-    subcommand: Option<BenchmarkMode>,
+    subcommand: Option<Subcommand>,
 
     #[command(flatten)]
     bench_flags: CargoBenchFlags,
@@ -136,30 +150,40 @@ struct CargoBenchFlags {
 }
 
 pub fn run(benchmarks: Vec<Benchmark>) -> Result<ExitCode> {
-    // Check for worker mode before normal CLI parsing
-    if env::args().any(|a| a == WORKER_COMMAND) {
-        worker::run_worker(benchmarks)
-    } else {
-        let opts = Opts::parse();
+    let opts = Opts::parse();
 
+    let subcommand = opts.subcommand.unwrap_or(Subcommand::List {
+        bench_flags: opts.bench_flags,
+    });
+
+    // Handle worker mode early, before setting up coloring etc.
+    if let Subcommand::Worker(ref worker_opts) = subcommand {
+        let role: Role = serde_json::from_value(serde_json::Value::String(
+            worker_opts.role.clone(),
+        ))
+        .map_err(|_| {
+            anyhow::anyhow!(
+                "Invalid role: '{}' (expected 'candidate' or 'baseline')",
+                worker_opts.role
+            )
+        })?;
+        worker::run_worker(&worker_opts.shmem, role, benchmarks)
+    } else {
         match Mode::from_str(&opts.coloring_mode) {
             Ok(coloring_mode) => mode::set_coloring_mode(coloring_mode),
             Err(_) => eprintln!("[WARN] Invalid coloring mode: {}", opts.coloring_mode),
         }
 
-        let subcommand = opts.subcommand.unwrap_or(BenchmarkMode::List {
-            bench_flags: opts.bench_flags,
-        });
-
         match subcommand {
-            BenchmarkMode::List { bench_flags: _ } => {
+            Subcommand::Worker(_) => unreachable!(),
+            Subcommand::List { bench_flags: _ } => {
                 for bench in &benchmarks {
                     println!("{}", bench.name());
                 }
                 Ok(ExitCode::SUCCESS)
             }
-            BenchmarkMode::Compare(opts) => paired_test::run_test(opts),
-            BenchmarkMode::Solo(opts) => solo_test::run_test(opts, benchmarks),
+            Subcommand::Compare(opts) => paired_test::run_test(opts),
+            Subcommand::Solo(opts) => solo_test::run_test(opts, benchmarks),
         }
     }
 }
@@ -253,8 +277,11 @@ mod paired_test {
     use reporting::Reporter;
     use std::{
         io::{self, BufWriter},
+        thread::sleep,
         time::Instant,
     };
+
+    const TIME_SLICE_MS: u32 = 10;
 
     pub(super) fn run_test(opts: PairedOpts) -> Result<ExitCode> {
         let PairedOpts {
@@ -297,13 +324,17 @@ mod paired_test {
 
         let candidate_exe = env::current_exe().context("Unable to determine current executable")?;
 
-        let (mut child_c, c_benchmarks) =
-            ChildHandle::spawn(&candidate_exe, &commpage, Role::Candidate)
-                .context("Failed to spawn candidate")?;
-        let (mut child_b, b_benchmarks) = ChildHandle::spawn(&path, &commpage, Role::Baseline)
+        let mut child_c = ChildHandle::spawn(&candidate_exe, &commpage, Role::Candidate)
+            .context("Failed to spawn candidate")?;
+        let mut child_b = ChildHandle::spawn(&path, &commpage, Role::Baseline)
             .context("Failed to spawn baseline")?;
 
-        let mut exit_code = ExitCode::SUCCESS;
+        let c_benchmarks = child_c
+            .list_benchmarks()
+            .context("Failed to list benchmarks (candidate)")?;
+        let b_benchmarks = child_b
+            .list_benchmarks()
+            .context("Failed to list benchmarks (baseline)")?;
 
         if let Some(path) = &path_to_dump {
             if !path.exists() {
@@ -322,28 +353,43 @@ mod paired_test {
             &reporting::DefaultReporter
         };
 
+        // Determine num_samples
+        let num_samples = match loop_mode {
+            LoopMode::Samples(n) => n,
+            LoopMode::Time(_) => 0,
+        };
+
+        let mut exit_code = ExitCode::SUCCESS;
+
+        let lane_c = commpage.get_lane(Role::Candidate);
+        let lane_b = commpage.get_lane(Role::Baseline);
+
+        // Poll samples from the commpage while children are running.
+        // The ring buffer only holds 128 samples per lane, so R must drain
+        // faster than the children produce to avoid losing data.
+        let mut c_samples = Vec::new();
+        let mut b_samples = Vec::new();
+
         for (c_idx, func_name) in c_benchmarks.iter().enumerate() {
             if !filter.is_empty() && !glob_match(filter, func_name) {
                 continue;
             }
 
-            let b_idx = match b_benchmarks.iter().position(|n| n == func_name) {
-                Some(idx) => idx,
-                None => {
-                    if !quiet {
-                        writeln!(stderr(), "{} skipped...", func_name)?;
-                    }
-                    continue;
+            let Some(b_idx) = b_benchmarks.iter().position(|n| n == func_name) else {
+                if !quiet {
+                    writeln!(stderr(), "{} skipped...", func_name)?;
                 }
+                continue;
             };
 
             // Reset commpage and read positions for the new benchmark
             commpage.reset();
             child_c.reset_read_pos();
             child_b.reset_read_pos();
+            c_samples.clear();
+            b_samples.clear();
 
             // Estimate iterations
-            const TIME_SLICE_MS: u32 = 10;
             let c_iters = child_c
                 .estimate_iterations(c_idx, seed, TIME_SLICE_MS)
                 .context("Failed to estimate iterations (candidate)")?;
@@ -352,23 +398,9 @@ mod paired_test {
                 .context("Failed to estimate iterations (baseline)")?;
             let iterations = c_iters.max(1).min(b_iters.max(1));
 
-            // Determine num_samples
-            let num_samples = match loop_mode {
-                LoopMode::Samples(n) => n,
-                LoopMode::Time(_) => 0,
-            };
-
             // Start measurement on both children (non-blocking)
             child_c.start_benchmark(c_idx, seed, iterations, num_samples)?;
             child_b.start_benchmark(b_idx, seed, iterations, num_samples)?;
-
-            // Poll samples from the commpage while children are running.
-            // The ring buffer only holds 128 samples per lane, so R must drain
-            // faster than the children produce to avoid losing data.
-            let mut c_samples = Vec::new();
-            let mut b_samples = Vec::new();
-            let lane_c = commpage.get_lane(Role::Candidate);
-            let lane_b = commpage.get_lane(Role::Baseline);
 
             let time_budget_start = if let LoopMode::Time(_) = loop_mode {
                 Some(Instant::now())
@@ -405,7 +437,7 @@ mod paired_test {
                     break;
                 }
 
-                std::thread::sleep(Duration::from_millis(1));
+                sleep(Duration::from_millis(1));
             }
 
             // Both children are done — read their RPC responses
@@ -426,11 +458,10 @@ mod paired_test {
                 c_samples.len(),
                 b_samples.len()
             );
-            let n = c_samples.len();
 
             let run_result = calculate_run_result(
-                &b_samples[..n],
-                &c_samples[..n],
+                &b_samples,
+                &c_samples,
                 iterations,
                 filter_outliers,
                 noise_threshold,
@@ -456,9 +487,7 @@ mod paired_test {
             if run_result.diff_estimate.significant && run_result.diff_estimate.pct > 0. {
                 exit_code = ExitCode::FAILURE;
                 if fail_fast {
-                    let _ = child_c.shutdown();
-                    let _ = child_b.shutdown();
-                    return Ok(ExitCode::FAILURE);
+                    break;
                 }
             }
         }

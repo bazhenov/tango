@@ -1,11 +1,11 @@
 //! Child worker mode: reads JSON-RPC commands from stdin, writes samples to commpage.
 
 use crate::{
-    commpage::{Commpage, CommpageError},
+    commpage::{Commpage, Role},
     protocol::{self, *},
     Benchmark,
 };
-use anyhow::{anyhow, bail, Result};
+use anyhow::{anyhow, Result};
 use jsonrpc_types::v2::*;
 use serde::{de::DeserializeOwned, Serialize};
 use std::{
@@ -15,16 +15,19 @@ use std::{
 
 /// Entry point for a child process in worker mode.
 ///
-/// Reads newline-delimited JSON-RPC 2.0 from stdin, writes responses to stdout.
-/// Measurement data flows through the commpage, not through JSON-RPC.
-pub fn run_worker(benchmarks: Vec<Benchmark>) -> Result<ExitCode> {
-    let stdin = BufReader::new(io::stdin());
-    let mut out = io::stdout().lock();
+/// Opens the commpage from the given shmem name, then enters the JSON-RPC
+/// dispatch loop reading commands from stdin and writing responses to stdout.
+pub fn run_worker(shmem_name: &str, role: Role, benchmarks: Vec<Benchmark>) -> Result<ExitCode> {
+    let commpage = Commpage::open(shmem_name)?;
+
     let mut state = WorkerState {
         benchmarks,
-        commpage: None,
-        role: None,
+        commpage,
+        role,
     };
+
+    let stdin = BufReader::new(io::stdin());
+    let mut out = io::stdout().lock();
 
     // increasing priority of a test thread, to minimize effect of CPU scheduler
     #[cfg(target_os = "macos")]
@@ -35,13 +38,16 @@ pub fn run_worker(benchmarks: Vec<Benchmark>) -> Result<ExitCode> {
 
     let mut lines = stdin.lines();
     while let Some(Ok(line)) = lines.next() {
-        if line.is_empty() {
-            continue;
-        }
-
         let response = match serde_json::from_str::<MethodCall>(&line) {
-            Ok(r) if r.method == protocol::METHOD_SHUTDOWN => break,
-            Ok(r) => dispatch(&r, &mut state),
+            Ok(r) => match r.method.as_str() {
+                protocol::METHOD_LIST_BENCHMARKS => rpc_handle(&r, |()| state.list_benchmarks()),
+                protocol::METHOD_ESTIMATE_ITERATIONS => {
+                    rpc_handle(&r, |p| state.estimate_iterations(p))
+                }
+                protocol::METHOD_RUN_BENCHMARK => rpc_handle(&r, |p| state.run_benchmark(p)),
+                protocol::METHOD_SHUTDOWN => break,
+                _ => jsonrpc_error(&r.id, Error::method_not_found()),
+            },
             Err(e) => Output::<Value>::failure(
                 Error {
                     code: ErrorCode::ParseError,
@@ -58,36 +64,26 @@ pub fn run_worker(benchmarks: Vec<Benchmark>) -> Result<ExitCode> {
 }
 
 struct WorkerState {
-    commpage: Option<Commpage>,
-    role: Option<crate::commpage::Role>,
+    commpage: Commpage,
+    role: Role,
     benchmarks: Vec<Benchmark>,
 }
 
 impl WorkerState {
-    fn init(&mut self, params: InitParams) -> Result<InitResult> {
-        match Commpage::open(&params.shmem_name) {
-            Ok(cp) => {
-                self.commpage = Some(cp);
-                self.role = Some(params.role);
-            }
-            Err(CommpageError::Shmem(e)) => {
-                bail!("Failed to open shared memory: {e}");
-            }
-            Err(e) => {
-                bail!("Commpage error: {e}");
-            }
-        }
-
-        let names: Vec<String> = self
+    fn list_benchmarks(&self) -> Result<ListBenchmarksResult> {
+        let benchmarks = self
             .benchmarks
             .iter()
             .map(|b| b.name().to_string())
             .collect();
-
-        Ok(InitResult { benchmarks: names })
+        Ok(ListBenchmarksResult { benchmarks })
     }
 
-    fn prepare_sampler(&mut self, index: usize, seed: u64) -> Result<Box<dyn crate::ErasedSampler>> {
+    fn prepare_sampler(
+        &mut self,
+        index: usize,
+        seed: u64,
+    ) -> Result<Box<dyn crate::ErasedSampler>> {
         let len = self.benchmarks.len();
         let bench = self
             .benchmarks
@@ -107,14 +103,9 @@ impl WorkerState {
 
     fn run_benchmark(&mut self, params: RunBenchmarkParams) -> Result<RunBenchmarkResult> {
         let mut sampler = self.prepare_sampler(params.index, params.seed)?;
-        let cp = self
-            .commpage
-            .as_ref()
-            .ok_or_else(|| anyhow!("Commpage not initialized"))?;
-        let r = self.role.ok_or_else(|| anyhow!("Role not set"))?;
 
-        let my_lane = cp.get_lane(r);
-        let peer_lane = cp.peer_lane(r);
+        let my_lane = self.commpage.get_lane(self.role);
+        let peer_lane = self.commpage.peer_lane(self.role);
 
         let mut samples_written = 0;
         loop {
@@ -122,7 +113,7 @@ impl WorkerState {
             if params.num_samples > 0 && samples_written >= params.num_samples as u64 {
                 break;
             }
-            if params.num_samples == 0 && cp.is_stopped() {
+            if params.num_samples == 0 && self.commpage.is_stopped() {
                 break;
             }
 
@@ -143,15 +134,6 @@ impl WorkerState {
         my_lane.mark_done();
 
         Ok(RunBenchmarkResult { samples_written })
-    }
-}
-
-fn dispatch(req: &MethodCall, state: &mut WorkerState) -> Output {
-    match req.method.as_str() {
-        protocol::METHOD_INIT => rpc_handle(req, |p| state.init(p)),
-        protocol::METHOD_ESTIMATE_ITERATIONS => rpc_handle(req, |p| state.estimate_iterations(p)),
-        protocol::METHOD_RUN_BENCHMARK => rpc_handle(req, |p| state.run_benchmark(p)),
-        _ => jsonrpc_error(&req.id, Error::method_not_found()),
     }
 }
 

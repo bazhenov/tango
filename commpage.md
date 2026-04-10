@@ -195,6 +195,22 @@ read RPC response from B
 drain remaining samples from both lanes
 ```
 
+## Child Spawning and Initialization
+
+R spawns each child as a hidden `__worker` subcommand with two required flags:
+
+```
+./executable __worker --shmem /tango-XXXX --role candidate
+./executable __worker --shmem /tango-XXXX --role baseline
+```
+
+| Flag      | Description                                                                       |
+| --------- | --------------------------------------------------------------------------------- |
+| `--shmem` | OS-level shared memory name (e.g. `/tango-XXXX`)                                  |
+| `--role`  | `candidate` (write lane C, peer lane B) or `baseline` (write lane B, peer lane C) |
+
+The child opens the commpage on startup and enters the JSON-RPC dispatch loop. R discovers available benchmarks by sending a `list_benchmarks` request.
+
 ## JSON-RPC Protocol (over stdio)
 
 Communication between R and C/B uses newline-delimited JSON-RPC 2.0 over the child's stdin/stdout. This carries **control messages only** -- measurement data flows through the commpage.
@@ -202,32 +218,24 @@ Communication between R and C/B uses newline-delimited JSON-RPC 2.0 over the chi
 ### Methods (R -> Child)
 
 ```jsonc
-// Initialize: tells the child the commpage shmem name, its role (which lane to
-// write to, and which peer lane to read for synchronization), and requests
-// benchmark enumeration.
-{"jsonrpc":"2.0","method":"init","params":{"shmem_name":"/tango-XXXX","role":"candidate"},"id":1}
-// role: "candidate" → write lane C, peer lane B
-// role: "baseline"  → write lane B, peer lane C
+// List available benchmarks
+{"jsonrpc":"2.0","method":"list_benchmarks","params":null,"id":1}
 // Response: {"jsonrpc":"2.0","result":{"benchmarks":["bench_a","bench_b"]},"id":1}
 
-// Select a benchmark by index
-{"jsonrpc":"2.0","method":"select","params":{"index":0},"id":2}
-// Response: {"jsonrpc":"2.0","result":null,"id":2}
-
 // Estimate iterations for a given time budget
-{"jsonrpc":"2.0","method":"estimate_iterations","params":{"time_ms":10},"id":3}
-// Response: {"jsonrpc":"2.0","result":{"iterations":50000},"id":3}
+{"jsonrpc":"2.0","method":"estimate_iterations","params":{"index":0,"time_ms":10,"seed":42},"id":2}
+// Response: {"jsonrpc":"2.0","result":{"iterations":50000},"id":2}
 
 // Start the measurement loop. The child takes samples, writing each to its
 // commpage lane and synchronizing with the peer via write_cursors.
 // num_samples > 0: run exactly that many samples (--samples mode)
 // num_samples = 0: run until stop_flag is set by R (-t mode)
-{"jsonrpc":"2.0","method":"run_benchmark","params":{"iterations":1000,"num_samples":300},"id":5}
+{"jsonrpc":"2.0","method":"run_benchmark","params":{"index":0,"seed":42,"iterations":1000,"num_samples":300},"id":3}
 // Response (sent after loop exits):
-// {"jsonrpc":"2.0","result":{"samples_written":300},"id":5}
+// {"jsonrpc":"2.0","result":{"samples_written":300},"id":3}
 
 // Shutdown gracefully
-{"jsonrpc":"2.0","method":"shutdown","id":6}
+{"jsonrpc":"2.0","method":"shutdown","id":4}
 ```
 
 ### Why JSON-RPC + commpage (not pure JSON-RPC or pure shmem)?
@@ -256,16 +264,16 @@ Communication between R and C/B uses newline-delimited JSON-RPC 2.0 over the chi
 
 The child process needs a way to enter "worker mode" where it reads JSON-RPC commands from stdin and writes measurement samples to the commpage.
 
-1. Add a hidden CLI subcommand: `__worker` (double underscore signals internal use).
+1. Add a hidden CLI subcommand: `__worker --shmem <name> --role <role>`.
 2. When `__worker` is invoked:
-   - Read `init` command from stdin to get commpage shmem name and role.
-   - Open the commpage, determine own lane and peer lane from role.
-   - Initialize benchmarks (calls `tango_init` equivalent internally).
+   - Open the commpage.
+   - Initialize list of benchmarks.
    - Enter command loop reading JSON-RPC from stdin.
 3. The `run_benchmark` command:
+   - Prepares state from the benchmark index and seed passed in params.
    - Loops `num_samples` times: take measurement, write sample to own lane, `wait_for_peer()`.
    - Returns RPC response after all samples are written.
-4. All other commands (`select`, `estimate_iterations`) are thin wrappers around the existing `ErasedSampler` / `State` API.
+4. The `estimate_iterations` command prepares state from index/seed and estimates iteration count for a given time budget.
 5. The child's stderr is forwarded to the runner's stderr for debugging.
 
 ### Phase 3: Runner-Side Child Handle
@@ -274,30 +282,17 @@ The child process needs a way to enter "worker mode" where it reads JSON-RPC com
 
 A `ChildHandle` struct that the runner uses to manage one child process.
 
-```rust
-pub(crate) struct ChildHandle {
-    process: std::process::Child,
-    stdin: BufWriter<ChildStdin>,
-    stdout: BufReader<ChildStdout>,
-    commpage: Commpage,       // shared by both children
-    lane: usize,              // which lane this child writes to (C or B)
-    local_read_pos: u64,      // R's read position for this child's lane
-    next_id: u64,
-}
-```
-
 Methods:
 
-- `spawn(executable: &Path, commpage: &Commpage, role: Role) -> Result<ChildHandle>` -- spawns child with `__worker`, sends `init` with shmem name and role.
-- `list_benchmarks() -> Vec<String>`
-- `select(idx: usize)`
-- `estimate_iterations(time_ms: u32) -> usize`
-- `start_benchmark(iterations: usize, num_samples: usize)` -- sends `run_benchmark` RPC **without** waiting for the response. Child enters its measurement loop.
+- `spawn(executable: &Path, commpage: &Commpage, role: Role) -> Result<ChildHandle>` -- spawns child with `__worker --shmem <name> --role <role>` CLI arguments.
+- `list_benchmarks() -> Result<Vec<String>>` -- queries the child for available benchmark names via JSON-RPC.
+- `estimate_iterations(index: usize, seed: u64, time_ms: u32) -> usize`
+- `start_benchmark(index: usize, seed: u64, iterations: usize, num_samples: usize)` -- sends `run_benchmark` RPC **without** waiting for the response. Child enters its measurement loop.
 - `finish_benchmark()` -- reads the RPC response (blocks until child finishes all samples).
-- `drain_samples() -> Vec<Sample>` -- reads new samples from this child's commpage lane.
+- `drain_samples()` -- reads new samples from this child's commpage lane.
 - `shutdown()` -- sends shutdown, waits for child to exit.
 
-Note: R creates a single `Commpage` and passes it to both `ChildHandle`s. Each handle knows its lane index.
+Note: R creates a single `Commpage` and passes it to both `ChildHandle`s. Each handle knows its role.
 
 ### Phase 4: Integrate with Existing CLI
 
@@ -320,23 +315,7 @@ Note: R creates a single `Commpage` and passes it to both `ChildHandle`s. Each h
 
 **Modify: `tango-bench/src/lib.rs`** (or `dylib.rs`)
 
-The `tango_main!()` macro currently generates a `main()` that calls `cli::run()`. It needs to detect when it's being invoked as a worker:
-
-```rust
-macro_rules! tango_main {
-    () => {
-        fn main() {
-            // Check for worker mode before normal CLI parsing
-            if std::env::args().any(|a| a == "__worker") {
-                tango_bench::worker::run_worker();
-                return;
-            }
-            // Normal CLI path
-            std::process::exit(tango_bench::cli::run().unwrap() as i32);
-        }
-    };
-}
-```
+The `tango_main!()` macro generates a `main()` that calls `cli::run()`. The `__worker` subcommand is handled by clap inside `cli::run()`, so no special detection is needed in the macro.
 
 ### Phase 6: Testing
 
