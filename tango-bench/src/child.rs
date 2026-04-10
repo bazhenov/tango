@@ -9,7 +9,7 @@ use crate::{
 };
 use anyhow::{bail, Context, Result};
 use jsonrpc_types::v2::*;
-use serde::Serialize;
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::Value;
 use std::{
     io::{BufRead, BufReader, Write},
@@ -39,13 +39,7 @@ impl ChildHandle {
         };
 
         let mut child = Command::new(executable)
-            .args([
-                "__worker",
-                "--shmem",
-                commpage.os_id(),
-                "--role",
-                role_str,
-            ])
+            .args(["__worker", "--shmem", commpage.os_id(), "--role", role_str])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
@@ -93,32 +87,22 @@ impl ChildHandle {
         seed: u64,
         iterations: usize,
         num_samples: usize,
-    ) -> Result<u64> {
-        let id = self.req_next_id;
-        self.req_next_id += 1;
-        let params = RunBenchmarkParams {
-            index,
-            seed,
-            iterations,
-            num_samples,
-        };
-        let req = MethodCall {
-            jsonrpc: Version::V2_0,
-            method: protocol::METHOD_RUN_BENCHMARK.to_string(),
-            params: value_to_params(serde_json::to_value(params)?),
-            id: Id::Num(id),
-        };
-        let line = serde_json::to_string(&req)?;
-        writeln!(self.stdin, "{}", line)?;
-        self.stdin.flush()?;
-        Ok(id)
+    ) -> Result<()> {
+        self.send_request(
+            protocol::METHOD_RUN_BENCHMARK,
+            RunBenchmarkParams {
+                index,
+                seed,
+                iterations,
+                num_samples,
+            },
+        )?;
+        Ok(())
     }
 
     /// Wait for the `run_benchmark` response (blocks until child finishes all samples).
-    pub fn finish_benchmark(&mut self) -> Result<u64> {
-        let resp = self.read_response()?;
-        let r: RunBenchmarkResult = serde_json::from_value(resp)?;
-        Ok(r.samples_written)
+    pub fn finish_benchmark(&mut self) -> Result<RunBenchmarkResult> {
+        self.read_response::<RunBenchmarkResult>()
     }
 
     /// Reset local read position (call before each new benchmark run).
@@ -147,26 +131,28 @@ impl ChildHandle {
 
     /// Send a JSON-RPC request and wait for the response.
     fn call<T: Serialize>(&mut self, method: &str, params: T) -> Result<Value> {
+        self.send_request(method, params)?;
+        self.read_response()
+    }
+
+    fn send_request<T: Serialize>(&mut self, method: &str, params: T) -> Result<()> {
         let params = serde_json::to_value(params)?;
         let id = self.req_next_id;
         self.req_next_id += 1;
-
         let req = MethodCall {
             jsonrpc: Version::V2_0,
             method: method.to_string(),
             params: value_to_params(params),
             id: Id::Num(id),
         };
-
         let line = serde_json::to_string(&req)?;
         writeln!(self.stdin, "{}", line)
             .with_context(|| format!("Failed to send '{method}' to child"))?;
         self.stdin.flush()?;
-
-        self.read_response()
+        Ok(())
     }
 
-    fn read_response(&mut self) -> Result<Value> {
+    fn read_response<T: DeserializeOwned>(&mut self) -> Result<T> {
         let mut line = String::new();
         self.stdout
             .read_line(&mut line)
@@ -176,8 +162,8 @@ impl ChildHandle {
             bail!("Child process closed stdout unexpectedly");
         }
 
-        let resp: Output =
-            serde_json::from_str(&line).context("Failed to parse JSON-RPC response")?;
+        let resp = serde_json::from_str::<Output<T>>(&line)
+            .context("Failed to parse JSON-RPC response")?;
 
         match resp {
             Output::Success(s) => Ok(s.result),
