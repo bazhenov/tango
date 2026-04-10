@@ -35,7 +35,7 @@ fn not_existent_benchmark() {
 fn not_a_benchmark() {
     Cmd::run(SLEEP_10, &["compare", NOT_A_BENCH])
         .assert_failure()
-        .assert_stderr_contains("Failed to spawn baseline");
+        .assert_stderr_contains("Failed to list benchmarks (baseline)");
 }
 
 #[test]

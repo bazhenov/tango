@@ -1,26 +1,15 @@
 //! Shared JSON-RPC protocol definitions: method names, parameter types, and result types
 //! used by both the worker (server) and child handle (client).
 
-use crate::commpage::Role;
 use serde::{Deserialize, Serialize};
 
-pub const WORKER_COMMAND: &str = "__worker";
-
-pub const METHOD_INIT: &str = "init";
+pub const METHOD_LIST_BENCHMARKS: &str = "list_benchmarks";
 pub const METHOD_ESTIMATE_ITERATIONS: &str = "estimate_iterations";
 pub const METHOD_RUN_BENCHMARK: &str = "run_benchmark";
 pub const METHOD_SHUTDOWN: &str = "shutdown";
 
 #[derive(Serialize, Deserialize)]
-pub struct InitParams {
-    #[serde(rename = "shmem_name")]
-    pub shmem_name: String,
-    #[serde(rename = "role")]
-    pub role: Role,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct InitResult {
+pub struct ListBenchmarksResult {
     #[serde(rename = "benchmarks")]
     pub benchmarks: Vec<String>,
 }
