@@ -59,10 +59,10 @@ pub enum Error {
 #[macro_export]
 macro_rules! tango_benchmarks {
     ($($func_expr:expr),+) => {
-        fn __tango_register_benchmarks() {
+        fn main() -> $crate::cli::Result<std::process::ExitCode> {
             let mut benchmarks = vec![];
-            $(benchmarks.extend($crate::IntoBenchmarks::into_benchmarks($func_expr));)*
-            $crate::register_benchmarks(benchmarks);
+            $(benchmarks.extend($crate::IntoBenchmarks::into_benchmarks($func_expr));)*;
+            $crate::cli::run(benchmarks)
         }
     };
 }
@@ -80,38 +80,7 @@ macro_rules! tango_benchmarks {
 /// ```
 #[macro_export]
 macro_rules! tango_main {
-    () => {
-        fn main() -> $crate::cli::Result<std::process::ExitCode> {
-            __tango_register_benchmarks();
-
-            // Check for worker mode before normal CLI parsing
-            if std::env::args().any(|a| a == $crate::protocol::WORKER_COMMAND) {
-                $crate::worker::run_worker();
-                return Ok(std::process::ExitCode::SUCCESS);
-            }
-
-            $crate::cli::run()
-        }
-    };
-}
-
-/// Global storage for registered benchmarks.
-///
-/// Safety: Benchmarks are written once from main() before any threads are spawned,
-/// and taken once by either the CLI or worker. There is no concurrent access.
-static BENCHMARKS: BenchmarkStorage = BenchmarkStorage(std::cell::UnsafeCell::new(None));
-
-struct BenchmarkStorage(std::cell::UnsafeCell<Option<Vec<Benchmark>>>);
-unsafe impl Sync for BenchmarkStorage {}
-
-/// Called by `tango_benchmarks!` macro to register benchmarks.
-pub fn register_benchmarks(benchmarks: Vec<Benchmark>) {
-    unsafe { *BENCHMARKS.0.get() = Some(benchmarks) }
-}
-
-/// Takes the registered benchmarks out of global storage. Can only be called once.
-pub fn take_benchmarks() -> Option<Vec<Benchmark>> {
-    unsafe { (*BENCHMARKS.0.get()).take() }
+    () => {};
 }
 
 pub struct BenchmarkParams {
