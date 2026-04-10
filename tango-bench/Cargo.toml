@@ -13,6 +13,7 @@ keywords = ["benchmarks", "performance"]
 
 [dependencies]
 anyhow = "1.0.75"
+alloca = "0.4.0"
 clap = { version = "4.4.11", features = ["derive"] }
 colorz = { version = "1.1", features = ["supports-color"] }
 glob-match = "0.2"
@@ -25,6 +26,7 @@ serde_json = "1"
 shared_memory = "0.12.4"
 thiserror = "1.0.50"
 tokio = { version = "1.37.0", features = ["rt"], optional = true }
+
 
 # Required for getrusage()
 [target.'cfg(not(target_os = "windows"))'.dependencies]
