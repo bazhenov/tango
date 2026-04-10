@@ -71,19 +71,16 @@ macro_rules! tango_benchmarks {
 ///
 /// This macro generates the `main()` function for the benchmark harness.
 /// ```rust
-/// use tango_bench::{tango_main, tango_benchmarks, MeasurementSettings};
+/// use tango_bench::{tango_main, tango_benchmarks};
 ///
 /// // Register benchmarks
 /// tango_benchmarks!([]);
 ///
-/// tango_main!(MeasurementSettings {
-///     filter_outliers: true,
-///     ..Default::default()
-/// });
+/// tango_main!();
 /// ```
 #[macro_export]
 macro_rules! tango_main {
-    ($settings:expr) => {
+    () => {
         fn main() -> $crate::cli::Result<std::process::ExitCode> {
             __tango_register_benchmarks();
 
@@ -93,11 +90,8 @@ macro_rules! tango_main {
                 return Ok(std::process::ExitCode::SUCCESS);
             }
 
-            $crate::cli::run($settings)
+            $crate::cli::run()
         }
-    };
-    () => {
-        tango_main! {$crate::MeasurementSettings::default()}
     };
 }
 
@@ -286,45 +280,25 @@ impl IntoBenchmarks for Vec<Benchmark> {
     }
 }
 
-/// Describes basic settings for the benchmarking process
-///
-/// This structure is passed to [`cli::run()`].
-#[derive(Clone, Copy, Debug)]
-pub struct MeasurementSettings {
-    pub filter_outliers: bool,
-}
-
-impl Default for MeasurementSettings {
-    fn default() -> Self {
-        MeasurementSettings {
-            filter_outliers: false,
-        }
-    }
-}
-
 /// Calculates the result of the benchmarking run
 ///
 /// Return None if no measurements were made
 pub(crate) fn calculate_run_result(
     baseline: &[u64],
     candidate: &[u64],
-    iterations_per_sample: &[usize],
+    iterations_per_sample: usize,
     filter_outliers: bool,
     noise_threshold: f64,
 ) -> Option<RunResult> {
     assert!(baseline.len() == candidate.len());
-    assert!(baseline.len() == iterations_per_sample.len());
-
-    let mut iterations_per_sample = iterations_per_sample.to_vec();
 
     let mut diff = candidate
         .iter()
         .zip(baseline.iter())
         // Calculating difference between candidate and baseline
         .map(|(&c, &b)| c as f64 - b as f64)
-        .zip(iterations_per_sample.iter())
         // Normalizing difference to iterations count
-        .map(|(diff, &iters)| diff / iters as f64)
+        .map(|diff| diff / iterations_per_sample as f64)
         .collect::<Vec<_>>();
 
     // need to save number of original samples to calculate number of outliers correctly
@@ -333,13 +307,11 @@ pub(crate) fn calculate_run_result(
     // Normalizing measurements to iterations count
     let mut baseline = baseline
         .iter()
-        .zip(iterations_per_sample.iter())
-        .map(|(&v, &iters)| (v as f64) / (iters as f64))
+        .map(|&v| (v as f64) / (iterations_per_sample as f64))
         .collect::<Vec<_>>();
     let mut candidate = candidate
         .iter()
-        .zip(iterations_per_sample.iter())
-        .map(|(&v, &iters)| (v as f64) / (iters as f64))
+        .map(|&v| (v as f64) / (iterations_per_sample as f64))
         .collect::<Vec<_>>();
 
     // Calculating measurements range. All measurements outside this interval considered outliers
@@ -363,7 +335,6 @@ pub(crate) fn calculate_run_result(
                 i += 1;
             } else {
                 diff.swap_remove(i);
-                iterations_per_sample.swap_remove(i);
                 baseline.swap_remove(i);
                 candidate.swap_remove(i);
             }
