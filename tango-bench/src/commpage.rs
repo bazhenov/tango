@@ -130,14 +130,13 @@ impl Lane {
 
     /// Drain samples from `from` (inclusive) up to current write_cursor.
     /// Returns the values and the new read position.
-    pub fn drain_samples(&self, from: u64) -> (Vec<u64>, u64) {
-        let cursor = self.sample_count();
-        let mut samples = Vec::with_capacity((cursor - from) as usize);
-        for i in from..cursor {
+    pub fn drain_samples(&self, from: u64, samples: &mut Vec<u64>) -> u64 {
+        let n = self.sample_count();
+        for i in from..n {
             let slot = (i as usize) & (NUM_SLOTS - 1);
             samples.push(self.samples[slot].load(Ordering::Relaxed));
         }
-        (samples, cursor)
+        n
     }
 
     fn reset(&self) {
@@ -205,7 +204,7 @@ impl Commpage {
     }
 
     /// Get the lane a given role writes to.
-    pub fn my_lane(&self, role: Role) -> &Lane {
+    pub fn get_lane(&self, role: Role) -> &Lane {
         match role {
             Role::Candidate => self.lane_c(),
             Role::Baseline => self.lane_b(),
@@ -282,12 +281,14 @@ mod tests {
         lane.push_sample(1, 200);
         lane.push_sample(2, 300);
 
-        let (samples, pos) = lane.drain_samples(0);
+        let mut samples = Vec::new();
+        let pos = lane.drain_samples(0, &mut samples);
         assert_eq!(pos, 3);
         assert_eq!(samples, vec![100, 200, 300]);
 
+        samples.clear();
         // Drain again from pos should yield nothing
-        let (samples, pos2) = lane.drain_samples(pos);
+        let pos2 = lane.drain_samples(pos, &mut samples);
         assert_eq!(pos2, 3);
         assert!(samples.is_empty());
     }
@@ -342,9 +343,11 @@ mod tests {
 
         handle.join().unwrap();
 
+        let mut c_samples = Vec::new();
+        let mut b_samples = Vec::new();
         // Verify samples
-        let (c_samples, _) = cp.lane_c().drain_samples(0);
-        let (b_samples, _) = cp.lane_b().drain_samples(0);
+        cp.lane_c().drain_samples(0, &mut c_samples);
+        cp.lane_b().drain_samples(0, &mut b_samples);
         assert_eq!(c_samples.len(), num_samples as usize);
         assert_eq!(b_samples.len(), num_samples as usize);
         for i in 0..num_samples as usize {
@@ -365,7 +368,8 @@ mod tests {
 
         // Only the last NUM_SLOTS are valid in the ring
         let total = NUM_SLOTS as u64 + 10;
-        let (samples, pos) = lane.drain_samples(total - 10);
+        let mut samples = Vec::new();
+        let pos = lane.drain_samples(total - 10, &mut samples);
         assert_eq!(pos, total);
         assert_eq!(samples.len(), 10);
         for (j, s) in samples.iter().enumerate() {

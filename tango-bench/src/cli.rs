@@ -1,5 +1,5 @@
 //! Contains functionality of a `cargo bench` harness
-use crate::{Error, MeasurementSettings};
+use crate::Error;
 use anyhow::{bail, Context};
 use clap::{ArgAction, Parser};
 use colorz::mode::{self, Mode};
@@ -134,7 +134,7 @@ struct CargoBenchFlags {
     bench: bool,
 }
 
-pub fn run(settings: MeasurementSettings) -> Result<ExitCode> {
+pub fn run() -> Result<ExitCode> {
     let opts = Opts::parse();
 
     match Mode::from_str(&opts.coloring_mode) {
@@ -154,8 +154,8 @@ pub fn run(settings: MeasurementSettings) -> Result<ExitCode> {
             }
             Ok(ExitCode::SUCCESS)
         }
-        BenchmarkMode::Compare(opts) => paired_test::run_test(opts, settings),
-        BenchmarkMode::Solo(opts) => solo_test::run_test(opts, settings),
+        BenchmarkMode::Compare(opts) => paired_test::run_test(opts),
+        BenchmarkMode::Solo(opts) => solo_test::run_test(opts),
     }
 }
 
@@ -188,7 +188,7 @@ mod solo_test {
     use super::*;
     use crate::Summary;
 
-    pub(super) fn run_test(opts: SoloOpts, _settings: MeasurementSettings) -> Result<ExitCode> {
+    pub(super) fn run_test(opts: SoloOpts) -> Result<ExitCode> {
         let SoloOpts {
             bench_flags: _,
             filter,
@@ -210,7 +210,7 @@ mod solo_test {
 
             let mut sampler = bench.prepare_state(seed);
             let iters = sampler.estimate_iterations(10);
-            let iterations = (iters / 2).max(1);
+            let iterations = iters.max(1);
 
             let mut sample_values = vec![];
             let mut loop_time = Duration::from_secs(0);
@@ -243,7 +243,7 @@ mod paired_test {
         child::ChildHandle,
         cli::reporting::BenchmarkProgress,
         commpage::{Commpage, Role},
-        platform::{self, RUsage},
+        platform::RUsage,
     };
     use fs::File;
     use reporting::Reporter;
@@ -252,7 +252,7 @@ mod paired_test {
         time::Instant,
     };
 
-    pub(super) fn run_test(opts: PairedOpts, _settings: MeasurementSettings) -> Result<ExitCode> {
+    pub(super) fn run_test(opts: PairedOpts) -> Result<ExitCode> {
         let PairedOpts {
             bench_flags: _,
             path,
@@ -266,7 +266,7 @@ mod paired_test {
             noise_threshold,
             fail_fast,
             significant_only,
-            seed: _seed,
+            seed,
             quiet,
             system_time_check,
         } = opts;
@@ -337,8 +337,6 @@ mod paired_test {
             child_c.reset_read_pos();
             child_b.reset_read_pos();
 
-            let rusage_before = system_time_check.then(platform::rusage);
-
             // Select benchmark on both children
             child_c
                 .select(c_idx)
@@ -372,8 +370,8 @@ mod paired_test {
             // faster than the children produce to avoid losing data.
             let mut c_samples = Vec::new();
             let mut b_samples = Vec::new();
-            let lane_c = commpage.my_lane(Role::Candidate);
-            let lane_b = commpage.my_lane(Role::Baseline);
+            let lane_c = commpage.get_lane(Role::Candidate);
+            let lane_b = commpage.get_lane(Role::Baseline);
 
             let time_budget_start = if let LoopMode::Time(_) = loop_mode {
                 Some(Instant::now())
@@ -383,10 +381,8 @@ mod paired_test {
 
             loop {
                 // Drain whatever is available
-                let c_new = child_c.drain_samples(&commpage);
-                let b_new = child_b.drain_samples(&commpage);
-                c_samples.extend_from_slice(&c_new);
-                b_samples.extend_from_slice(&b_new);
+                child_c.drain_samples(&commpage, &mut c_samples);
+                child_b.drain_samples(&commpage, &mut b_samples);
 
                 let c_done = lane_c.is_done();
                 let b_done = lane_b.is_done();
@@ -424,28 +420,21 @@ mod paired_test {
                 .context("Baseline benchmark failed")?;
 
             // Final drain to pick up any samples written between last poll and DONE
-            c_samples.extend_from_slice(&child_c.drain_samples(&commpage));
-            b_samples.extend_from_slice(&child_b.drain_samples(&commpage));
+            child_c.drain_samples(&commpage, &mut c_samples);
+            child_b.drain_samples(&commpage, &mut b_samples);
 
-            if let Some(usage_before) = rusage_before {
-                let rusage = platform::rusage() - usage_before;
-                if detect_system_time_bias(&rusage) && false {
-                    reporting::report_system_time_bias(func_name, &rusage);
-                }
-            }
-
-            let n = c_samples.len().min(b_samples.len());
-            if n == 0 {
-                bail!("No samples collected for {func_name}");
-            }
-
-            // All samples use the same iteration count
-            let sample_iterations: Vec<usize> = vec![iterations; n];
+            assert!(
+                c_samples.len() == b_samples.len() && !c_samples.is_empty(),
+                "Invalid number of samples collected: candidate = {}, baseline = {}",
+                c_samples.len(),
+                b_samples.len()
+            );
+            let n = c_samples.len();
 
             let run_result = calculate_run_result(
                 &b_samples[..n],
                 &c_samples[..n],
-                &sample_iterations,
+                iterations,
                 filter_outliers,
                 noise_threshold,
             )
@@ -456,11 +445,8 @@ mod paired_test {
                 let file_path = path.join(file_name);
                 write_csv(
                     &file_path,
-                    b_samples
-                        .iter()
-                        .zip(c_samples.iter())
-                        .zip(sample_iterations.iter())
-                        .map(|((b, c), i)| (b, c, i)),
+                    b_samples.iter().zip(c_samples.iter()),
+                    iterations,
                 )
                 .context("Unable to write raw measurements")?;
                 sample_dumps.push(file_path);
@@ -497,13 +483,14 @@ mod paired_test {
         system / overall > 0.05
     }
 
-    fn write_csv<A: Display, B: Display, C: Display>(
+    fn write_csv<A: Display, B: Display>(
         path: impl AsRef<Path>,
-        values: impl IntoIterator<Item = (A, B, C)>,
+        values: impl IntoIterator<Item = (A, B)>,
+        iterations: usize,
     ) -> io::Result<()> {
         let mut file = BufWriter::new(File::create(path)?);
-        for (a, b, c) in values {
-            writeln!(&mut file, "{},{},{}", a, b, c)?;
+        for (a, b) in values {
+            writeln!(&mut file, "{},{},{iterations}", a, b)?;
         }
         Ok(())
     }

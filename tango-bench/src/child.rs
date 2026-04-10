@@ -62,7 +62,7 @@ impl ChildHandle {
             shmem_name: commpage.os_id().to_string(),
             role,
         };
-        let result = handle.call(protocol::method::INIT, params)?;
+        let result = handle.call(protocol::METHOD_INIT, params)?;
         let init: InitResult =
             serde_json::from_value(result).context("Failed to parse init response")?;
 
@@ -71,14 +71,14 @@ impl ChildHandle {
 
     /// Select a benchmark by index.
     pub fn select(&mut self, idx: usize) -> Result<()> {
-        self.call(protocol::method::SELECT, SelectParams { index: idx })?;
+        self.call(protocol::METHOD_SELECT, SelectParams { index: idx })?;
         Ok(())
     }
 
     /// Estimate iterations for a given time budget (in ms).
     pub fn estimate_iterations(&mut self, time_ms: u32) -> Result<usize> {
         let result = self.call(
-            protocol::method::ESTIMATE_ITERATIONS,
+            protocol::METHOD_ESTIMATE_ITERATIONS,
             EstimateIterationsParams { time_ms },
         )?;
         let est: EstimateIterationsResult = serde_json::from_value(result)?;
@@ -95,7 +95,7 @@ impl ChildHandle {
         };
         let req = MethodCall {
             jsonrpc: Version::V2_0,
-            method: protocol::method::RUN_BENCHMARK.to_string(),
+            method: protocol::METHOD_RUN_BENCHMARK.to_string(),
             params: value_to_params(serde_json::to_value(params)?),
             id: Id::Num(id),
         };
@@ -118,17 +118,15 @@ impl ChildHandle {
     }
 
     /// Drain new samples from this child's commpage lane.
-    pub fn drain_samples(&mut self, commpage: &Commpage) -> Vec<u64> {
-        let lane = commpage.my_lane(self.role);
-        let (samples, new_pos) = lane.drain_samples(self.read_pos);
-        self.read_pos = new_pos;
-        samples
+    pub fn drain_samples(&mut self, commpage: &Commpage, samples: &mut Vec<u64>) {
+        let lane = commpage.get_lane(self.role);
+        self.read_pos = lane.drain_samples(self.read_pos, samples);
     }
 
     /// Send shutdown and wait for the child to exit.
     pub fn shutdown(mut self) -> Result<()> {
         // Best-effort: send shutdown, ignore write errors (child may have already exited)
-        let _ = self.call(protocol::method::SHUTDOWN, Value::Null);
+        let _ = self.call(protocol::METHOD_SHUTDOWN, Value::Null);
         self.process.wait()?;
         Ok(())
     }

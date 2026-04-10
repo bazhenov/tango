@@ -332,8 +332,7 @@ macro_rules! tango_main {
                 return;
             }
             // Normal CLI path
-            let settings = tango_bench::MeasurementSettings::default();
-            std::process::exit(tango_bench::cli::run(settings).unwrap() as i32);
+            std::process::exit(tango_bench::cli::run().unwrap() as i32);
         }
     };
 }

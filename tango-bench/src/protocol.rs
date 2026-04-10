@@ -6,13 +6,11 @@ use serde::{Deserialize, Serialize};
 
 pub const WORKER_COMMAND: &str = "__worker";
 
-pub mod method {
-    pub const INIT: &str = "init";
-    pub const SELECT: &str = "select";
-    pub const ESTIMATE_ITERATIONS: &str = "estimate_iterations";
-    pub const RUN_BENCHMARK: &str = "run_benchmark";
-    pub const SHUTDOWN: &str = "shutdown";
-}
+pub const METHOD_INIT: &str = "init";
+pub const METHOD_SELECT: &str = "select";
+pub const METHOD_ESTIMATE_ITERATIONS: &str = "estimate_iterations";
+pub const METHOD_RUN_BENCHMARK: &str = "run_benchmark";
+pub const METHOD_SHUTDOWN: &str = "shutdown";
 
 #[derive(Serialize, Deserialize)]
 pub struct InitParams {
