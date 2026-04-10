@@ -5,8 +5,10 @@ use crate::{
     protocol::{self, *},
     Benchmark,
 };
+use alloca::with_alloca;
 use anyhow::{anyhow, Result};
 use jsonrpc_types::v2::*;
+use rand::{distributions, rngs::SmallRng, Rng, SeedableRng};
 use serde::{de::DeserializeOwned, Serialize};
 use std::{
     io::{self, BufRead, BufReader, Write},
@@ -106,6 +108,7 @@ impl WorkerState {
 
         let my_lane = self.commpage.get_lane(self.role);
         let peer_lane = self.commpage.peer_lane(self.role);
+        let mut rng = SmallRng::seed_from_u64(params.seed);
 
         let mut samples_written = 0;
         loop {
@@ -118,7 +121,10 @@ impl WorkerState {
             }
 
             // Take measurement
-            let elapsed_ns = sampler.measure(params.iterations);
+            let stack_offset_distr = distributions::Uniform::new(0, 64);
+            let elapsed_ns = with_alloca(rng.sample(stack_offset_distr), |_| {
+                sampler.measure(params.iterations)
+            });
 
             // Write sample to commpage
             my_lane.push_sample(samples_written, elapsed_ns);
