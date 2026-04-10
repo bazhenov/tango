@@ -62,6 +62,8 @@ jobs:
             toolchain: nightly
             exe: .exe
     runs-on: ${{ matrix.os }}
+    # Do not run benchmarks if current branch has incompatibile protocol with the main.
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'bench-protocol-changed') }}
     steps:
       # Doing checkout 2 times for a current branch and then baseline-branch
       - uses: actions/checkout@v6
