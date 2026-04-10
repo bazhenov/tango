@@ -11,6 +11,7 @@ use std::{
     fs,
     io::{stderr, Write},
     num::NonZeroUsize,
+    ops::Deref,
     path::{Path, PathBuf},
     process::{Command, ExitCode, Stdio},
     str::FromStr,
@@ -527,7 +528,7 @@ mod paired_test {
 // Automatically removes a file when goes out of scope
 struct AutoDelete(PathBuf);
 
-impl std::ops::Deref for AutoDelete {
+impl Deref for AutoDelete {
     type Target = PathBuf;
 
     fn deref(&self) -> &Self::Target {
@@ -552,6 +553,7 @@ mod reporting {
     use colorz::{ansi, mode::Stream, Colorize, Style};
     use std::{
         io::{self, Write},
+        iter,
         time::Duration,
     };
 
@@ -639,10 +641,7 @@ mod reporting {
                 "candidate".bold().stream(Stream::Stdout),
                 "\u{2206}".bold().stream(Stream::Stdout),
             );
-            println!(
-                "    {:12} \u{256d}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}",
-                ""
-            );
+            println!("    {:12} \u{256d}{}", "", "\u{2500}".repeat(48));
             println!(
                 "    {:12} \u{2502} {:>15} {:>15} {:>15}  {:+4.2}{}{}",
                 "mean",
