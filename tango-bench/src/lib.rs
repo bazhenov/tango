@@ -883,7 +883,7 @@ mod tests {
         use metrics::CpuTime;
         use std::time::Instant;
 
-        let target_duration = Duration::from_millis(10);
+        let target_duration = Duration::from_millis(50);
         let deadline = Instant::now() + target_duration;
 
         let cpu_nanos = CpuTime::measure_fn(|| {
