@@ -8,3 +8,4 @@ tango-bench = { path = "../tango-bench" }
 
 [dev-dependencies]
 regex = "1.12.3"
+temp-dir = "0.2.0"
