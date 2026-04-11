@@ -3,12 +3,10 @@
 use crate::{
     commpage::{Commpage, Role},
     protocol::{self, *},
-    Benchmark,
+    Benchmark, ErasedSampler,
 };
-use alloca::with_alloca;
 use anyhow::{anyhow, Result};
 use jsonrpc_types::v2::*;
-use rand::{distributions, rngs::SmallRng, Rng, SeedableRng};
 use serde::{de::DeserializeOwned, Serialize};
 use std::{
     io::{self, BufRead, BufReader, Write},
@@ -108,9 +106,12 @@ impl WorkerState {
 
         let my_lane = self.commpage.get_lane(self.role);
         let peer_lane = self.commpage.peer_lane(self.role);
-        let mut rng = SmallRng::seed_from_u64(params.seed);
 
         let mut samples_written = 0;
+
+        #[cfg(feature = "stack-randomize")]
+        let mut stack_randomizer = stack_randomizer::StackRandomizer::new(params.seed);
+
         loop {
             // Check termination conditions
             if params.num_samples > 0 && samples_written >= params.num_samples as u64 {
@@ -121,10 +122,10 @@ impl WorkerState {
             }
 
             // Take measurement
-            let stack_offset_distr = distributions::Uniform::new(0, 64);
-            let elapsed_ns = with_alloca(rng.sample(stack_offset_distr), |_| {
-                sampler.measure(params.iterations)
-            });
+            #[cfg(feature = "stack-randomize")]
+            let elapsed_ns = stack_randomizer.measure(&mut *sampler, params.iterations);
+            #[cfg(not(feature = "stack-randomize"))]
+            let elapsed_ns = sampler.measure(params.iterations);
 
             // Write sample to commpage
             my_lane.push_sample(samples_written, elapsed_ns);
@@ -182,4 +183,29 @@ fn params_to_value(params: &Option<Params>) -> Value {
         .as_ref()
         .map(|p| serde_json::to_value(p).unwrap_or_default())
         .unwrap_or_default()
+}
+
+#[cfg(feature = "stack-randomize")]
+mod stack_randomizer {
+    use super::*;
+    use alloca::with_alloca;
+    use rand::{distributions, rngs::SmallRng, Rng, SeedableRng};
+
+    pub struct StackRandomizer {
+        rng: SmallRng,
+        distr: distributions::Uniform<usize>,
+    }
+
+    impl StackRandomizer {
+        pub fn new(seed: u64) -> Self {
+            Self {
+                rng: SmallRng::seed_from_u64(seed),
+                distr: rand::distributions::Uniform::new(0, 64),
+            }
+        }
+
+        pub fn measure(&mut self, sampler: &mut dyn ErasedSampler, iterations: usize) -> u64 {
+            with_alloca(self.rng.sample(self.distr), |_| sampler.measure(iterations))
+        }
+    }
 }
