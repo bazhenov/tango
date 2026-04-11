@@ -139,8 +139,11 @@ impl Lane {
         n
     }
 
-    fn reset(&self) {
+    fn reset(&mut self) {
         self.write_cursor.store(0, Ordering::Release);
+        for s in &mut self.samples {
+            s.store(0, Ordering::Relaxed);
+        }
     }
 }
 
@@ -193,6 +196,10 @@ impl Commpage {
         unsafe { &*(self.shmem.as_ptr() as *const CommpageLayout) }
     }
 
+    fn layout_mut(&mut self) -> &mut CommpageLayout {
+        unsafe { &mut *(self.shmem.as_ptr() as *mut CommpageLayout) }
+    }
+
     /// Get lane C (candidate lane).
     pub fn lane_c(&self) -> &Lane {
         &self.layout().lane_c
@@ -201,6 +208,11 @@ impl Commpage {
     /// Get lane B (baseline lane).
     pub fn lane_b(&self) -> &Lane {
         &self.layout().lane_b
+    }
+
+    /// Either candidate or baseline lane has DONE bit set
+    pub fn is_some_lane_done(&self) -> bool {
+        self.lane_c().is_done() || self.lane_b().is_done()
     }
 
     /// Get the lane a given role writes to.
@@ -231,10 +243,10 @@ impl Commpage {
 
     /// Reset the commpage for a new benchmark run.
     /// Clears flags and resets both lanes' write_cursors to 0.
-    pub fn reset(&self) {
+    pub fn reset(&mut self) {
         self.layout().flags.store(0, Ordering::Release);
-        self.lane_c().reset();
-        self.lane_b().reset();
+        self.layout_mut().lane_c.reset();
+        self.layout_mut().lane_b.reset();
     }
 }
 

@@ -319,7 +319,7 @@ mod paired_test {
         let seed = seed.unwrap_or_else(rand::random);
         let loop_mode = create_loop_mode(samples, time)?;
 
-        let commpage =
+        let mut commpage =
             Commpage::create().map_err(|e| anyhow::anyhow!("Failed to create commpage: {e}"))?;
 
         let candidate_exe = env::current_exe().context("Unable to determine current executable")?;
@@ -361,9 +361,6 @@ mod paired_test {
 
         let mut exit_code = ExitCode::SUCCESS;
 
-        let lane_c = commpage.get_lane(Role::Candidate);
-        let lane_b = commpage.get_lane(Role::Baseline);
-
         // Poll samples from the commpage while children are running.
         // The ring buffer only holds 128 samples per lane, so R must drain
         // faster than the children produce to avoid losing data.
@@ -402,42 +399,42 @@ mod paired_test {
             child_c.start_benchmark(c_idx, seed, iterations, num_samples)?;
             child_b.start_benchmark(b_idx, seed, iterations, num_samples)?;
 
-            let time_budget_start = if let LoopMode::Time(_) = loop_mode {
-                Some(Instant::now())
-            } else {
-                None
-            };
-
-            loop {
+            let time_start = Instant::now();
+            while !commpage.is_some_lane_done() {
                 // Drain whatever is available
                 child_c.drain_samples(&commpage, &mut c_samples);
                 child_b.drain_samples(&commpage, &mut b_samples);
 
-                let c_done = lane_c.is_done();
-                let b_done = lane_b.is_done();
-
-                // In time-budget mode, check if we should signal stop
-                if let (Some(start), LoopMode::Time(duration)) = (time_budget_start, loop_mode) {
-                    let elapsed = start.elapsed();
-                    if elapsed >= duration {
-                        commpage.set_stop();
-                    } else if elapsed.as_millis() > 50
-                        && (duration > Duration::from_millis(500)
-                            || elapsed > Duration::from_millis(500))
-                    {
-                        let phase = BenchmarkProgress::SamplingTime {
-                            loop_time: elapsed,
-                            total_duration: duration,
-                        };
-                        reporter.report_progress(func_name, phase);
+                match loop_mode {
+                    LoopMode::Time(duration) => {
+                        // In time-budget mode, check if we should signal stop
+                        let elapsed = time_start.elapsed();
+                        if elapsed >= duration {
+                            commpage.set_stop();
+                        } else if duration > Duration::from_millis(500) {
+                            reporter.report_progress(
+                                func_name,
+                                BenchmarkProgress::SamplingTime {
+                                    loop_time: elapsed,
+                                    total_duration: duration,
+                                },
+                            );
+                        }
+                    }
+                    LoopMode::Samples(s) => {
+                        reporter.report_progress(
+                            func_name,
+                            BenchmarkProgress::SamplingNo {
+                                sample_no: c_samples.len().min(b_samples.len()),
+                                samples_total: s,
+                            },
+                        );
                     }
                 }
 
-                if c_done && b_done {
-                    break;
-                }
-
-                sleep(Duration::from_millis(1));
+                // We have plenty of space in commpage, so we can poll the results once in a while
+                // this number is choosen empirically
+                sleep(Duration::from_millis((TIME_SLICE_MS * 5) as u64));
             }
 
             // Both children are done — read their RPC responses
