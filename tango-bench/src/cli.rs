@@ -433,7 +433,7 @@ mod paired_test {
                 }
 
                 // We have plenty of space in commpage, so we can poll the results once in a while
-                // this number is choosen empirically
+                // this number is chosen empirically
                 sleep(Duration::from_millis((TIME_SLICE_MS * 5) as u64));
             }
 
