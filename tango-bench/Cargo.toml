@@ -13,7 +13,7 @@ keywords = ["benchmarks", "performance"]
 
 [dependencies]
 anyhow = "1.0.75"
-alloca = "0.4.0"
+alloca = { version = "0.4.0", optional = true }
 clap = { version = "4.4.11", features = ["derive"] }
 colorz = { version = "1.1", features = ["supports-color"] }
 glob-match = "0.2"
@@ -40,6 +40,7 @@ windows = { version = "0.62.2", features = [
 
 [features]
 hw-timer = []
+stack-randomize = ["dep:alloca"]
 async = []
 async-tokio = ["async", "dep:tokio"]
 async-tokio-all-drivers = ["async-tokio", "tokio/full"]
