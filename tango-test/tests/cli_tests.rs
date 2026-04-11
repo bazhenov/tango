@@ -1,5 +1,10 @@
 use regex::Regex;
-use std::process::{Command, ExitStatus};
+use std::{
+    env::temp_dir,
+    fs,
+    process::{Command, ExitStatus},
+};
+use temp_dir::TempDir;
 
 const SLEEP_10: &str = env!("CARGO_BIN_EXE_sleep_10");
 const SLEEP_100: &str = env!("CARGO_BIN_EXE_sleep_100");
@@ -71,6 +76,56 @@ fn benchmark_with_panic() {
     Cmd::run(SLEEP_10, &["compare", SLEEP_PANIC])
         .assert_failure()
         .assert_stderr_contains("Intended panic");
+}
+
+fn gnuplot_available() -> bool {
+    Command::new("gnuplot")
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+/// When passed --gnuplot and -d, the benchmark harness should produce SVG plot files.
+#[test]
+fn gnuplot_produces_svg() {
+    if !gnuplot_available() {
+        eprintln!("skipping test: gnuplot not installed");
+        return;
+    }
+    let tmp_dir = TempDir::new().unwrap();
+
+    let dump_path = tmp_dir.path().to_str().unwrap();
+    Cmd::run(SLEEP_10, &["compare", "-d", dump_path, "--gnuplot"]).assert_success();
+
+    let all_files = fs::read_dir(&tmp_dir)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .collect::<Vec<_>>();
+
+    // Verify at least one SVG file was produced
+    let svg_files: Vec<_> = all_files
+        .iter()
+        .filter(|e| e.extension().is_some_and(|ext| ext == "svg"))
+        .collect();
+
+    assert!(
+        !svg_files.is_empty(),
+        "Expected at least one SVG file in {}, found none. Contents: {:?}",
+        dump_path,
+        &all_files,
+    );
+
+    // Verify the SVG file is valid (starts with SVG content)
+    let svg_path = svg_files[0];
+    let svg_content = fs::read_to_string(svg_path).expect("should be able to read SVG file");
+    assert!(
+        svg_content.contains("<svg"),
+        "SVG file {} does not contain <svg tag. Content starts with: {}",
+        svg_path.display(),
+        &svg_content[..svg_content.len().min(200)],
+    );
 }
 
 struct Cmd {
