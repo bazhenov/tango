@@ -75,8 +75,8 @@ struct PairedOpts {
     #[arg(short = 't', long = "time")]
     time: Option<f64>,
 
-    /// Consider benchmark differences below this percentage as noise (default: 0.5%)
-    #[arg(long = "noise-threshold", default_value_t = 0.5)]
+    /// Consider benchmark differences below this percentage as noise (default: 1%)
+    #[arg(long = "noise-threshold", default_value_t = 1.0)]
     noise_threshold: f64,
 
     /// Terminate early on first statistically significant performance regression
