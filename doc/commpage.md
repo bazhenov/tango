@@ -95,8 +95,6 @@ Each `write_cursor` is a monotonically increasing counter -- the total number of
   └────┴───────────────────────────┴────────────┘
 ```
 
-There is **no read_cursor in shared memory**. R tracks its read position per lane locally.
-
 ### Samples
 
 Each sample slot is a `u64` holding total elapsed nanoseconds. The iteration count is fixed for the entire benchmark run (set via `run_benchmark(iterations=...)`), so it does not need to be stored per sample.
@@ -113,6 +111,15 @@ The spin-wait also checks the peer's DONE bit to avoid spinning forever if the p
 
 - **`--samples N`**: R passes `num_samples = N`. Children run exactly N samples and return.
 - **`-t DURATION`**: R passes `num_samples = 0`. Children run until R sets the `STOP` flag in the commpage when the time budget is exhausted.
+
+### Ring Buffer Overwrite Protection
+
+If R cannot drain samples fast enough (e.g. under heavy load or with very fast benchmarks), the ring buffer may wrap around and overwrite unread slots. `drain_samples()` detects this: it fills the gap with a sentinel value `MISSED_SAMPLE` (`u64::MAX`) and returns `Err(skipped)` with the number of overwritten samples. R then:
+
+1. Emits a warning showing the number of skipped observations per child.
+2. Filters out any sample pair where either side is `MISSED_SAMPLE` before computing statistics.
+
+This guarantees that results are never silently corrupted by stale ring-buffer data.
 
 ### Capacity
 
