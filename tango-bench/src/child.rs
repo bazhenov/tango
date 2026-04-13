@@ -9,7 +9,7 @@ use crate::{
 };
 use anyhow::{bail, Context, Result};
 use jsonrpc_types::v2::*;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Serialize};
 use serde_json::Value;
 use std::{
     io::{BufRead, BufReader, Write},
@@ -24,8 +24,6 @@ pub struct ChildHandle {
     role: Role,
     /// Next id for JSON RPC request
     req_next_id: u64,
-    /// Runner's local read position for this child's lane
-    read_pos: u64,
 }
 
 impl ChildHandle {
@@ -55,7 +53,6 @@ impl ChildHandle {
             stdout,
             role,
             req_next_id: 1,
-            read_pos: 0,
         })
     }
 
@@ -105,15 +102,14 @@ impl ChildHandle {
         self.read_response::<RunBenchmarkResult>()
     }
 
-    /// Reset local read position (call before each new benchmark run).
-    pub fn reset_read_pos(&mut self) {
-        self.read_pos = 0;
-    }
-
     /// Drain new samples from this child's commpage lane.
-    pub fn drain_samples(&mut self, commpage: &Commpage, samples: &mut Vec<u64>) {
-        let lane = commpage.get_lane(self.role);
-        self.read_pos = lane.drain_samples(self.read_pos, samples);
+    /// Returns the number of samples that were skipped (overwritten before reading).
+    pub fn drain_samples(&mut self, commpage: &Commpage, samples: &mut Vec<u64>) -> usize {
+        commpage
+            .get_lane(self.role)
+            .drain_samples(samples)
+            .err()
+            .unwrap_or_default()
     }
 
     /// Send shutdown and wait for the child to exit.

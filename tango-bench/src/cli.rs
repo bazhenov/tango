@@ -270,7 +270,7 @@ mod paired_test {
         calculate_run_result,
         child::ChildHandle,
         cli::reporting::BenchmarkProgress,
-        commpage::{Commpage, Role},
+        commpage::{self, Commpage, Role, MISSED_SAMPLE},
         platform::RUsage,
     };
     use fs::File;
@@ -381,8 +381,6 @@ mod paired_test {
 
             // Reset commpage and read positions for the new benchmark
             commpage.reset();
-            child_c.reset_read_pos();
-            child_b.reset_read_pos();
             c_samples.clear();
             b_samples.clear();
 
@@ -400,10 +398,12 @@ mod paired_test {
             child_b.start_benchmark(b_idx, seed, iterations, num_samples)?;
 
             let time_start = Instant::now();
+            let mut c_skipped = 0;
+            let mut b_skipped = 0;
             while !commpage.is_some_lane_done() {
                 // Drain whatever is available
-                child_c.drain_samples(&commpage, &mut c_samples);
-                child_b.drain_samples(&commpage, &mut b_samples);
+                c_skipped += child_c.drain_samples(&commpage, &mut c_samples);
+                b_skipped += child_b.drain_samples(&commpage, &mut b_samples);
 
                 match loop_mode {
                     LoopMode::Time(duration) => {
@@ -456,9 +456,31 @@ mod paired_test {
                 b_samples.len()
             );
 
+            if c_skipped > 0 || b_skipped > 0 {
+                eprintln!(
+                    "warn: runner could not drain samples fast enough for '{}'. \
+                     Skipped observations: candidate={}, baseline={} \
+                     (ring buffer size={})",
+                    func_name,
+                    c_skipped,
+                    b_skipped,
+                    commpage::NUM_SLOTS,
+                );
+            }
+
+            let validated_samples = b_samples
+                .iter()
+                .zip(c_samples.iter())
+                .filter(|&(&c, &b)| c != MISSED_SAMPLE && b != MISSED_SAMPLE)
+                .map(|(&c, &b)| (c, b))
+                .collect::<Vec<_>>();
+
+            if validated_samples.is_empty() {
+                bail!(Error::NoMeasurements)
+            }
+
             let run_result = calculate_run_result(
-                &b_samples,
-                &c_samples,
+                &validated_samples,
                 iterations,
                 filter_outliers,
                 noise_threshold,
@@ -468,12 +490,8 @@ mod paired_test {
             if let Some(path) = &path_to_dump {
                 let file_name = format!("{}.csv", func_name.replace('/', "-"));
                 let file_path = path.join(file_name);
-                write_csv(
-                    &file_path,
-                    b_samples.iter().zip(c_samples.iter()),
-                    iterations,
-                )
-                .context("Unable to write raw measurements")?;
+                write_csv(&file_path, validated_samples, iterations)
+                    .context("Unable to write raw measurements")?;
                 sample_dumps.push(file_path);
             }
 

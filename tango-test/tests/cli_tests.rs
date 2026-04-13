@@ -1,6 +1,5 @@
 use regex::Regex;
 use std::{
-    env::temp_dir,
     fs,
     process::{Command, ExitStatus},
 };

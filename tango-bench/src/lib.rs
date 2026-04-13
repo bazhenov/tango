@@ -244,19 +244,15 @@ impl IntoBenchmarks for Vec<Benchmark> {
 ///
 /// Return None if no measurements were made
 pub(crate) fn calculate_run_result(
-    baseline: &[u64],
-    candidate: &[u64],
+    b_c_samples: &[(u64, u64)],
     iterations_per_sample: usize,
     filter_outliers: bool,
     noise_threshold: f64,
 ) -> Option<RunResult> {
-    assert!(baseline.len() == candidate.len());
-
-    let mut diff = candidate
+    let mut diff = b_c_samples
         .iter()
-        .zip(baseline.iter())
         // Calculating difference between candidate and baseline
-        .map(|(&c, &b)| c as f64 - b as f64)
+        .map(|&(b, c)| c as f64 - b as f64)
         // Normalizing difference to iterations count
         .map(|diff| diff / iterations_per_sample as f64)
         .collect::<Vec<_>>();
@@ -265,13 +261,13 @@ pub(crate) fn calculate_run_result(
     let n = diff.len();
 
     // Normalizing measurements to iterations count
-    let mut baseline = baseline
+    let mut baseline = b_c_samples
         .iter()
-        .map(|&v| (v as f64) / (iterations_per_sample as f64))
+        .map(|&(b, _)| (b as f64) / (iterations_per_sample as f64))
         .collect::<Vec<_>>();
-    let mut candidate = candidate
+    let mut candidate = b_c_samples
         .iter()
-        .map(|&v| (v as f64) / (iterations_per_sample as f64))
+        .map(|&(_, c)| (c as f64) / (iterations_per_sample as f64))
         .collect::<Vec<_>>();
 
     // Calculating measurements range. All measurements outside this interval considered outliers
