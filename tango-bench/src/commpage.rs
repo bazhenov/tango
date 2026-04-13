@@ -14,17 +14,28 @@ use thiserror::Error;
 /// Magic bytes: "TANGOCMP" as a u64
 const MAGIC: u64 = 0x54414E47_4F434D50;
 
+/// This value means that sample was missed during commpage draining
+pub const MISSED_SAMPLE: u64 = u64::MAX;
+
 /// Protocol version
 const VERSION: u32 = 1;
 
 /// Number of sample slots per lane (must be a power of two)
-const NUM_SLOTS: usize = 128;
+pub const NUM_SLOTS: usize = 128;
 
 /// Bit 63 of write_cursor -- set when the child exits the measurement loop
 const DONE_BIT: u64 = 1 << 63;
 
 /// Bit 0 of flags -- set by runner to signal early termination
 const STOP_FLAG: u32 = 1;
+
+/// Result of draining samples from a lane.
+pub struct DrainResult {
+    /// The new read position (equal to current write_cursor).
+    pub new_pos: u64,
+    /// Number of samples that were overwritten before the reader could drain them.
+    pub skipped: u64,
+}
 
 /// The commpage memory layout: header + two lanes laid out contiguously.
 ///
@@ -87,8 +98,8 @@ impl Lane {
     }
 
     /// Read the write_cursor value (without the DONE bit) -- i.e. the sample count.
-    pub fn sample_count(&self) -> u64 {
-        self.write_cursor.load(Ordering::Acquire) & !DONE_BIT
+    pub fn sample_count(&self) -> usize {
+        (self.write_cursor.load(Ordering::Acquire) & !DONE_BIT) as usize
     }
 
     /// Check if the DONE bit is set on this lane's write_cursor.
@@ -128,15 +139,44 @@ impl Lane {
         self.write_cursor.fetch_or(DONE_BIT, Ordering::Release);
     }
 
-    /// Drain samples from `from` (inclusive) up to current write_cursor.
-    /// Returns the values and the new read position.
-    pub fn drain_samples(&self, from: u64, samples: &mut Vec<u64>) -> u64 {
+    /// Drain fresh samples from Lane and add them to a specified [`Vec`].
+    /// The size of a [`Vec`] dictates from which position of ring buffer samples are copied.
+    /// Returns `Err()` if some samples were skipped (overwritten in the ring buffer before they could be read).
+    /// Skipped samples will be presented as [`MISSED_SAMPLE`] in a `samples` buffer, but the tail of
+    /// the ring buffer will be copied to `samples` anyway and the size of the resulting vector will be consistent
+    /// with a total amount of samples so far.
+    pub fn drain_samples(&self, samples: &mut Vec<u64>) -> std::result::Result<(), usize> {
         let n = self.sample_count();
-        for i in from..n {
-            let slot = (i as usize) & (NUM_SLOTS - 1);
-            samples.push(self.samples[slot].load(Ordering::Relaxed));
+        let n_drained = samples.len();
+        assert!(
+            n >= n_drained,
+            "Sample buffer is greater that amount of generated samples so far"
+        );
+
+        let (copy_range, skipped) = if n > n_drained + NUM_SLOTS {
+            // We were not able to keep up. Fill the missing gap with max value.
+            // SAFETY: No overflow. n - NUM_SLOTS > n_drained, hence n - NUM_SLOTS > 0
+            samples.resize(n - NUM_SLOTS, MISSED_SAMPLE);
+            (n - NUM_SLOTS..n, (n - n_drained) - NUM_SLOTS)
+        } else {
+            (n_drained..n, 0)
+        };
+
+        // Draining samples
+        for i in copy_range {
+            let slot = i & (NUM_SLOTS - 1);
+            samples.push(self.samples[slot].load(Ordering::Acquire));
         }
-        n
+        // number of samples updated during drain. We need to mark those as missed as well
+        let inf_flight_samples = self.sample_count().saturating_sub(n);
+        if inf_flight_samples > 0 {
+            samples[n_drained..(n_drained + inf_flight_samples)].fill(MISSED_SAMPLE);
+        }
+        if skipped > 0 {
+            Err(skipped)
+        } else {
+            Ok(())
+        }
     }
 
     fn reset(&mut self) {
@@ -294,15 +334,13 @@ mod tests {
         lane.push_sample(2, 300);
 
         let mut samples = Vec::new();
-        let pos = lane.drain_samples(0, &mut samples);
-        assert_eq!(pos, 3);
+        let result = lane.drain_samples(&mut samples);
+        assert_eq!(result, Ok(()));
         assert_eq!(samples, vec![100, 200, 300]);
 
-        samples.clear();
-        // Drain again from pos should yield nothing
-        let pos2 = lane.drain_samples(pos, &mut samples);
-        assert_eq!(pos2, 3);
-        assert!(samples.is_empty());
+        let result = lane.drain_samples(&mut samples);
+        assert_eq!(result, Ok(()));
+        assert_eq!(samples, vec![100, 200, 300]);
     }
 
     #[test]
@@ -358,8 +396,8 @@ mod tests {
         let mut c_samples = Vec::new();
         let mut b_samples = Vec::new();
         // Verify samples
-        cp.lane_c().drain_samples(0, &mut c_samples);
-        cp.lane_b().drain_samples(0, &mut b_samples);
+        cp.lane_c().drain_samples(&mut c_samples).unwrap();
+        cp.lane_b().drain_samples(&mut b_samples).unwrap();
         assert_eq!(c_samples.len(), num_samples as usize);
         assert_eq!(b_samples.len(), num_samples as usize);
         for i in 0..num_samples as usize {
@@ -369,24 +407,25 @@ mod tests {
     }
 
     #[test]
-    fn ring_buffer_wraps() {
+    fn drain_detects_skipped_samples() {
         let cp = Commpage::create().unwrap();
         let lane = cp.lane_c();
 
         // Write more than NUM_SLOTS samples
-        for i in 0..(NUM_SLOTS as u64 + 10) {
-            lane.push_sample(i, i * 100);
+        for i in 0..NUM_SLOTS as u64 + 10 {
+            lane.push_sample(i, i);
         }
 
-        // Only the last NUM_SLOTS are valid in the ring
-        let total = NUM_SLOTS as u64 + 10;
+        let total = NUM_SLOTS + 10;
         let mut samples = Vec::new();
-        let pos = lane.drain_samples(total - 10, &mut samples);
-        assert_eq!(pos, total);
-        assert_eq!(samples.len(), 10);
-        for (j, s) in samples.iter().enumerate() {
-            let expected_i = total - 10 + j as u64;
-            assert_eq!(*s, expected_i * 100);
+        let result = lane.drain_samples(&mut samples);
+        assert_eq!(samples.len(), total);
+        assert_eq!(result, Err(10));
+
+        // 10 samples are missed and should be represented in the vector appropriately
+        assert_eq!(samples[0..10], vec![MISSED_SAMPLE; 10]);
+        for (i, s) in samples[10..].iter().enumerate() {
+            assert_eq!(*s, (i + 10) as u64);
         }
     }
 }

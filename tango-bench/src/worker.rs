@@ -3,7 +3,7 @@
 use crate::{
     commpage::{Commpage, Role},
     protocol::{self, *},
-    Benchmark, ErasedSampler,
+    Benchmark,
 };
 use anyhow::{anyhow, Result};
 use jsonrpc_types::v2::*;
