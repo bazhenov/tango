@@ -12,3 +12,4 @@ output "ssh_command" {
   description = "Ready-to-use SSH command to connect to the VM"
   value       = "ssh ubuntu@${aws_instance.vm.public_ip}"
 }
+
