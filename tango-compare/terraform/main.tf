@@ -41,27 +41,11 @@ resource "aws_instance" "vm" {
   key_name               = aws_key_pair.deployer.key_name
   vpc_security_group_ids = [aws_security_group.vm_sg.id]
 
-  # Installs rustup non-interactively on first boot
-  user_data = <<-EOF
-    #!/bin/bash
-    set -euo pipefail
-
-    # Update packages
-    apt-get update -y
-    apt-get install -y curl git gcc screen
-
-    # Install rustup for the default non-root user (ubuntu)
-    sudo -u ubuntu bash -ec '
-      curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path
-      echo "source \$HOME/.cargo/env" >> $HOME/.bashrc
-      echo "source \$HOME/.cargo/env" >> $HOME/.profile
-
-      git clone -b tango-compare https://github.com/bazhenov/tango.git "$HOME/tango"
-
-      source "$HOME/.cargo/env"
-      cargo install cargo-export
-    '
-  EOF
+  user_data = templatefile("${path.module}/init.sh", {
+    aws_access_key_id     = var.aws_access_key_id
+    aws_secret_access_key = var.aws_secret_access_key
+    aws_region            = var.aws_region
+  })
 
   root_block_device {
     volume_size = 8 # GiB, stays within free tier (30 GiB/month allowance)

@@ -30,6 +30,18 @@ variable "public_key_path" {
   type        = string
 }
 
+variable "aws_access_key_id" {
+  description = "AWS access key ID to configure on the EC2 instance for S3 uploads"
+  type        = string
+  sensitive   = true
+}
+
+variable "aws_secret_access_key" {
+  description = "AWS secret access key to configure on the EC2 instance for S3 uploads"
+  type        = string
+  sensitive   = true
+}
+
 variable "allowed_ssh_cidr" {
   description = "CIDR block allowed to SSH into the instance. Restrict to your IP for security, e.g. '1.2.3.4/32'"
   type        = string
