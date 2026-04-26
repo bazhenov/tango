@@ -1,0 +1,27 @@
+#cloud-config
+write_files:
+  - path: /root/run.sh
+    owner: root:root
+    permissions: "0755"
+    content: |
+      ${indent(6, run_sh)}
+  - path: /root/init.sh
+    owner: root:root
+    permissions: "0755"
+    content: |
+      ${indent(6, init_sh)}
+  - path: /root/.aws/credentials
+    owner: root:root
+    permissions: "0600"
+    content: |
+      ${indent(6, aws_credentials)}
+  - path: /root/.aws/config
+    owner: root:root
+    permissions: "0600"
+    content: |
+      ${indent(6, aws_config)}
+
+runcmd:
+  # Need to do sudo -u root for environment to be configured properly
+  - [sudo, -u, root, bash, -c, "/root/init.sh 2>&1 | tee /var/log/init.log"]
+  - [sudo, -u, root, bash, -c, "/root/run.sh 2>&1 | tee /var/log/run.log"]

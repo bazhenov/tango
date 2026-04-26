@@ -34,17 +34,24 @@ resource "aws_security_group" "vm_sg" {
   }
 }
 
-# --- EC2 Instance (free tier: t2.micro) ---
+# --- EC2 Instance ---
 resource "aws_instance" "vm" {
   ami                    = var.ami_id
   instance_type          = var.instance_type
   key_name               = aws_key_pair.deployer.key_name
   vpc_security_group_ids = [aws_security_group.vm_sg.id]
 
-  user_data = templatefile("${path.module}/init.sh", {
-    aws_access_key_id     = var.aws_access_key_id
-    aws_secret_access_key = var.aws_secret_access_key
-    aws_region            = var.aws_region
+  # --- Cloud-Init User Data ---
+  user_data = templatefile("${path.module}/cloud-config.yaml", {
+    run_sh  = file("${path.module}/run.sh")
+    init_sh = file("${path.module}/init.sh")
+    aws_credentials = templatefile("${path.module}/aws-credentials.tftpl", {
+      aws_access_key_id     = var.aws_access_key_id
+      aws_secret_access_key = var.aws_secret_access_key
+    })
+    aws_config = templatefile("${path.module}/aws-config.tftpl", {
+      aws_region = var.aws_region
+    })
   })
 
   root_block_device {
