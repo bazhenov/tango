@@ -36,6 +36,11 @@ variable "aws_access_key_id" {
   sensitive   = true
 }
 
+variable "s3_bucket_name" {
+  description = "The name of S3 bucket to upload results to"
+  type        = string
+}
+
 variable "aws_secret_access_key" {
   description = "AWS secret access key to configure on the EC2 instance for S3 uploads"
   type        = string
