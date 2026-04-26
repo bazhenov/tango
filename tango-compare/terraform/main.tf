@@ -43,8 +43,10 @@ resource "aws_instance" "vm" {
 
   # --- Cloud-Init User Data ---
   user_data = templatefile("${path.module}/cloud-config.yaml", {
-    run_sh  = file("${path.module}/run.sh")
     init_sh = file("${path.module}/init.sh")
+    run_sh = templatefile("${path.module}/run.sh", {
+      s3_bucket_name = var.s3_bucket_name
+    })
     aws_credentials = templatefile("${path.module}/aws-credentials.tftpl", {
       aws_access_key_id     = var.aws_access_key_id
       aws_secret_access_key = var.aws_secret_access_key
