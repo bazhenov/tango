@@ -129,8 +129,9 @@ impl Lane {
             }
             if cursor >= target {
                 return true;
+            } else {
+                std::hint::spin_loop();
             }
-            std::hint::spin_loop();
         }
     }
 
