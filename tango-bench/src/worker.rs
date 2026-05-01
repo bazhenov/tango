@@ -103,7 +103,12 @@ impl WorkerState {
 
     fn run_benchmark(&mut self, params: RunBenchmarkParams) -> Result<RunBenchmarkResult> {
         let mut sampler = self.prepare_sampler(params.index, params.seed)?;
-        let mut samples = Vec::new();
+        let mut samples = if params.num_samples > 0 {
+            Vec::with_capacity(params.num_samples)
+        } else {
+            Vec::new()
+        };
+
         let mut sample_no = 0u64;
 
         #[cfg(feature = "stack-randomize")]
