@@ -1,12 +1,12 @@
 //! Minimal example: two child processes race a factorial workload,
-//! report per-iteration timings through a shared Commpage, and the
+//! synchronize via a shared Commpage, collect timings locally, and the
 //! master prints the percentage difference.
 
 use std::{
     env,
     hint::black_box,
-    process::Command,
-    thread,
+    io::{BufRead, BufReader},
+    process::{Command, Stdio},
     time::{Duration, Instant},
 };
 use tango_bench::commpage::{Commpage, Role};
@@ -26,8 +26,7 @@ fn factorial(n: u64) -> u64 {
 /// Entry point for a child worker process.
 fn run_child(shmem_id: &str, role: Role) {
     let commpage = Commpage::open(shmem_id).expect("failed to open commpage");
-    let lane = commpage.get_lane(role);
-    let mut samples_written = 0;
+    let mut samples = Vec::new();
 
     for i in 0..ITERATIONS {
         let start = Instant::now();
@@ -35,15 +34,19 @@ fn run_child(shmem_id: &str, role: Role) {
             black_box(factorial(black_box(20)));
         }
         let elapsed_ns = start.elapsed().as_nanos() as u64;
+        samples.push(elapsed_ns);
 
-        lane.push_sample(i, elapsed_ns);
-        samples_written += 1;
-
-        if !commpage.peer_lane(role).wait_for_cursor(samples_written) {
+        commpage.advance_cursor(role, i);
+        if !commpage.wait_for_peer(role, i + 1) {
             break;
         }
     }
-    lane.mark_done();
+    commpage.mark_done(role);
+
+    // Print samples to stdout, one per line
+    for s in &samples {
+        println!("{s}");
+    }
 }
 
 /// Entry point for the master process.
@@ -53,78 +56,49 @@ fn run_master() {
 
     let exe = env::current_exe().expect("cannot determine own path");
 
-    // Spawn two children: candidate and baseline.
-    let mut child_c = Command::new(&exe)
+    // Spawn two children with piped stdout so we can capture their samples.
+    let child_c = Command::new(&exe)
         .args(["--child", &shmem_id, "candidate"])
+        .stdout(Stdio::piped())
         .spawn()
         .expect("failed to spawn candidate");
 
-    let mut child_b = Command::new(&exe)
+    let child_b = Command::new(&exe)
         .args(["--child", &shmem_id, "baseline"])
+        .stdout(Stdio::piped())
         .spawn()
         .expect("failed to spawn baseline");
 
-    // Drain all samples after children are done.
-    let mut samples_c = Vec::new();
-    let mut samples_b = Vec::new();
+    // Wait for children and read their samples from stdout.
+    let output_c = child_c.wait_with_output().expect("candidate failed");
+    let output_b = child_b.wait_with_output().expect("baseline failed");
 
-    let lane_c = commpage.lane_c();
-    let lane_b = commpage.lane_b();
+    let parse_samples = |output: Vec<u8>| -> Vec<u64> {
+        BufReader::new(output.as_slice())
+            .lines()
+            .filter_map(|l| l.ok())
+            .filter(|l| !l.is_empty())
+            .map(|l| l.parse().expect("invalid sample"))
+            .collect()
+    };
 
-    while !lane_c.is_done() || !lane_b.is_done() {
-        if !lane_c.is_done() {
-            lane_c.drain_samples(&mut samples_c).unwrap();
-        }
-        if !lane_b.is_done() {
-            lane_b.drain_samples(&mut samples_b).unwrap();
-        }
-        println!("B: {}, C: {}", samples_b.len(), samples_c.len());
-        thread::sleep(Duration::from_millis(100));
-    }
+    let samples_c = parse_samples(output_c.stdout);
+    let samples_b = parse_samples(output_b.stdout);
 
-    // Wait for both children to finish.
-    child_c.wait().expect("candidate process failed");
-    child_b.wait().expect("baseline process failed");
+    let samples: Vec<(u64, u64)> = samples_c.into_iter().zip(samples_b).collect();
 
-    // Compute median elapsed time for each lane.
-    // println!("{:?}", samples_b);
-    // println!("{:?}", samples_c);
-
-    let samples = samples_c
-        .iter()
-        .copied()
-        .zip(samples_b.iter().copied())
-        .collect::<Vec<_>>();
-
-    for (c, b) in samples.iter().copied() {
-        let diff = (c as f64 - b as f64) / (b as f64);
+    for (c, b) in &samples {
+        let diff = (*c as f64 - *b as f64) / (*b as f64);
         println!(
             "{:5.1}% ({} ms)",
             diff * 100.0,
-            Duration::from_nanos(b).as_millis()
+            Duration::from_nanos(*b).as_millis()
         );
     }
 
-    let sum = samples
-        .iter()
-        .copied()
-        .map(|(c, b)| c as i64 - b as i64)
-        .sum::<i64>();
+    let sum: i64 = samples.iter().map(|(c, b)| *c as i64 - *b as i64).sum();
     println!("Mean: {:.0} us", sum / samples.len() as i64 / 1_000);
 }
-
-// fn median(v: &mut [f64]) -> f64 {
-//     // Filter out MISSED_SAMPLE sentinels.
-//     let mut clean: Vec<f64> = v.iter().copied().collect();
-//     assert!(!clean.is_empty(), "no valid samples collected");
-//     clean.sort_unstable();
-//     let mid = clean.len() / 2;
-//     if clean.len().is_multiple_of(2) {
-//         (clean[mid - 1] + clean[mid]) as f64 / 2.0
-//     } else {
-//         clean[mid] as f64
-//     }
-// }
 
 fn main() {
     let args: Vec<String> = env::args().collect();

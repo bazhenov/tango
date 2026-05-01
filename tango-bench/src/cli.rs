@@ -270,7 +270,7 @@ mod paired_test {
         calculate_run_result,
         child::ChildHandle,
         cli::reporting::BenchmarkProgress,
-        commpage::{self, Commpage, Role, MISSED_SAMPLE},
+        commpage::{Commpage, Role},
         platform::RUsage,
     };
     use fs::File;
@@ -361,12 +361,6 @@ mod paired_test {
 
         let mut exit_code = ExitCode::SUCCESS;
 
-        // Poll samples from the commpage while children are running.
-        // The ring buffer only holds 128 samples per lane, so R must drain
-        // faster than the children produce to avoid losing data.
-        let mut c_samples = Vec::new();
-        let mut b_samples = Vec::new();
-
         for (c_idx, func_name) in c_benchmarks.iter().enumerate() {
             if !filter.is_empty() && !glob_match(filter, func_name) {
                 continue;
@@ -379,10 +373,8 @@ mod paired_test {
                 continue;
             };
 
-            // Reset commpage and read positions for the new benchmark
+            // Reset commpage for the new benchmark
             commpage.reset();
-            c_samples.clear();
-            b_samples.clear();
 
             // Estimate iterations
             let c_iters = child_c
@@ -397,17 +389,11 @@ mod paired_test {
             child_c.start_benchmark(c_idx, seed, iterations, num_samples)?;
             child_b.start_benchmark(b_idx, seed, iterations, num_samples)?;
 
+            // Wait for children to finish, handling time-budget and progress reporting
             let time_start = Instant::now();
-            let mut c_skipped = 0;
-            let mut b_skipped = 0;
-            while !commpage.is_some_lane_done() {
-                // Drain whatever is available
-                c_skipped += child_c.drain_samples(&commpage, &mut c_samples);
-                b_skipped += child_b.drain_samples(&commpage, &mut b_samples);
-
+            while !commpage.is_some_done() {
                 match loop_mode {
                     LoopMode::Time(duration) => {
-                        // In time-budget mode, check if we should signal stop
                         let elapsed = time_start.elapsed();
                         if elapsed >= duration {
                             commpage.set_stop();
@@ -422,32 +408,32 @@ mod paired_test {
                         }
                     }
                     LoopMode::Samples(s) => {
+                        let progress = commpage
+                            .sample_count(Role::Candidate)
+                            .min(commpage.sample_count(Role::Baseline));
                         reporter.report_progress(
                             func_name,
                             BenchmarkProgress::SamplingNo {
-                                sample_no: c_samples.len().min(b_samples.len()),
+                                sample_no: progress,
                                 samples_total: s,
                             },
                         );
                     }
                 }
 
-                // We have plenty of space in commpage, so we can poll the results once in a while
-                // this number is chosen empirically
                 sleep(Duration::from_millis((TIME_SLICE_MS * 5) as u64));
             }
 
-            // Both children are done — read their RPC responses
-            child_c
+            // Both children are done — read their RPC responses (which contain samples)
+            let c_result = child_c
                 .finish_benchmark()
                 .context("Candidate benchmark failed")?;
-            child_b
+            let b_result = child_b
                 .finish_benchmark()
                 .context("Baseline benchmark failed")?;
 
-            // Final drain to pick up any samples written between last poll and DONE
-            child_c.drain_samples(&commpage, &mut c_samples);
-            child_b.drain_samples(&commpage, &mut b_samples);
+            let c_samples = c_result.samples;
+            let b_samples = b_result.samples;
 
             assert!(
                 c_samples.len() == b_samples.len() && !c_samples.is_empty(),
@@ -456,24 +442,7 @@ mod paired_test {
                 b_samples.len()
             );
 
-            if c_skipped > 0 || b_skipped > 0 {
-                eprintln!(
-                    "warn: runner could not drain samples fast enough for '{}'. \
-                     Skipped observations: candidate={}, baseline={} \
-                     (ring buffer size={})",
-                    func_name,
-                    c_skipped,
-                    b_skipped,
-                    commpage::NUM_SLOTS,
-                );
-            }
-
-            let validated_samples = b_samples
-                .iter()
-                .zip(c_samples.iter())
-                .filter(|&(&c, &b)| c != MISSED_SAMPLE && b != MISSED_SAMPLE)
-                .map(|(&c, &b)| (c, b))
-                .collect::<Vec<_>>();
+            let validated_samples: Vec<(u64, u64)> = b_samples.into_iter().zip(c_samples).collect();
 
             if validated_samples.is_empty() {
                 bail!(Error::NoMeasurements)

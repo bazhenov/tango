@@ -44,6 +44,6 @@ pub struct RunBenchmarkParams {
 
 #[derive(Serialize, Deserialize)]
 pub struct RunBenchmarkResult {
-    #[serde(rename = "samples_written")]
-    pub samples_written: u64,
+    #[serde(rename = "samples")]
+    pub samples: Vec<u64>,
 }
