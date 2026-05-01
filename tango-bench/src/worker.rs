@@ -17,7 +17,11 @@ use std::{
 ///
 /// Opens the commpage from the given shmem name, then enters the JSON-RPC
 /// dispatch loop reading commands from stdin and writing responses to stdout.
-pub fn run_worker(shmem_name: &str, role: Role, benchmarks: Vec<Benchmark>) -> Result<ExitCode> {
+pub(crate) fn run_worker(
+    shmem_name: &str,
+    role: Role,
+    benchmarks: Vec<Benchmark>,
+) -> Result<ExitCode> {
     let commpage = Commpage::open(shmem_name)?;
 
     let mut state = WorkerState {
@@ -114,16 +118,12 @@ impl WorkerState {
         #[cfg(feature = "stack-randomize")]
         let mut stack_randomizer = stack_randomizer::StackRandomizer::new(params.seed);
 
-        loop {
-            // Check termination conditions
-            if params.num_samples > 0 && sample_no >= params.num_samples as u64 {
-                break;
-            }
-            if params.num_samples == 0 && self.commpage.is_stopped() {
-                break;
-            }
-
-            // Take measurement
+        // Terminate conditions differs if the explicit number of samples given.
+        // Yes – collect given amount
+        //  No – run until STOP bit is not set
+        while (params.num_samples > 0 && sample_no < params.num_samples as u64)
+            || (params.num_samples == 0 && !self.commpage.is_stopped())
+        {
             #[cfg(feature = "stack-randomize")]
             let elapsed_ns = stack_randomizer.measure(&mut *sampler, params.iterations);
             #[cfg(not(feature = "stack-randomize"))]
@@ -131,11 +131,13 @@ impl WorkerState {
 
             samples.push(elapsed_ns);
 
-            // Advance cursor and barrier: wait for peer
-            self.commpage.advance_cursor(self.role, sample_no);
+            // Advance cursor and wait for peer
             sample_no += 1;
-
-            if !self.commpage.wait_for_peer(self.role, sample_no) {
+            self.commpage.advance_cursor(self.role, sample_no);
+            if !self
+                .commpage
+                .wait_for_cursor_value(self.role.peer(), sample_no)
+            {
                 // Peer exited early
                 break;
             }

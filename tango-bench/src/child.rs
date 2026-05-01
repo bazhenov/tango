@@ -17,11 +17,10 @@ use std::{
     process::{Child, ChildStdin, ChildStdout, Command, Stdio},
 };
 
-pub struct ChildHandle {
+pub(crate) struct ChildHandle {
     process: Child,
     stdin: ChildStdin,
     stdout: BufReader<ChildStdout>,
-    role: Role,
     /// Next id for JSON RPC request
     req_next_id: u64,
 }
@@ -51,7 +50,6 @@ impl ChildHandle {
             process: child,
             stdin,
             stdout,
-            role,
             req_next_id: 1,
         })
     }
@@ -108,11 +106,6 @@ impl ChildHandle {
         let _ = self.call(protocol::METHOD_SHUTDOWN, Value::Null);
         self.process.wait()?;
         Ok(())
-    }
-
-    /// The role of this child.
-    pub fn role(&self) -> Role {
-        self.role
     }
 
     /// Send a JSON-RPC request and wait for the response.
