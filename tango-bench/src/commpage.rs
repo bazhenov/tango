@@ -71,25 +71,27 @@ impl CommpageLayout {
             Role::Baseline => &self.cursor_b,
         }
     }
-
-    fn peer_cursor(&self, role: Role) -> &AtomicU64 {
-        match role {
-            Role::Candidate => &self.cursor_b,
-            Role::Baseline => &self.cursor_c,
-        }
-    }
 }
 
 /// Which role a child process plays.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub enum Role {
+pub(crate) enum Role {
     Candidate,
     Baseline,
 }
 
+impl Role {
+    pub fn peer(self) -> Self {
+        match self {
+            Self::Candidate => Self::Baseline,
+            Self::Baseline => Self::Candidate,
+        }
+    }
+}
+
 /// Handle to a commpage backed by shared memory.
-pub struct Commpage {
+pub(crate) struct Commpage {
     shmem: Shmem,
 }
 
@@ -134,18 +136,17 @@ impl Commpage {
     }
 
     /// Advance this role's cursor after completing a sample.
-    /// After calling with `sample_no`, the cursor value becomes `sample_no + 1`.
     pub fn advance_cursor(&self, role: Role, sample_no: u64) {
         self.layout()
             .cursor(role)
-            .store(sample_no + 1, Ordering::Release);
+            .store(sample_no, Ordering::Release);
     }
 
     /// Spin-wait until the peer's cursor reaches at least `target`, or the peer sets DONE.
     ///
     /// Returns `true` if the peer caught up, `false` if the peer exited early (DONE).
-    pub fn wait_for_peer(&self, role: Role, target: u64) -> bool {
-        let peer = self.layout().peer_cursor(role);
+    pub fn wait_for_cursor_value(&self, role: Role, target: u64) -> bool {
+        let peer = self.layout().cursor(role);
         loop {
             let val = peer.load(Ordering::Acquire);
             if val & DONE_BIT != 0 {
@@ -235,7 +236,7 @@ mod tests {
     fn done_bit() {
         let cp = Commpage::create().unwrap();
         assert!(!cp.is_done(Role::Candidate));
-        cp.advance_cursor(Role::Candidate, 0);
+        cp.advance_cursor(Role::Candidate, 1);
         cp.mark_done(Role::Candidate);
 
         assert!(cp.is_done(Role::Candidate));
@@ -254,20 +255,20 @@ mod tests {
 
             for i in 0..num_samples {
                 cp.advance_cursor(Role::Candidate, i);
-                cp.wait_for_peer(Role::Candidate, i + 1);
+                cp.wait_for_cursor_value(Role::Baseline, i);
             }
             cp.mark_done(Role::Candidate);
         });
 
         for i in 0..num_samples {
             cp.advance_cursor(Role::Baseline, i);
-            cp.wait_for_peer(Role::Baseline, i + 1);
+            cp.wait_for_cursor_value(Role::Candidate, i);
         }
         cp.mark_done(Role::Baseline);
 
         handle.join().unwrap();
 
-        assert_eq!(cp.sample_count(Role::Candidate), num_samples as usize);
-        assert_eq!(cp.sample_count(Role::Baseline), num_samples as usize);
+        assert_eq!(cp.sample_count(Role::Baseline), (num_samples - 1) as usize);
+        assert_eq!(cp.sample_count(Role::Candidate), (num_samples - 1) as usize);
     }
 }

@@ -424,42 +424,26 @@ mod paired_test {
                 sleep(Duration::from_millis((TIME_SLICE_MS * 5) as u64));
             }
 
-            // Both children are done — read their RPC responses (which contain samples)
-            let c_result = child_c
+            // Both children are done — read their RPC responses
+            let c_samples = child_c
                 .finish_benchmark()
-                .context("Candidate benchmark failed")?;
-            let b_result = child_b
+                .context("Candidate benchmark failed")?
+                .samples;
+            let b_samples = child_b
                 .finish_benchmark()
-                .context("Baseline benchmark failed")?;
+                .context("Baseline benchmark failed")?
+                .samples;
 
-            let c_samples = c_result.samples;
-            let b_samples = b_result.samples;
+            let samples = b_samples.into_iter().zip(c_samples).collect::<Vec<_>>();
 
-            assert!(
-                c_samples.len() == b_samples.len() && !c_samples.is_empty(),
-                "Invalid number of samples collected: candidate = {}, baseline = {}",
-                c_samples.len(),
-                b_samples.len()
-            );
-
-            let validated_samples: Vec<(u64, u64)> = b_samples.into_iter().zip(c_samples).collect();
-
-            if validated_samples.is_empty() {
-                bail!(Error::NoMeasurements)
-            }
-
-            let run_result = calculate_run_result(
-                &validated_samples,
-                iterations,
-                filter_outliers,
-                noise_threshold,
-            )
-            .ok_or(Error::NoMeasurements)?;
+            let run_result =
+                calculate_run_result(&samples, iterations, filter_outliers, noise_threshold)
+                    .ok_or(Error::NoMeasurements)?;
 
             if let Some(path) = &path_to_dump {
                 let file_name = format!("{}.csv", func_name.replace('/', "-"));
                 let file_path = path.join(file_name);
-                write_csv(&file_path, validated_samples, iterations)
+                write_csv(&file_path, samples, iterations)
                     .context("Unable to write raw measurements")?;
                 sample_dumps.push(file_path);
             }
