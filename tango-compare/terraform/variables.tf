@@ -20,6 +20,7 @@ variable "ami_id" {
   default     = "ami-005f97cc4a61dd3b4" # Ubuntu Server 24.04 LTS (HVM), SSD Volume Type
 }
 
+# https://instances.vantage.sh
 variable "instance_type" {
   description = "Type of the EC2 instance (eg. t2.micro)"
   type        = string
