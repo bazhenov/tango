@@ -23,7 +23,7 @@ write_files:
 
 runcmd:
   # Need to do sudo -u root for environment to be configured properly
-  - [sudo, -iu, root, bash, -c, "/root/init.sh 2>&1 | tee /var/log/init.log"]
-  - [sudo, -iu, root, bash, -c, "/root/run.sh 2>&1 | tee /var/log/run.log"]
+  - [sudo, -iu, root, bash, -c, "/root/init.sh 2>&1"]
+  - [sudo, -iu, root, bash, -c, "/root/run.sh 2>&1"]
   # Shutting down VM after job is done
   - [shutdown, -h, now]
