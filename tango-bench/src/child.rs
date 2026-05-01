@@ -1,7 +1,7 @@
 //! Runner-side child process handle.
 //!
 //! The runner spawns child processes in worker mode and communicates with them
-//! via JSON-RPC over stdin/stdout. Measurement data flows through the commpage.
+//! via JSON-RPC over stdin/stdout. Measurement data is returned in JSON-RPC responses.
 
 use crate::{
     commpage::{Commpage, Role},
@@ -100,16 +100,6 @@ impl ChildHandle {
     /// Wait for the `run_benchmark` response (blocks until child finishes all samples).
     pub fn finish_benchmark(&mut self) -> Result<RunBenchmarkResult> {
         self.read_response::<RunBenchmarkResult>()
-    }
-
-    /// Drain new samples from this child's commpage lane.
-    /// Returns the number of samples that were skipped (overwritten before reading).
-    pub fn drain_samples(&mut self, commpage: &Commpage, samples: &mut Vec<u64>) -> usize {
-        commpage
-            .get_lane(self.role)
-            .drain_samples(samples)
-            .err()
-            .unwrap_or_default()
     }
 
     /// Send shutdown and wait for the child to exit.

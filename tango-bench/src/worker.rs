@@ -103,18 +103,15 @@ impl WorkerState {
 
     fn run_benchmark(&mut self, params: RunBenchmarkParams) -> Result<RunBenchmarkResult> {
         let mut sampler = self.prepare_sampler(params.index, params.seed)?;
-
-        let my_lane = self.commpage.get_lane(self.role);
-        let peer_lane = self.commpage.peer_lane(self.role);
-
-        let mut samples_written = 0;
+        let mut samples = Vec::new();
+        let mut sample_no = 0u64;
 
         #[cfg(feature = "stack-randomize")]
         let mut stack_randomizer = stack_randomizer::StackRandomizer::new(params.seed);
 
         loop {
             // Check termination conditions
-            if params.num_samples > 0 && samples_written >= params.num_samples as u64 {
+            if params.num_samples > 0 && sample_no >= params.num_samples as u64 {
                 break;
             }
             if params.num_samples == 0 && self.commpage.is_stopped() {
@@ -127,20 +124,21 @@ impl WorkerState {
             #[cfg(not(feature = "stack-randomize"))]
             let elapsed_ns = sampler.measure(params.iterations);
 
-            // Write sample to commpage
-            my_lane.push_sample(samples_written, elapsed_ns);
-            samples_written += 1;
+            samples.push(elapsed_ns);
 
-            // Barrier: wait for peer
-            if !peer_lane.wait_for_cursor(samples_written) {
+            // Advance cursor and barrier: wait for peer
+            self.commpage.advance_cursor(self.role, sample_no);
+            sample_no += 1;
+
+            if !self.commpage.wait_for_peer(self.role, sample_no) {
                 // Peer exited early
                 break;
             }
         }
 
-        my_lane.mark_done();
+        self.commpage.mark_done(self.role);
 
-        Ok(RunBenchmarkResult { samples_written })
+        Ok(RunBenchmarkResult { samples })
     }
 }
 
