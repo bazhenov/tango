@@ -4,16 +4,19 @@ set -euo pipefail
 git clone -b main --depth=1 https://github.com/bazhenov/tango.git tango-main
 git clone -b shmem-test --depth=1 https://github.com/bazhenov/tango.git tango-commpage
 
-mkdir result
-
 cargo export . -t main -- bench --manifest-path tango-main/Cargo.toml --bench=tango-slower
 cargo export . -t commpage -- bench --manifest-path tango-commpage/Cargo.toml --bench=tango-slower
 
 UUID=$(uuidgen)
 echo "Running experiment $UUID"
 
-# Uploading empty archive to indicate experiment is in progress
-touch result.tar.gz
+# Uploading archive with metadata only to indicate experiment is in progress
+mkdir result
+cat /proc/cpuinfo > result/cpuinfo
+hostname > result/hostname
+free > result/free
+
+tar czvf result.tar.gz result/
 aws s3 cp result.tar.gz "s3://${s3_bucket_name}/$UUID.tar.gz"
 
 for i in $(seq 1 1000);
