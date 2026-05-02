@@ -44,6 +44,7 @@ stack-randomize = ["dep:alloca"]
 async = []
 async-tokio = ["async", "dep:tokio"]
 async-tokio-all-drivers = ["async-tokio", "tokio/full"]
+disable-sync = []
 
 [[bench]]
 name = "tango"
