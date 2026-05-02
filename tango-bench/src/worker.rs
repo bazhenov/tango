@@ -118,6 +118,11 @@ impl WorkerState {
         #[cfg(feature = "stack-randomize")]
         let mut stack_randomizer = stack_randomizer::StackRandomizer::new(params.seed);
 
+        if cfg!(not(feature = "disable-sync")) {
+            self.commpage.advance_cursor(self.role, sample_no);
+            self.commpage.wait_for_cursor_value(self.role.peer(), 0);
+        }
+
         // Terminate conditions differs if the explicit number of samples given.
         // Yes – collect given amount
         //  No – run until STOP bit is not set
