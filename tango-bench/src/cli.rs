@@ -396,7 +396,7 @@ mod paired_test {
                     LoopMode::Time(duration) => {
                         let elapsed = time_start.elapsed();
                         if elapsed >= duration {
-                            commpage.set_stop();
+                            break;
                         } else if duration > Duration::from_millis(500) {
                             reporter.report_progress(
                                 func_name,
@@ -423,6 +423,8 @@ mod paired_test {
 
                 sleep(Duration::from_millis((TIME_SLICE_MS * 5) as u64));
             }
+            // Signaling children to exit
+            commpage.set_stop();
 
             // Both children are done — read their RPC responses
             let c_samples = child_c
