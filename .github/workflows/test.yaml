@@ -2,7 +2,7 @@ name: Test
 
 on:
   push:
-    branches: main
+    branches: [main]
   pull_request:
 
 jobs:
@@ -57,10 +57,10 @@ jobs:
         include:
           - os: ubuntu-22.04
             toolchain: stable
-            exe:
+            exe: ""
           - os: macos-14
             toolchain: stable
-            exe:
+            exe: ""
           - os: windows-2022
             toolchain: nightly
             exe: .exe
