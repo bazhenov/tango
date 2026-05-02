@@ -133,13 +133,15 @@ impl WorkerState {
 
             // Advance cursor and wait for peer
             sample_no += 1;
-            self.commpage.advance_cursor(self.role, sample_no);
-            if !self
-                .commpage
-                .wait_for_cursor_value(self.role.peer(), sample_no)
-            {
-                // Peer exited early
-                break;
+            if cfg!(not(feature = "disable-sync")) {
+                self.commpage.advance_cursor(self.role, sample_no);
+                if !self
+                    .commpage
+                    .wait_for_cursor_value(self.role.peer(), sample_no)
+                {
+                    // Peer exited early
+                    break;
+                }
             }
         }
 
