@@ -25,8 +25,8 @@ aws s3 cp result.tar.gz "s3://${s3_bucket_name}/$UUID.tar.gz"
 
 for i in $(seq 1 1000);
 do
-    (./tango_slower-commpage compare -f factorial -t 2 || true) >> result/commpage.txt
-    (./tango_slower-main compare -f factorial --sampler flat -t 2 -p || true) >> result/main.txt
+    (./tango_slower-commpage compare -f factorial -s 100 || true) >> result/commpage.txt
+    (./tango_slower-main compare -f factorial --sampler flat -s 100 -p || true) >> result/main.txt
 done
 
 tar czvf result.tar.gz result/
