@@ -8,7 +8,9 @@
 use shared_memory::{Shmem, ShmemConf};
 use std::{
     mem::size_of,
+    ops::BitXor,
     sync::atomic::{AtomicU32, AtomicU64, Ordering},
+    u64,
 };
 use thiserror::Error;
 
@@ -146,13 +148,13 @@ impl Commpage {
     ///
     /// Returns `true` if the peer caught up, `false` if the peer exited early (DONE).
     pub fn wait_for_cursor_value(&self, role: Role, target: u64) -> bool {
-        let peer = self.layout().cursor(role);
+        let cursor = self.layout().cursor(role);
         loop {
-            let val = peer.load(Ordering::Acquire);
+            let val = cursor.load(Ordering::Acquire);
             if val & DONE_BIT != 0 {
                 return false;
             }
-            if val >= target {
+            if val >= target && val != u64::MAX {
                 return true;
             }
             std::hint::spin_loop();
@@ -194,8 +196,8 @@ impl Commpage {
     /// Reset the commpage for a new benchmark run.
     pub fn reset(&mut self) {
         self.layout().flags.store(0, Ordering::Release);
-        *self.layout_mut().cursor_c.get_mut() = 0;
-        *self.layout_mut().cursor_b.get_mut() = 0;
+        *self.layout_mut().cursor_c.get_mut() = u64::MAX ^ (1 << 63);
+        *self.layout_mut().cursor_b.get_mut() = u64::MAX ^ (1 << 63);
     }
 }
 
