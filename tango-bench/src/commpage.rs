@@ -8,9 +8,7 @@
 use shared_memory::{Shmem, ShmemConf};
 use std::{
     mem::size_of,
-    ops::BitXor,
     sync::atomic::{AtomicU32, AtomicU64, Ordering},
-    u64,
 };
 use thiserror::Error;
 
@@ -154,10 +152,11 @@ impl Commpage {
             if val & DONE_BIT != 0 {
                 return false;
             }
-            if val >= target && val != u64::MAX {
+            if val >= target {
                 return true;
+            } else {
+                std::hint::spin_loop();
             }
-            std::hint::spin_loop();
         }
     }
 
@@ -196,8 +195,8 @@ impl Commpage {
     /// Reset the commpage for a new benchmark run.
     pub fn reset(&mut self) {
         self.layout().flags.store(0, Ordering::Release);
-        *self.layout_mut().cursor_c.get_mut() = u64::MAX ^ (1 << 63);
-        *self.layout_mut().cursor_b.get_mut() = u64::MAX ^ (1 << 63);
+        *self.layout_mut().cursor_c.get_mut() = 0;
+        *self.layout_mut().cursor_b.get_mut() = 0;
     }
 }
 

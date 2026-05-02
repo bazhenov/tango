@@ -118,9 +118,14 @@ impl WorkerState {
         #[cfg(feature = "stack-randomize")]
         let mut stack_randomizer = stack_randomizer::StackRandomizer::new(params.seed);
 
-        if cfg!(not(feature = "disable-sync")) {
-            self.commpage.advance_cursor(self.role, sample_no);
-            self.commpage.wait_for_cursor_value(self.role.peer(), 0);
+        // We use value 0 to self syncronize two processes at the start of benchmark execution.
+        // So cursor value is a sample index being collected right now. Hence the number
+        // of collected samples is cursor_value - 1;
+
+        if cfg!(not(feature = "no-sync")) {
+            self.commpage.advance_cursor(self.role, sample_no + 1);
+            self.commpage
+                .wait_for_cursor_value(self.role.peer(), sample_no + 1);
         }
 
         // Terminate conditions differs if the explicit number of samples given.
@@ -138,11 +143,11 @@ impl WorkerState {
 
             // Advance cursor and wait for peer
             sample_no += 1;
-            if cfg!(not(feature = "disable-sync")) {
-                self.commpage.advance_cursor(self.role, sample_no);
+            if cfg!(not(feature = "no-sync")) {
+                self.commpage.advance_cursor(self.role, sample_no + 1);
                 if !self
                     .commpage
-                    .wait_for_cursor_value(self.role.peer(), sample_no)
+                    .wait_for_cursor_value(self.role.peer(), sample_no + 1)
                 {
                     // Peer exited early
                     break;

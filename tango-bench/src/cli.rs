@@ -281,7 +281,8 @@ mod paired_test {
         time::Instant,
     };
 
-    const TIME_SLICE_MS: u32 = 10;
+    const TIME_SLICE: Duration = Duration::from_millis(10);
+    const PROGRESS_UPDATE_INTERVAL: Duration = Duration::from_millis(50);
 
     pub(super) fn run_test(opts: PairedOpts) -> Result<ExitCode> {
         let PairedOpts {
@@ -373,15 +374,12 @@ mod paired_test {
                 continue;
             };
 
-            // Reset commpage for the new benchmark
-            commpage.reset();
-
             // Estimate iterations
             let c_iters = child_c
-                .estimate_iterations(c_idx, seed, TIME_SLICE_MS)
+                .estimate_iterations(c_idx, seed, TIME_SLICE)
                 .context("Failed to estimate iterations (candidate)")?;
             let b_iters = child_b
-                .estimate_iterations(b_idx, seed, TIME_SLICE_MS)
+                .estimate_iterations(b_idx, seed, TIME_SLICE)
                 .context("Failed to estimate iterations (baseline)")?;
             let iterations = c_iters.max(1).min(b_iters.max(1));
 
@@ -397,7 +395,9 @@ mod paired_test {
                         let elapsed = time_start.elapsed();
                         if elapsed >= duration {
                             break;
-                        } else if duration > Duration::from_millis(500) {
+                        } else if duration > Duration::from_millis(500)
+                            && !cfg!(feature = "no-progress-report")
+                        {
                             reporter.report_progress(
                                 func_name,
                                 BenchmarkProgress::SamplingTime {
@@ -408,20 +408,22 @@ mod paired_test {
                         }
                     }
                     LoopMode::Samples(s) => {
-                        let progress = commpage
-                            .sample_count(Role::Candidate)
-                            .min(commpage.sample_count(Role::Baseline));
-                        reporter.report_progress(
-                            func_name,
-                            BenchmarkProgress::SamplingNo {
-                                sample_no: progress,
-                                samples_total: s,
-                            },
-                        );
+                        if !cfg!(feature = "no-progress-report") {
+                            let progress = commpage
+                                .sample_count(Role::Candidate)
+                                .min(commpage.sample_count(Role::Baseline));
+                            reporter.report_progress(
+                                func_name,
+                                BenchmarkProgress::SamplingNo {
+                                    sample_no: progress,
+                                    samples_total: s,
+                                },
+                            );
+                        }
                     }
                 }
 
-                sleep(Duration::from_millis((TIME_SLICE_MS * 5) as u64));
+                sleep(PROGRESS_UPDATE_INTERVAL);
             }
             // Signaling children to exit
             commpage.set_stop();
