@@ -76,7 +76,7 @@ impl CommpageLayout {
 /// Which role a child process plays.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub(crate) enum Role {
+pub enum Role {
     Candidate,
     Baseline,
 }
@@ -91,7 +91,7 @@ impl Role {
 }
 
 /// Handle to a commpage backed by shared memory.
-pub(crate) struct Commpage {
+pub struct Commpage {
     shmem: Shmem,
 }
 

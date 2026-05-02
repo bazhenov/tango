@@ -37,7 +37,7 @@ fn run_child(shmem_id: &str, role: Role) {
         samples.push(elapsed_ns);
 
         commpage.advance_cursor(role, i);
-        if !commpage.wait_for_peer(role, i + 1) {
+        if !commpage.wait_for_cursor_value(role.peer(), i) {
             break;
         }
     }
@@ -76,7 +76,7 @@ fn run_master() {
     let parse_samples = |output: Vec<u8>| -> Vec<u64> {
         BufReader::new(output.as_slice())
             .lines()
-            .filter_map(|l| l.ok())
+            .map_while(Result::ok)
             .filter(|l| !l.is_empty())
             .map(|l| l.parse().expect("invalid sample"))
             .collect()
