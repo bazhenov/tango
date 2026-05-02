@@ -194,7 +194,7 @@ fn params_to_value(params: &Option<Params>) -> Value {
 
 #[cfg(feature = "stack-randomize")]
 mod stack_randomizer {
-    use super::*;
+    use crate::ErasedSampler;
     use alloca::with_alloca;
     use rand::{distributions, rngs::SmallRng, Rng, SeedableRng};
 
