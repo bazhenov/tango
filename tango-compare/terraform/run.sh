@@ -5,7 +5,7 @@ git clone -b main --depth=1 https://github.com/bazhenov/tango.git tango-main
 git clone -b shmem-test --depth=1 https://github.com/bazhenov/tango.git tango-commpage
 
 cargo export . -t main -- bench --manifest-path tango-main/Cargo.toml --bench=tango-slower
-cargo export . -t commpage -- bench --manifest-path tango-commpage/Cargo.toml --bench=tango-slower
+cargo export . -t commpage -- bench --manifest-path tango-commpage/Cargo.toml --features=no-progress-report --bench=tango-slower
 
 UUID=$(uuidgen)
 echo "Running experiment $UUID"

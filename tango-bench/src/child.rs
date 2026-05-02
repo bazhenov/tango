@@ -15,6 +15,7 @@ use std::{
     io::{BufRead, BufReader, Write},
     path::Path,
     process::{Child, ChildStdin, ChildStdout, Command, Stdio},
+    time::Duration,
 };
 
 pub(crate) struct ChildHandle {
@@ -62,7 +63,13 @@ impl ChildHandle {
     }
 
     /// Estimate iterations for a given time budget (in ms).
-    pub fn estimate_iterations(&mut self, index: usize, seed: u64, time_ms: u32) -> Result<usize> {
+    pub fn estimate_iterations(
+        &mut self,
+        index: usize,
+        seed: u64,
+        time_budget: Duration,
+    ) -> Result<usize> {
+        let time_ms = u32::try_from(time_budget.as_millis()).expect("Invalid time budget value");
         let result = self.call(
             protocol::METHOD_ESTIMATE_ITERATIONS,
             EstimateIterationsParams {
