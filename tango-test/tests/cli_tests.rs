@@ -6,6 +6,7 @@ use std::{
 use temp_dir::TempDir;
 
 const SLEEP_10: &str = env!("CARGO_BIN_EXE_sleep_10");
+const MULTIPLE: &str = env!("CARGO_BIN_EXE_multiple");
 const SLEEP_100: &str = env!("CARGO_BIN_EXE_sleep_100");
 const NOT_A_BENCH: &str = env!("CARGO_BIN_EXE_not_a_bench");
 const SLEEP_PANIC: &str = env!("CARGO_BIN_EXE_sleep_panic");
@@ -75,6 +76,14 @@ fn benchmark_with_panic() {
     Cmd::run(SLEEP_10, &["compare", SLEEP_PANIC])
         .assert_failure()
         .assert_stderr_contains("Intended panic");
+}
+
+#[test]
+fn benchmark_with_multiple_tests() {
+    Cmd::run(MULTIPLE, &["compare", MULTIPLE])
+        .assert_success()
+        .assert_stdout_contains("bench1 {..} [ {..} ... {..} ]")
+        .assert_stdout_contains("bench2 {..} [ {..} ... {..} ]");
 }
 
 fn gnuplot_available() -> bool {
