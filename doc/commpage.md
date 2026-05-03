@@ -2,7 +2,7 @@
 
 ## Motivation
 
-Tango runs the baseline (B) and candidate (C) benchmarks in **separate processes** for full isolation (distinct address spaces, independent OS-level metrics). The two children must start each sample at nearly the same instant so they experience identical system conditions. A shared memory region -- the "commpage" -- provides a low-latency, zero-syscall synchronization barrier between B and C.
+Tango runs the baseline (B) and candidate (C) benchmarks in **separate processes** for full isolation (distinct address spaces, independent OS-level metrics). The two children must start each sample at nearly the same instant so they experience identical system conditions. A shared memory region -- the "commpage" (common page) -- provides a low-latency, zero-syscall synchronization barrier between B and C.
 
 All **measurement data** (sample timings) flows back to the runner through JSON-RPC responses. The commpage carries **no measurement data** -- it exists solely so that two children can execute in lock-step.
 
@@ -77,17 +77,17 @@ Each cursor is a monotonically increasing counter -- the total number of samples
   └────┴──────────────────────────────────────────┘
 ```
 
+Counter starts from a value 0, which indicates that children is ready to start measuring.
+
 ### Peer Synchronization
 
 C and B synchronize directly with each other through the commpage -- **R does not participate**. After completing sample N, each child advances its own cursor and then spin-waits until the peer's cursor reaches N. This acts as a per-sample barrier: neither child starts sample N+1 until both have completed sample N.
-
-The first sample may start slightly offset (one child receives the RPC before the other), but the barrier after sample 0 aligns them. From sample 1 onward, both children start each measurement nearly simultaneously, under the same system conditions.
 
 The spin-wait also checks the peer's DONE bit to avoid spinning forever if the peer exits early.
 
 ### Duration Modes
 
-- **`--samples N`**: R passes `num_samples = N`. Children run exactly N samples and return.
+- **`-s N`**: R passes `num_samples = N`. Children run exactly N samples and return.
 - **`-t DURATION`**: R passes `num_samples = 0`. Children run until R sets the `STOP` flag in the commpage when the time budget is exhausted.
 
 ## Child Spawning
@@ -101,7 +101,7 @@ R spawns each child as a hidden `__worker` clap subcommand with two required fla
 
 The child opens the commpage on startup and enters the JSON-RPC dispatch loop. R discovers available benchmarks by sending a `list_benchmarks` request.
 
-Solo mode stays in-process -- it does not use the commpage or child processes. This keeps profiling with tools like `perf` and Instruments straightforward.
+Solo mode stays in-process -- it does not use the commpage or child processes. This keeps profiling with tools like `perf` and Apple Instruments straightforward.
 
 ## JSON-RPC Protocol (over stdio)
 
@@ -128,7 +128,7 @@ Communication between R and C/B uses newline-delimited JSON-RPC 2.0 over the chi
 ### Why JSON-RPC + commpage?
 
 - **JSON-RPC for control and data**: Flexible, debuggable, easy to evolve. The samples array is returned once after the measurement loop completes, so serialization cost is a one-time expense per benchmark run.
-- **Commpage for synchronization**: The per-sample barrier between B and C must be zero-syscall and sub-microsecond. Atomic spin-waits on shared memory are the lowest-latency mechanism available. Using JSON-RPC (or any pipe-based IPC) for this would add unacceptable latency noise to every sample.
+- **Commpage for synchronization**: The per-sample barrier between B and C must be zero-syscall and sub-microsecond. Atomic spin-waits on shared memory are the lowest-latency mechanism available. Using JSON-RPC (or any pipe-based IPC) for this would add latency noise to every sample.
 
 ## Key Design Decisions
 
