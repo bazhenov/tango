@@ -51,7 +51,7 @@ pub struct RunBenchmarkParams {
 pub struct RunBenchmarkResult {
     #[serde(rename = "samples")]
     pub samples: Vec<u64>,
-    /// Per-metric auxiliary samples, in the same order as `aux_metrics` in the request.
-    #[serde(rename = "aux_samples")]
-    pub aux_samples: Vec<Vec<u64>>,
+    /// Auxiliary metrics samples, in the same order as `aux_metrics` in the request.
+    #[serde(rename = "aux_metrics")]
+    pub aux_metrics: Vec<u64>,
 }
