@@ -502,6 +502,49 @@ pub trait Metric {
     fn measure_fn(f: impl FnMut()) -> u64;
 }
 
+/// Dynamic dispatch entry for an [`AuxiliaryMetric`].
+pub struct AuxMetricEntry {
+    pub id: &'static str,
+    pub start: fn() -> u64,
+    pub finish: fn(u64) -> u64,
+}
+
+/// Returns all auxiliary metrics available in this build.
+pub fn available_aux_metrics() -> Vec<AuxMetricEntry> {
+    vec![active_aux::RUsageCpuTime::entry()]
+}
+
+pub mod active_aux {
+    use super::AuxMetricEntry;
+    use crate::platform;
+
+    /// Measures total CPU time (user + system) via `getrusage()` / `GetProcessTimes()`.
+    pub struct RUsageCpuTime;
+
+    const ID: &str = "rusage_cpu_time";
+
+    fn start() -> u64 {
+        let r = platform::rusage();
+        (r.user_time + r.system_time).as_nanos() as u64
+    }
+
+    fn finish(start_value: u64) -> u64 {
+        let r = platform::rusage();
+        let end = (r.user_time + r.system_time).as_nanos() as u64;
+        end - start_value
+    }
+
+    impl RUsageCpuTime {
+        pub fn entry() -> AuxMetricEntry {
+            AuxMetricEntry {
+                id: ID,
+                start,
+                finish,
+            }
+        }
+    }
+}
+
 pub mod metrics {
     use crate::Metric;
 
@@ -933,5 +976,47 @@ mod tests {
         assert!(!measures.is_empty(), "Vec is empty");
         measures.sort_unstable();
         measures[measures.len() / 2]
+    }
+
+    #[test]
+    fn check_aux_metric_rusage_cpu_time() {
+        use crate::active_aux::RUsageCpuTime;
+
+        let metric = RUsageCpuTime::entry();
+
+        let start = (metric.start)();
+        // Do some CPU work
+        let mut sum = 0u64;
+        for i in 0..1_000_000 {
+            sum = sum.wrapping_add(i);
+        }
+        black_box(sum);
+        let elapsed = (metric.finish)(start);
+
+        assert!(
+            elapsed > 0,
+            "RUsageCpuTime should report non-zero for CPU-bound work, got {elapsed}"
+        );
+    }
+
+    #[test]
+    fn check_available_aux_metrics() {
+        let metrics = crate::available_aux_metrics();
+        assert!(!metrics.is_empty(), "Should have at least one aux metric");
+        assert!(
+            metrics.iter().any(|m| m.id == "rusage_cpu_time"),
+            "Should include rusage_cpu_time"
+        );
+
+        // Verify function pointers work
+        let entry = metrics.iter().find(|m| m.id == "rusage_cpu_time").unwrap();
+        let start = (entry.start)();
+        let mut sum = 0u64;
+        for i in 0..1_000_000 {
+            sum = sum.wrapping_add(i);
+        }
+        black_box(sum);
+        let elapsed = (entry.finish)(start);
+        assert!(elapsed > 0, "Dynamic dispatch should also report non-zero");
     }
 }

@@ -12,6 +12,8 @@ pub const METHOD_SHUTDOWN: &str = "shutdown";
 pub struct ListBenchmarksResult {
     #[serde(rename = "benchmarks")]
     pub benchmarks: Vec<String>,
+    #[serde(rename = "aux_metrics", default)]
+    pub aux_metrics: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -40,10 +42,16 @@ pub struct RunBenchmarkParams {
     pub iterations: usize,
     #[serde(rename = "num_samples")]
     pub num_samples: usize,
+    /// Auxiliary metric ids to measure alongside time.
+    #[serde(rename = "aux_metrics")]
+    pub aux_metrics: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct RunBenchmarkResult {
     #[serde(rename = "samples")]
     pub samples: Vec<u64>,
+    /// Per-metric auxiliary samples, in the same order as `aux_metrics` in the request.
+    #[serde(rename = "aux_samples")]
+    pub aux_samples: Vec<Vec<u64>>,
 }

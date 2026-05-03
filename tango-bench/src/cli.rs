@@ -1,5 +1,5 @@
 //! Contains functionality of a `cargo bench` harness
-use crate::{commpage::Role, worker, Benchmark, Error};
+use crate::{available_aux_metrics, commpage::Role, worker, Benchmark, Error};
 use anyhow::{bail, Context};
 use clap::{ArgAction, Parser};
 use colorz::mode::{self, Mode};
@@ -24,6 +24,11 @@ pub type Result<T> = anyhow::Result<T>;
 enum Subcommand {
     /// List benchmarks
     List {
+        #[command(flatten)]
+        bench_flags: CargoBenchFlags,
+    },
+    /// List auxilary metrics
+    AuxMetrics {
         #[command(flatten)]
         bench_flags: CargoBenchFlags,
     },
@@ -182,6 +187,12 @@ pub fn run(benchmarks: Vec<Benchmark>) -> Result<ExitCode> {
                 }
                 Ok(ExitCode::SUCCESS)
             }
+            Subcommand::AuxMetrics { bench_flags: _ } => {
+                for m in available_aux_metrics() {
+                    println!("{}", m.id);
+                }
+                Ok(ExitCode::SUCCESS)
+            }
             Subcommand::Compare(opts) => paired_test::run_test(opts),
             Subcommand::Solo(opts) => solo_test::run_test(opts, benchmarks),
         }
@@ -329,19 +340,21 @@ mod paired_test {
         let seed = seed.unwrap_or_else(rand::random);
         let loop_mode = create_loop_mode(samples, time)?;
 
-        let commpage = Commpage::create().context("Failed to create commpage")?;
+        let mut commpage = Commpage::create().context("Failed to create commpage")?;
 
         let mut child_c = ChildHandle::spawn(&candidate_exe, &commpage, Role::Candidate)
             .context("Failed to spawn candidate")?;
         let mut child_b = ChildHandle::spawn(&path, &commpage, Role::Baseline)
             .context("Failed to spawn baseline")?;
 
-        let c_benchmarks = child_c
+        let c_list = child_c
             .list_benchmarks()
             .context("Failed to list benchmarks (candidate)")?;
-        let b_benchmarks = child_b
+        let b_list = child_b
             .list_benchmarks()
             .context("Failed to list benchmarks (baseline)")?;
+        let c_benchmarks = c_list.benchmarks;
+        let b_benchmarks = b_list.benchmarks;
 
         if let Some(path) = &path_to_dump {
             if !path.exists() {
@@ -368,11 +381,11 @@ mod paired_test {
 
         let mut exit_code = ExitCode::SUCCESS;
 
-        let benchmark_funcs = c_benchmarks
+        let selected_benchmarks = c_benchmarks
             .iter()
-            // Filtering benchmarks by -f
-            .filter(|&f| filter.is_empty() || glob_match(filter, f))
             .enumerate()
+            // Filtering benchmarks by -f
+            .filter(|(_, f)| filter.is_empty() || glob_match(filter, f))
             // finding position of the benchmark in a baseline
             .filter_map(|(c_idx, f)| {
                 b_benchmarks
@@ -380,7 +393,7 @@ mod paired_test {
                     .position(|b_func| b_func == f)
                     .map(|b_idx| (c_idx, b_idx, f))
             });
-        for (c_idx, b_idx, func_name) in benchmark_funcs {
+        for (c_idx, b_idx, func_name) in selected_benchmarks {
             // Estimate iterations
             let c_iters = child_c
                 .estimate_iterations(c_idx, seed, TIME_SLICE)
@@ -390,9 +403,11 @@ mod paired_test {
                 .context("Failed to estimate iterations (baseline)")?;
             let iterations = c_iters.max(1).min(b_iters.max(1));
 
+            commpage.reset();
+
             // Start measurement on both children (non-blocking)
-            child_c.start_benchmark(c_idx, seed, iterations, num_samples)?;
-            child_b.start_benchmark(b_idx, seed, iterations, num_samples)?;
+            child_c.start_benchmark(c_idx, seed, iterations, num_samples, vec![])?;
+            child_b.start_benchmark(b_idx, seed, iterations, num_samples, vec![])?;
 
             let expected_duration = match loop_mode {
                 LoopMode::Samples(samples) => TIME_SLICE * samples as u32,
@@ -446,11 +461,17 @@ mod paired_test {
                 .context("Baseline benchmark failed")?
                 .samples;
 
+            // println!("b: {:?}", b_samples);
+            // println!("c: {:?}", c_samples);
+
             let samples = b_samples.into_iter().zip(c_samples).collect::<Vec<_>>();
 
             let run_result =
                 calculate_run_result(&samples, iterations, filter_outliers, noise_threshold)
-                    .ok_or(Error::NoMeasurements)?;
+                    .ok_or(Error::NoMeasurements)
+                    .with_context(|| {
+                        format!("Unable to calculate results for a benchmark: {}", func_name)
+                    })?;
 
             if let Some(path) = &path_to_dump {
                 let file_name = format!("{}.csv", func_name.replace('/', "-"));

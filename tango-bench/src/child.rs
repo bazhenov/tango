@@ -55,11 +55,11 @@ impl ChildHandle {
         })
     }
 
-    /// Query the child for its list of benchmark names.
-    pub fn list_benchmarks(&mut self) -> Result<Vec<String>> {
+    /// Query the child for its list of benchmark names and available auxiliary metrics.
+    pub fn list_benchmarks(&mut self) -> Result<ListBenchmarksResult> {
         let result = self.call(protocol::METHOD_LIST_BENCHMARKS, Value::Null)?;
         let list: ListBenchmarksResult = serde_json::from_value(result)?;
-        Ok(list.benchmarks)
+        Ok(list)
     }
 
     /// Estimate iterations for a given time budget (in ms).
@@ -89,6 +89,7 @@ impl ChildHandle {
         seed: u64,
         iterations: usize,
         num_samples: usize,
+        aux_metrics: Vec<String>,
     ) -> Result<()> {
         self.send_request(
             protocol::METHOD_RUN_BENCHMARK,
@@ -97,6 +98,7 @@ impl ChildHandle {
                 seed,
                 iterations,
                 num_samples,
+                aux_metrics,
             },
         )?;
         Ok(())
