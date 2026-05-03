@@ -39,8 +39,30 @@ struct CommpageLayout {
     magic: u64,
     version: u32,
     flags: AtomicU32,
-    cursor_c: AtomicU64,
-    cursor_b: AtomicU64,
+    cursor_c: Cursor,
+    cursor_b: Cursor,
+}
+
+#[repr(C)]
+struct Cursor(AtomicU64);
+
+impl Cursor {
+    fn set_value(&mut self, value: u64) {
+        self.0.store(value & !DONE_BIT, Ordering::Relaxed);
+    }
+
+    fn load(&self) -> (bool, u64) {
+        let val = self.0.load(Ordering::Acquire);
+        (val & DONE_BIT != 0, val & !DONE_BIT)
+    }
+
+    fn set_done(&mut self) {
+        self.0.fetch_or(DONE_BIT, Ordering::AcqRel);
+    }
+
+    fn reset(&mut self) {
+        self.0.store(0, Ordering::Relaxed);
+    }
 }
 
 impl CommpageLayout {
@@ -48,8 +70,8 @@ impl CommpageLayout {
         self.magic = MAGIC;
         self.version = VERSION;
         *self.flags.get_mut() = 0;
-        *self.cursor_c.get_mut() = 0;
-        *self.cursor_b.get_mut() = 0;
+        *self.cursor_c.0.get_mut() = 0;
+        *self.cursor_b.0.get_mut() = 0;
     }
 
     fn validate(&self) -> Result<(), CommpageError> {
@@ -65,10 +87,17 @@ impl CommpageLayout {
         Ok(())
     }
 
-    fn cursor(&self, role: Role) -> &AtomicU64 {
+    fn cursor(&self, role: Role) -> &Cursor {
         match role {
             Role::Candidate => &self.cursor_c,
             Role::Baseline => &self.cursor_b,
+        }
+    }
+
+    fn cursor_mut(&mut self, role: Role) -> &mut Cursor {
+        match role {
+            Role::Candidate => &mut self.cursor_c,
+            Role::Baseline => &mut self.cursor_b,
         }
     }
 }
@@ -136,10 +165,8 @@ impl Commpage {
     }
 
     /// Advance this role's cursor after completing a sample.
-    pub fn advance_cursor(&self, role: Role, sample_no: u64) {
-        self.layout()
-            .cursor(role)
-            .store(sample_no, Ordering::Release);
+    pub fn advance_cursor(&mut self, role: Role, sample_no: u64) {
+        self.layout_mut().cursor_mut(role).set_value(sample_no);
     }
 
     /// Spin-wait until the peer's cursor reaches at least `target`, or the peer sets DONE.
@@ -148,8 +175,8 @@ impl Commpage {
     pub fn wait_for_cursor_value(&self, role: Role, target: u64) -> bool {
         let cursor = self.layout().cursor(role);
         loop {
-            let val = cursor.load(Ordering::Acquire);
-            if val & DONE_BIT != 0 {
+            let (stop, val) = cursor.load();
+            if stop {
                 return false;
             }
             if val >= target {
@@ -161,15 +188,14 @@ impl Commpage {
     }
 
     /// Mark this role's cursor as done.
-    pub fn mark_done(&self, role: Role) {
-        self.layout()
-            .cursor(role)
-            .fetch_or(DONE_BIT, Ordering::Release);
+    pub fn mark_done(&mut self, role: Role) {
+        self.layout_mut().cursor_mut(role).set_done();
     }
 
     /// Check if this role's cursor has the DONE bit set.
     pub fn is_done(&self, role: Role) -> bool {
-        self.layout().cursor(role).load(Ordering::Acquire) & DONE_BIT != 0
+        let (done, _) = self.layout().cursor(role).load();
+        done
     }
 
     /// Either candidate or baseline has DONE bit set.
@@ -181,7 +207,8 @@ impl Commpage {
     /// Sample counter is the number of a sample the children is collecting right now. 0 means
     /// that measurement has not start yet.
     pub fn sample_counter(&self, role: Role) -> usize {
-        (self.layout().cursor(role).load(Ordering::Acquire) & !DONE_BIT) as usize
+        let (_, value) = self.layout().cursor(role).load();
+        value as usize
     }
 
     /// Set the STOP flag. Called by runner to signal time-budget exhaustion.
@@ -196,9 +223,9 @@ impl Commpage {
 
     /// Reset the commpage for a new benchmark run.
     pub fn reset(&mut self) {
-        self.layout().flags.store(0, Ordering::Release);
-        *self.layout_mut().cursor_c.get_mut() = 0;
-        *self.layout_mut().cursor_b.get_mut() = 0;
+        self.layout_mut().flags.store(0, Ordering::Release);
+        self.layout_mut().cursor_c.reset();
+        self.layout_mut().cursor_b.reset();
     }
 }
 
@@ -237,7 +264,7 @@ mod tests {
 
     #[test]
     fn done_bit() {
-        let cp = Commpage::create().unwrap();
+        let mut cp = Commpage::create().unwrap();
         assert!(!cp.is_done(Role::Candidate));
         cp.advance_cursor(Role::Candidate, 1);
         cp.mark_done(Role::Candidate);
@@ -248,13 +275,13 @@ mod tests {
 
     #[test]
     fn peer_synchronization_two_threads() {
-        let cp = Commpage::create().unwrap();
+        let mut cp = Commpage::create().unwrap();
         let id = cp.os_id().to_string();
 
         let num_samples = 64u64;
 
         let handle = thread::spawn(move || {
-            let cp = Commpage::open(&id).unwrap();
+            let mut cp = Commpage::open(&id).unwrap();
 
             for i in 0..num_samples {
                 cp.advance_cursor(Role::Candidate, i);

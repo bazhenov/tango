@@ -9,7 +9,7 @@ use std::{
     env::{self, temp_dir},
     fmt::Display,
     fs,
-    io::{stderr, Write},
+    io::Write,
     num::NonZeroUsize,
     ops::Deref,
     path::{Path, PathBuf},
@@ -101,10 +101,6 @@ struct PairedOpts {
 
     #[arg(short = 'v', long = "verbose", default_value_t = false)]
     verbose: bool,
-
-    /// Disables checking proportion of the time spent in a system/kernel mode
-    #[arg(long = "no-system-time-check", default_value_t = true, action = ArgAction::SetFalse)]
-    system_time_check: bool,
 
     /// Disables reporting a progress of a running benchmark
     #[arg(long = "progress", default_value_t = false, action = ArgAction::SetTrue)]
@@ -312,7 +308,6 @@ mod paired_test {
             significant_only,
             seed,
             quiet,
-            system_time_check,
             progress_report,
         } = opts;
 
@@ -353,7 +348,7 @@ mod paired_test {
                 fs::create_dir_all(path)?;
             }
         }
-        if gnuplot && path_to_dump.is_none() {
+        if gnuplot && path_to_dump.is_none() && !quiet {
             eprintln!("warn: --gnuplot requires -d to be specified. No plots will be generated")
         }
 
@@ -373,18 +368,19 @@ mod paired_test {
 
         let mut exit_code = ExitCode::SUCCESS;
 
-        for (c_idx, func_name) in c_benchmarks.iter().enumerate() {
-            if !filter.is_empty() && !glob_match(filter, func_name) {
-                continue;
-            }
-
-            let Some(b_idx) = b_benchmarks.iter().position(|n| n == func_name) else {
-                if !quiet {
-                    writeln!(stderr(), "{} skipped...", func_name)?;
-                }
-                continue;
-            };
-
+        let benchmark_funcs = c_benchmarks
+            .iter()
+            // Filtering benchmarks by -f
+            .filter(|&f| filter.is_empty() || glob_match(filter, f))
+            .enumerate()
+            // finding position of the benchmark in a baseline
+            .filter_map(|(c_idx, f)| {
+                b_benchmarks
+                    .iter()
+                    .position(|b_func| b_func == f)
+                    .map(|b_idx| (c_idx, b_idx, f))
+            });
+        for (c_idx, b_idx, func_name) in benchmark_funcs {
             // Estimate iterations
             let c_iters = child_c
                 .estimate_iterations(c_idx, seed, TIME_SLICE)
@@ -561,7 +557,6 @@ mod reporting {
     };
     use colorz::{ansi, mode::Stream, Colorize, Style};
     use std::{
-        fmt::format,
         io::{self, stderr, Write},
         time::Duration,
     };
