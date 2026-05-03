@@ -278,11 +278,11 @@ mod solo_test {
 mod paired_test {
     use super::*;
     use crate::{
+        aux::CPU_SYSTEM_TIME_ID,
         calculate_run_result,
         child::ChildHandle,
-        cli::reporting::BenchmarkProgress,
+        cli::reporting::{report_system_time_bias, BenchmarkProgress},
         commpage::{Commpage, Role},
-        platform::RUsage,
         protocol::RunBenchmarkResult,
     };
     use fs::File;
@@ -383,14 +383,16 @@ mod paired_test {
 
         let mut exit_code = ExitCode::SUCCESS;
 
-        // Calculate common aux-metric names
-        let aux_metrics = {
+        // Calculate common aux-metric names of verbose mode activated
+        let aux_metrics = if verbose {
             let b_metrics = HashSet::<String>::from_iter(b_list.aux_metrics);
             let c_metrics = HashSet::from_iter(c_list.aux_metrics);
             b_metrics
                 .intersection(&c_metrics)
                 .cloned()
                 .collect::<Vec<_>>()
+        } else {
+            vec![]
         };
 
         let selected_benchmarks = c_benchmarks
@@ -462,6 +464,7 @@ mod paired_test {
             }
             // Signaling children to exit
             commpage.set_stop();
+            let wall_time = time_start.elapsed();
 
             // Both children are done — read their RPC responses
             let RunBenchmarkResult {
@@ -505,6 +508,17 @@ mod paired_test {
                 );
             }
 
+            // Reporting warning if system time is >5%
+            if !quiet {
+                check_system_time_bias(
+                    &aux_metrics,
+                    func_name,
+                    wall_time,
+                    c_aux_metrics,
+                    b_aux_metrics,
+                );
+            }
+
             if run_result.diff_estimate.significant && run_result.diff_estimate.pct > 0. {
                 exit_code = ExitCode::FAILURE;
                 if fail_fast {
@@ -524,10 +538,24 @@ mod paired_test {
     }
 
     /// Checking if test spent too much time in a system/kernel mode.
-    fn detect_system_time_bias(rusage: &RUsage) -> bool {
-        let system = rusage.system_time.as_secs_f64();
-        let overall = (rusage.user_time + rusage.system_time).as_secs_f64();
-        system / overall > 0.05
+    fn check_system_time_bias(
+        aux_metrics: &[String],
+        func_name: &str,
+        wall_time: Duration,
+        c_aux_metrics: Vec<u64>,
+        b_aux_metrics: Vec<u64>,
+    ) {
+        let sys_time_idx = aux_metrics
+            .iter()
+            .position(|name| name == CPU_SYSTEM_TIME_ID);
+        if let Some(system_time_idx) = sys_time_idx {
+            let c_sys_time = Duration::from_nanos(c_aux_metrics[system_time_idx]);
+            let b_sys_time = Duration::from_nanos(b_aux_metrics[system_time_idx]);
+
+            if c_sys_time * 20 > wall_time || b_sys_time * 20 > wall_time {
+                report_system_time_bias(func_name, wall_time, b_sys_time, c_sys_time);
+            }
+        }
     }
 
     fn write_csv<A: Display, B: Display>(
@@ -593,7 +621,6 @@ impl Drop for AutoDelete {
 mod reporting {
     use crate::{
         cli::{colorize, HumanTime},
-        platform::RUsage,
         RunResult, Summary,
     };
     use colorz::{ansi, mode::Stream, Colorize, Style};
@@ -806,16 +833,22 @@ mod reporting {
         )
     }
 
-    pub(super) fn report_system_time_bias(name: &str, rusage: &RUsage) {
+    pub(super) fn report_system_time_bias(
+        name: &str,
+        wall_time: Duration,
+        b_sys_time: Duration,
+        c_sys_time: Duration,
+    ) {
         const RED: Style = Style::new().fg(ansi::Red).const_into_runtime_style();
 
         eprintln!(
-            "{}: {} benchmark spent too much time in system mode (sys: {:?}, usr: {:?}). Results may be inaccurate",
+            "{}: {} benchmark spent too much time in system mode. Results may be inaccurate",
             "WARN".into_style_with(RED).stream(Stream::Stderr),
             name,
-            rusage.system_time,
-            rusage.user_time
         );
+        eprintln!("{:>20}: {:?}", "wall time", wall_time);
+        eprintln!("{:>20}: {:?}", "candidate sys", c_sys_time);
+        eprintln!("{:>20}: {:?}", "baseline sys", b_sys_time);
     }
 }
 
