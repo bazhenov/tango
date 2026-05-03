@@ -122,10 +122,6 @@ impl WorkerState {
             .iter()
             .filter_map(|id| self.aux_metrics.iter().find(|m| m.id == id))
             .collect();
-        let mut aux_samples: Vec<Vec<u64>> = active_aux
-            .iter()
-            .map(|_| preallocate_vec(params.num_samples))
-            .collect();
 
         let mut sample_no = 0u64;
 
@@ -142,24 +138,19 @@ impl WorkerState {
                 .wait_for_cursor_value(self.role.peer(), sample_no + 1);
         }
 
+        // Start aux metrics before the sample
+        let mut aux_metrics: Vec<u64> = active_aux.iter().map(|m| (m.start)()).collect();
+
         // Terminate conditions differs if the explicit number of samples given.
         // Yes – collect given amount
         //  No – run until STOP bit is not set
         while (params.num_samples > 0 && sample_no < params.num_samples as u64)
             || (params.num_samples == 0 && !self.commpage.is_stopped())
         {
-            // Start aux metrics before the sample
-            let aux_starts: Vec<u64> = active_aux.iter().map(|m| (m.start)()).collect();
-
             #[cfg(feature = "stack-randomize")]
             let elapsed_ns = stack_randomizer.measure(&mut *sampler, params.iterations);
             #[cfg(not(feature = "stack-randomize"))]
             let elapsed_ns = sampler.measure(params.iterations);
-
-            // Finish aux metrics after the sample
-            for (i, m) in active_aux.iter().enumerate() {
-                aux_samples[i].push((m.finish)(aux_starts[i]));
-            }
 
             samples.push(elapsed_ns);
 
@@ -177,11 +168,16 @@ impl WorkerState {
             }
         }
 
+        // Finish aux metrics after the sample
+        for (aux, value) in active_aux.iter().zip(aux_metrics.iter_mut()) {
+            *value = (aux.finish)(*value);
+        }
+
         self.commpage.mark_done(self.role);
 
         Ok(RunBenchmarkResult {
             samples,
-            aux_samples,
+            aux_metrics,
         })
     }
 }

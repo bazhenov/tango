@@ -283,10 +283,12 @@ mod paired_test {
         cli::reporting::BenchmarkProgress,
         commpage::{Commpage, Role},
         platform::RUsage,
+        protocol::RunBenchmarkResult,
     };
     use fs::File;
     use reporting::Reporter;
     use std::{
+        collections::HashSet,
         io::{self, BufWriter},
         thread::sleep,
         time::Instant,
@@ -381,6 +383,16 @@ mod paired_test {
 
         let mut exit_code = ExitCode::SUCCESS;
 
+        // Calculate common aux-metric names
+        let aux_metrics = {
+            let b_metrics = HashSet::<String>::from_iter(b_list.aux_metrics);
+            let c_metrics = HashSet::from_iter(c_list.aux_metrics);
+            b_metrics
+                .intersection(&c_metrics)
+                .cloned()
+                .collect::<Vec<_>>()
+        };
+
         let selected_benchmarks = c_benchmarks
             .iter()
             .enumerate()
@@ -406,8 +418,8 @@ mod paired_test {
             commpage.reset();
 
             // Start measurement on both children (non-blocking)
-            child_c.start_benchmark(c_idx, seed, iterations, num_samples, vec![])?;
-            child_b.start_benchmark(b_idx, seed, iterations, num_samples, vec![])?;
+            child_c.start_benchmark(c_idx, seed, iterations, num_samples, aux_metrics.clone())?;
+            child_b.start_benchmark(b_idx, seed, iterations, num_samples, aux_metrics.clone())?;
 
             let expected_duration = match loop_mode {
                 LoopMode::Samples(samples) => TIME_SLICE * samples as u32,
@@ -452,14 +464,18 @@ mod paired_test {
             commpage.set_stop();
 
             // Both children are done — read their RPC responses
-            let c_samples = child_c
+            let RunBenchmarkResult {
+                samples: c_samples,
+                aux_metrics: c_aux_metrics,
+            } = child_c
                 .finish_benchmark()
-                .context("Candidate benchmark failed")?
-                .samples;
-            let b_samples = child_b
+                .context("Candidate benchmark failed")?;
+            let RunBenchmarkResult {
+                samples: b_samples,
+                aux_metrics: b_aux_metrics,
+            } = child_b
                 .finish_benchmark()
-                .context("Baseline benchmark failed")?
-                .samples;
+                .context("Baseline benchmark failed")?;
 
             // println!("b: {:?}", b_samples);
             // println!("c: {:?}", c_samples);
@@ -482,7 +498,11 @@ mod paired_test {
             }
 
             if run_result.diff_estimate.significant || !significant_only {
-                reporter.benchmark_finished(func_name, &run_result);
+                reporter.benchmark_finished(
+                    func_name,
+                    &run_result,
+                    (&aux_metrics, &b_aux_metrics, &c_aux_metrics),
+                );
             }
 
             if run_result.diff_estimate.significant && run_result.diff_estimate.pct > 0. {
@@ -602,13 +622,23 @@ mod reporting {
     }
 
     pub(super) trait Reporter {
-        fn benchmark_finished(&self, name: &str, results: &RunResult);
+        fn benchmark_finished(
+            &self,
+            name: &str,
+            results: &RunResult,
+            aux_metrics: (&[String], &[u64], &[u64]),
+        );
     }
 
     pub(super) struct VerboseReporter;
 
     impl Reporter for VerboseReporter {
-        fn benchmark_finished(&self, name: &str, results: &RunResult) {
+        fn benchmark_finished(
+            &self,
+            name: &str,
+            results: &RunResult,
+            aux_metrics: (&[String], &[u64], &[u64]),
+        ) {
             clear_progress_line();
 
             let base = results.baseline;
@@ -670,6 +700,19 @@ mod reporting {
                 HumanTime(candidate.variance.sqrt()),
                 HumanTime(results.diff.variance.sqrt()),
             );
+
+            // Printing AUX metrics
+            let (names, b_aux, c_aux) = aux_metrics;
+            for ((name, b), c) in names.iter().zip(b_aux.iter()).zip(c_aux.iter()) {
+                println!(
+                    "{:>16} \u{2502} {:>15} {:>15} {:>15}  {:+4.2}%",
+                    name,
+                    b,
+                    c,
+                    *c as i64 - *b as i64,
+                    (*c as f64 - *b as f64) / (*b as f64) * 100.0
+                );
+            }
             println!();
         }
     }
@@ -677,7 +720,12 @@ mod reporting {
     pub(super) struct DefaultReporter;
 
     impl Reporter for DefaultReporter {
-        fn benchmark_finished(&self, name: &str, results: &RunResult) {
+        fn benchmark_finished(
+            &self,
+            name: &str,
+            results: &RunResult,
+            _: (&[String], &[u64], &[u64]),
+        ) {
             clear_progress_line();
 
             let base = results.baseline;
