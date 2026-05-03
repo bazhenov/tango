@@ -45,7 +45,6 @@ async = []
 async-tokio = ["async", "dep:tokio"]
 async-tokio-all-drivers = ["async-tokio", "tokio/full"]
 no-sync = []
-no-progress-report = []
 
 [[bench]]
 name = "tango"
