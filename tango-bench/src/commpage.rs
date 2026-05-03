@@ -16,7 +16,7 @@ use thiserror::Error;
 const MAGIC: u64 = 0x54414E47_4F434D50;
 
 /// Protocol version
-const VERSION: u32 = 2;
+const VERSION: u32 = 3;
 
 /// Bit 63 of cursor -- set when the child exits the measurement loop
 const DONE_BIT: u64 = 1 << 63;
@@ -212,7 +212,7 @@ impl Commpage {
     }
 
     /// Set the STOP flag. Called by runner to signal time-budget exhaustion.
-    pub fn set_stop(&self) {
+    pub fn set_stop(&mut self) {
         self.layout().flags.fetch_or(STOP_FLAG, Ordering::Release);
     }
 
@@ -256,7 +256,7 @@ mod tests {
 
     #[test]
     fn stop_flag() {
-        let cp = Commpage::create().unwrap();
+        let mut cp = Commpage::create().unwrap();
         assert!(!cp.is_stopped());
         cp.set_stop();
         assert!(cp.is_stopped());

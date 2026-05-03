@@ -3,7 +3,7 @@
 use crate::{
     commpage::{Commpage, Role},
     protocol::{self, *},
-    Benchmark,
+    AuxMetricEntry, Benchmark,
 };
 use anyhow::{anyhow, Result};
 use jsonrpc_types::v2::*;
@@ -24,10 +24,12 @@ pub(crate) fn run_worker(
 ) -> Result<ExitCode> {
     let commpage = Commpage::open(shmem_name)?;
 
+    let aux_metrics = crate::available_aux_metrics();
     let mut state = WorkerState {
         benchmarks,
         commpage,
         role,
+        aux_metrics,
     };
 
     let stdin = BufReader::new(io::stdin());
@@ -71,6 +73,7 @@ struct WorkerState {
     commpage: Commpage,
     role: Role,
     benchmarks: Vec<Benchmark>,
+    aux_metrics: Vec<AuxMetricEntry>,
 }
 
 impl WorkerState {
@@ -80,7 +83,11 @@ impl WorkerState {
             .iter()
             .map(|b| b.name().to_string())
             .collect();
-        Ok(ListBenchmarksResult { benchmarks })
+        let aux_metrics = self.aux_metrics.iter().map(|m| m.id.to_string()).collect();
+        Ok(ListBenchmarksResult {
+            benchmarks,
+            aux_metrics,
+        })
     }
 
     fn prepare_sampler(
@@ -107,11 +114,18 @@ impl WorkerState {
 
     fn run_benchmark(&mut self, params: RunBenchmarkParams) -> Result<RunBenchmarkResult> {
         let mut sampler = self.prepare_sampler(params.index, params.seed)?;
-        let mut samples = if params.num_samples > 0 {
-            Vec::with_capacity(params.num_samples)
-        } else {
-            Vec::new()
-        };
+        let mut samples = preallocate_vec(params.num_samples);
+
+        // Resolve requested aux metrics to their function pointers
+        let active_aux: Vec<&AuxMetricEntry> = params
+            .aux_metrics
+            .iter()
+            .filter_map(|id| self.aux_metrics.iter().find(|m| m.id == id))
+            .collect();
+        let mut aux_samples: Vec<Vec<u64>> = active_aux
+            .iter()
+            .map(|_| preallocate_vec(params.num_samples))
+            .collect();
 
         let mut sample_no = 0u64;
 
@@ -134,10 +148,18 @@ impl WorkerState {
         while (params.num_samples > 0 && sample_no < params.num_samples as u64)
             || (params.num_samples == 0 && !self.commpage.is_stopped())
         {
+            // Start aux metrics before the sample
+            let aux_starts: Vec<u64> = active_aux.iter().map(|m| (m.start)()).collect();
+
             #[cfg(feature = "stack-randomize")]
             let elapsed_ns = stack_randomizer.measure(&mut *sampler, params.iterations);
             #[cfg(not(feature = "stack-randomize"))]
             let elapsed_ns = sampler.measure(params.iterations);
+
+            // Finish aux metrics after the sample
+            for (i, m) in active_aux.iter().enumerate() {
+                aux_samples[i].push((m.finish)(aux_starts[i]));
+            }
 
             samples.push(elapsed_ns);
 
@@ -157,7 +179,18 @@ impl WorkerState {
 
         self.commpage.mark_done(self.role);
 
-        Ok(RunBenchmarkResult { samples })
+        Ok(RunBenchmarkResult {
+            samples,
+            aux_samples,
+        })
+    }
+}
+
+fn preallocate_vec(samples: usize) -> Vec<u64> {
+    if samples > 0 {
+        Vec::with_capacity(samples)
+    } else {
+        Vec::new()
     }
 }
 
