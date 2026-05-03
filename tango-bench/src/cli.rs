@@ -105,6 +105,10 @@ struct PairedOpts {
     /// Disables checking proportion of the time spent in a system/kernel mode
     #[arg(long = "no-system-time-check", default_value_t = true, action = ArgAction::SetFalse)]
     system_time_check: bool,
+
+    /// Disables reporting a progress of a running benchmark
+    #[arg(long = "no-progress", default_value_t = true, action = ArgAction::SetFalse)]
+    progress_report: bool,
 }
 
 #[derive(Parser, Debug)]
@@ -282,7 +286,15 @@ mod paired_test {
     };
 
     const TIME_SLICE: Duration = Duration::from_millis(10);
+
+    /// How frequent we report progress to the user
     const PROGRESS_UPDATE_INTERVAL: Duration = Duration::from_millis(50);
+
+    /// If benchmark duration is less than this duration do not report the progress to the user.
+    /// Two reasons for this:
+    ///  1. when benchmark is fast additional report leads to flickering and worsen the experience
+    ///  2. additional reporting may lead to unneeded context switches
+    const PROGRESS_REPORTING_THRESHOLD: Duration = Duration::from_secs(1);
 
     pub(super) fn run_test(opts: PairedOpts) -> Result<ExitCode> {
         let PairedOpts {
@@ -301,10 +313,12 @@ mod paired_test {
             seed,
             quiet,
             system_time_check,
+            progress_report,
         } = opts;
-        let mut path = path
-            .or_else(|| args().next().map(PathBuf::from))
-            .expect("No path given");
+
+        let candidate_exe = env::current_exe().context("Unable to determine current executable")?;
+        // If no baseline executable was given, comparing against itself
+        let mut path = path.unwrap_or(candidate_exe.clone());
         if path.is_relative() {
             if let Ok(pwd) = env::current_dir() {
                 path = pwd.join(path)
@@ -320,10 +334,7 @@ mod paired_test {
         let seed = seed.unwrap_or_else(rand::random);
         let loop_mode = create_loop_mode(samples, time)?;
 
-        let mut commpage =
-            Commpage::create().map_err(|e| anyhow::anyhow!("Failed to create commpage: {e}"))?;
-
-        let candidate_exe = env::current_exe().context("Unable to determine current executable")?;
+        let commpage = Commpage::create().context("Failed to create commpage")?;
 
         let mut child_c = ChildHandle::spawn(&candidate_exe, &commpage, Role::Candidate)
             .context("Failed to spawn candidate")?;
@@ -387,39 +398,40 @@ mod paired_test {
             child_c.start_benchmark(c_idx, seed, iterations, num_samples)?;
             child_b.start_benchmark(b_idx, seed, iterations, num_samples)?;
 
+            let expected_duration = match loop_mode {
+                LoopMode::Samples(samples) => TIME_SLICE * samples as u32,
+                LoopMode::Time(duration) => duration,
+            };
+
             // Wait for children to finish, handling time-budget and progress reporting
             let time_start = Instant::now();
             while !commpage.is_some_done() {
-                match loop_mode {
-                    LoopMode::Time(duration) => {
-                        let elapsed = time_start.elapsed();
-                        if elapsed >= duration {
-                            break;
-                        } else if duration > Duration::from_millis(500)
-                            && !cfg!(feature = "no-progress-report")
-                        {
-                            reporter.report_progress(
-                                func_name,
-                                BenchmarkProgress::SamplingTime {
-                                    loop_time: elapsed,
-                                    total_duration: duration,
-                                },
-                            );
-                        }
+                let duration = time_start.elapsed();
+                // Monitoring execution time and stopping benchmark on a timer
+                if let LoopMode::Time(required_duration) = loop_mode {
+                    if duration >= required_duration {
+                        break;
                     }
-                    LoopMode::Samples(s) => {
-                        if !cfg!(feature = "no-progress-report") {
-                            let progress = commpage
-                                .sample_count(Role::Candidate)
-                                .min(commpage.sample_count(Role::Baseline));
-                            reporter.report_progress(
-                                func_name,
-                                BenchmarkProgress::SamplingNo {
-                                    sample_no: progress,
-                                    samples_total: s,
-                                },
-                            );
-                        }
+                }
+
+                // Reporting progress to CLI
+                if progress_report {
+                    let progress = match loop_mode {
+                        LoopMode::Time(required_duration) => BenchmarkProgress::SamplingTime {
+                            duration,
+                            required_duration,
+                        },
+                        LoopMode::Samples(samples_total) => BenchmarkProgress::SamplingNo {
+                            samples_total,
+                            sample_no: commpage
+                                .sample_counter(Role::Candidate)
+                                .min(commpage.sample_counter(Role::Baseline)),
+                        },
+                    };
+                    if expected_duration > PROGRESS_REPORTING_THRESHOLD
+                        || time_start.elapsed() > PROGRESS_REPORTING_THRESHOLD
+                    {
+                        reporting::report_progress(func_name, progress);
                     }
                 }
 
@@ -560,8 +572,10 @@ mod reporting {
             samples_total: usize,
         },
         SamplingTime {
-            loop_time: Duration,
-            total_duration: Duration,
+            /// Duration benchmark is already running at the moment
+            duration: Duration,
+            /// How long benchmark should be running
+            required_duration: Duration,
         },
     }
 
@@ -571,44 +585,6 @@ mod reporting {
     }
 
     pub(super) trait Reporter {
-        fn report_progress(&self, name: &str, progress: BenchmarkProgress) {
-            const BAR_WIDTH: usize = 23;
-            match progress {
-                BenchmarkProgress::SamplingNo {
-                    sample_no,
-                    samples_total,
-                } => {
-                    let sample_no = sample_no.min(samples_total);
-                    let filled = (sample_no * BAR_WIDTH) / samples_total;
-                    let empty = BAR_WIDTH - filled;
-                    eprint!(
-                        "\r\x1b[2K{:50} [{}{}] {}/{}",
-                        name,
-                        "#".repeat(filled),
-                        ".".repeat(empty),
-                        sample_no,
-                        samples_total,
-                    );
-                }
-                BenchmarkProgress::SamplingTime {
-                    loop_time,
-                    total_duration,
-                } => {
-                    let filled = loop_time.as_millis() as usize * BAR_WIDTH
-                        / total_duration.as_millis() as usize;
-                    let empty = BAR_WIDTH - filled;
-                    eprint!(
-                        "\r\x1b[2K{:50} [{}{}] {:.1}s",
-                        name,
-                        "#".repeat(filled),
-                        ".".repeat(empty),
-                        loop_time.as_secs_f32(),
-                    );
-                }
-            }
-            let _ = io::stderr().flush();
-        }
-
         fn benchmark_finished(&self, name: &str, results: &RunResult);
     }
 
@@ -705,6 +681,49 @@ mod reporting {
                 if significant { "*" } else { "" },
             )
         }
+    }
+
+    /// Reporting the progress of a current benchmarking
+    ///
+    /// Pay attention that frequent reporting might influence the results.
+    /// On AWS it was found that request reporting is adding around ~1% of difference
+    /// between benchmarks.
+    pub(super) fn report_progress(name: &str, progress: BenchmarkProgress) {
+        const BAR_WIDTH: usize = 23;
+        match progress {
+            BenchmarkProgress::SamplingNo {
+                sample_no,
+                samples_total,
+            } => {
+                let sample_no = sample_no.min(samples_total);
+                let filled = (sample_no * BAR_WIDTH) / samples_total;
+                let empty = BAR_WIDTH - filled;
+                eprint!(
+                    "\r\x1b[2K{:50} [{}{}] {}/{}",
+                    name,
+                    "#".repeat(filled),
+                    ".".repeat(empty),
+                    sample_no,
+                    samples_total,
+                );
+            }
+            BenchmarkProgress::SamplingTime {
+                duration: loop_time,
+                required_duration: total_duration,
+            } => {
+                let filled = loop_time.as_millis() as usize * BAR_WIDTH
+                    / total_duration.as_millis() as usize;
+                let empty = BAR_WIDTH - filled;
+                eprint!(
+                    "\r\x1b[2K{:50} [{}{}] {:.1}s",
+                    name,
+                    "#".repeat(filled),
+                    ".".repeat(empty),
+                    loop_time.as_secs_f32(),
+                );
+            }
+        }
+        let _ = io::stderr().flush();
     }
 
     pub(super) fn default_reporter_solo(name: &str, results: &Summary<f64>) {

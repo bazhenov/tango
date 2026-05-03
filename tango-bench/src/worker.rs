@@ -118,7 +118,7 @@ impl WorkerState {
         #[cfg(feature = "stack-randomize")]
         let mut stack_randomizer = stack_randomizer::StackRandomizer::new(params.seed);
 
-        // We use value 0 to self syncronize two processes at the start of benchmark execution.
+        // We use value 0 to self synchronize two processes at the start of benchmark execution.
         // So cursor value is a sample index being collected right now. Hence the number
         // of collected samples is cursor_value - 1;
 

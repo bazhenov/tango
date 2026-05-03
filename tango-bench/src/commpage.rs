@@ -177,8 +177,10 @@ impl Commpage {
         self.is_done(Role::Candidate) || self.is_done(Role::Baseline)
     }
 
-    /// Read the sample count for a given role (cursor value without the DONE bit).
-    pub fn sample_count(&self, role: Role) -> usize {
+    /// Read the sample counter for a given role (cursor value without the DONE bit).
+    /// Sample counter is the number of a sample the children is collecting right now. 0 means
+    /// that measurement has not start yet.
+    pub fn sample_counter(&self, role: Role) -> usize {
         (self.layout().cursor(role).load(Ordering::Acquire) & !DONE_BIT) as usize
     }
 
@@ -241,7 +243,7 @@ mod tests {
         cp.mark_done(Role::Candidate);
 
         assert!(cp.is_done(Role::Candidate));
-        assert_eq!(cp.sample_count(Role::Candidate), 1);
+        assert_eq!(cp.sample_counter(Role::Candidate), 1);
     }
 
     #[test]
@@ -269,7 +271,13 @@ mod tests {
 
         handle.join().unwrap();
 
-        assert_eq!(cp.sample_count(Role::Baseline), (num_samples - 1) as usize);
-        assert_eq!(cp.sample_count(Role::Candidate), (num_samples - 1) as usize);
+        assert_eq!(
+            cp.sample_counter(Role::Baseline),
+            (num_samples - 1) as usize
+        );
+        assert_eq!(
+            cp.sample_counter(Role::Candidate),
+            (num_samples - 1) as usize
+        );
     }
 }
