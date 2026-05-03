@@ -15,6 +15,8 @@ variable "ami_id" {
     AMI ID for Ubuntu 24.04 LTS.
     Free-tier eligible. Region-specific — check https://cloud-images.ubuntu.com/locator/ec2/
     Default is us-east-1.
+    # aarch64 ami_id = "ami-0abed25eed793978d"
+    # x86_64  ami_id = "ami-005f97cc4a61dd3b4"
   EOT
   type        = string
   default     = "ami-005f97cc4a61dd3b4" # Ubuntu Server 24.04 LTS (HVM), SSD Volume Type

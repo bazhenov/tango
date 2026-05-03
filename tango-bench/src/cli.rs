@@ -6,7 +6,7 @@ use colorz::mode::{self, Mode};
 use core::fmt;
 use glob_match::glob_match;
 use std::{
-    env::{self, args, temp_dir},
+    env::{self, temp_dir},
     fmt::Display,
     fs,
     io::{stderr, Write},
@@ -107,7 +107,7 @@ struct PairedOpts {
     system_time_check: bool,
 
     /// Disables reporting a progress of a running benchmark
-    #[arg(long = "no-progress", default_value_t = true, action = ArgAction::SetFalse)]
+    #[arg(long = "progress", default_value_t = false, action = ArgAction::SetTrue)]
     progress_report: bool,
 }
 
@@ -561,7 +561,8 @@ mod reporting {
     };
     use colorz::{ansi, mode::Stream, Colorize, Style};
     use std::{
-        io::{self, Write},
+        fmt::format,
+        io::{self, stderr, Write},
         time::Duration,
     };
 
@@ -690,7 +691,7 @@ mod reporting {
     /// between benchmarks.
     pub(super) fn report_progress(name: &str, progress: BenchmarkProgress) {
         const BAR_WIDTH: usize = 23;
-        match progress {
+        let progress_line = match progress {
             BenchmarkProgress::SamplingNo {
                 sample_no,
                 samples_total,
@@ -698,14 +699,14 @@ mod reporting {
                 let sample_no = sample_no.min(samples_total);
                 let filled = (sample_no * BAR_WIDTH) / samples_total;
                 let empty = BAR_WIDTH - filled;
-                eprint!(
+                format!(
                     "\r\x1b[2K{:50} [{}{}] {}/{}",
                     name,
                     "#".repeat(filled),
                     ".".repeat(empty),
                     sample_no,
                     samples_total,
-                );
+                )
             }
             BenchmarkProgress::SamplingTime {
                 duration: loop_time,
@@ -714,16 +715,20 @@ mod reporting {
                 let filled = loop_time.as_millis() as usize * BAR_WIDTH
                     / total_duration.as_millis() as usize;
                 let empty = BAR_WIDTH - filled;
-                eprint!(
+                format!(
                     "\r\x1b[2K{:50} [{}{}] {:.1}s",
                     name,
                     "#".repeat(filled),
                     ".".repeat(empty),
                     loop_time.as_secs_f32(),
-                );
+                )
             }
-        }
-        let _ = io::stderr().flush();
+        };
+        // Explicitly using write_all() imstead of eprint!(), because latter generates a lot
+        // of write() syscalls, which is influencing fairness on Linux
+        let mut out = stderr();
+        let _ = out.write_all(progress_line.as_bytes());
+        let _ = out.flush();
     }
 
     pub(super) fn default_reporter_solo(name: &str, results: &Summary<f64>) {
