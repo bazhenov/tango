@@ -110,7 +110,7 @@ Communication between R and C/B uses newline-delimited JSON-RPC 2.0 over the chi
 ```jsonc
 // List available benchmarks
 {"jsonrpc":"2.0","method":"list_benchmarks","params":null,"id":1}
-// Response: {"jsonrpc":"2.0","result":{"benchmarks":["bench_a","bench_b"]},"id":1}
+// Response: {"jsonrpc":"2.0","result":{"benchmarks":["bench_a","bench_b"],"aux_metrics":[]},"id":1}
 
 // Estimate iterations for a given time budget
 {"jsonrpc":"2.0","method":"estimate_iterations","params":{"index":0,"time_ms":10,"seed":42},"id":2}
@@ -139,13 +139,3 @@ Communication between R and C/B uses newline-delimited JSON-RPC 2.0 over the chi
 3. **Solo mode stays in-process.** It is designed for use with system profilers where an extra process boundary would complicate profiling and debugging.
 
 4. **No measurement data in the commpage.** Samples are returned in the JSON-RPC response after the measurement loop finishes. This eliminates the ring buffer, drain logic, missed-sample handling, and any need for R to read the commpage during measurement.
-
-## Source Files
-
-| File                          | Description                                              |
-| ----------------------------- | -------------------------------------------------------- |
-| `tango-bench/src/commpage.rs` | Shared memory layout, cursor operations, synchronization |
-| `tango-bench/src/worker.rs`   | Child worker mode (JSON-RPC dispatch + commpage sync)    |
-| `tango-bench/src/child.rs`    | Runner-side child process handle                         |
-| `tango-bench/src/protocol.rs` | Shared method names and param/result types               |
-| `tango-bench/src/cli.rs`      | CLI entry point, compare and solo test orchestration     |
