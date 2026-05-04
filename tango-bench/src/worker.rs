@@ -128,11 +128,15 @@ impl WorkerState {
         #[cfg(feature = "stack-randomize")]
         let mut stack_randomizer = stack_randomizer::StackRandomizer::new(params.seed);
 
-        // We use value 0 to self synchronize two processes at the start of benchmark execution.
-        // So cursor value is a sample index being collected right now. Hence the number
-        // of collected samples is cursor_value - 1;
-
         if cfg!(not(feature = "no-sync")) {
+            // We use value 0 to self synchronize two processes at the start of benchmark execution.
+            // So cursor value is a sample index being collected right now. Hence the number
+            // of collected samples is cursor_value - 1;
+            assert_eq!(
+                self.commpage.load_sample_counter(self.role),
+                0,
+                "Illegal cursor sate (=0 expected)"
+            );
             self.commpage.advance_cursor(self.role, sample_no + 1);
             self.commpage
                 .wait_for_cursor_value(self.role.peer(), sample_no + 1);
