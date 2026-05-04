@@ -27,7 +27,7 @@ enum Subcommand {
         #[command(flatten)]
         bench_flags: CargoBenchFlags,
     },
-    /// List auxilary metrics
+    /// List auxiliary metrics
     AuxMetrics {
         #[command(flatten)]
         bench_flags: CargoBenchFlags,
@@ -383,7 +383,7 @@ mod paired_test {
 
         let mut exit_code = ExitCode::SUCCESS;
 
-        // Calculate common aux-metric names of verbose mode activated
+        // Calculate common aux-metric names if verbose mode activated
         let aux_metrics = if verbose {
             let b_metrics = HashSet::<String>::from_iter(b_list.aux_metrics);
             let c_metrics = HashSet::from_iter(c_list.aux_metrics);
@@ -449,8 +449,8 @@ mod paired_test {
                         LoopMode::Samples(samples_total) => BenchmarkProgress::SamplingNo {
                             samples_total,
                             sample_no: commpage
-                                .sample_counter(Role::Candidate)
-                                .min(commpage.sample_counter(Role::Baseline)),
+                                .load_sample_counter(Role::Candidate)
+                                .min(commpage.load_sample_counter(Role::Baseline)),
                         },
                     };
                     if expected_duration > PROGRESS_REPORTING_THRESHOLD
