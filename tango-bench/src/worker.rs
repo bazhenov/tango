@@ -133,11 +133,11 @@ impl WorkerState {
             // So cursor value is a sample index being collected right now. Hence the number
             // of collected samples is cursor_value - 1;
             assert_eq!(
-                self.commpage.load_sample_counter(self.role),
+                self.commpage.load_cursor_value(self.role),
                 0,
                 "Illegal cursor sate (=0 expected)"
             );
-            self.commpage.advance_cursor(self.role, sample_no + 1);
+            self.commpage.set_cursor_value(self.role, sample_no + 1);
             self.commpage
                 .wait_for_cursor_value(self.role.peer(), sample_no + 1);
         }
@@ -161,7 +161,7 @@ impl WorkerState {
             // Advance cursor and wait for peer
             sample_no += 1;
             if cfg!(not(feature = "no-sync")) {
-                self.commpage.advance_cursor(self.role, sample_no + 1);
+                self.commpage.set_cursor_value(self.role, sample_no + 1);
                 if !self
                     .commpage
                     .wait_for_cursor_value(self.role.peer(), sample_no + 1)

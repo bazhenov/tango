@@ -449,8 +449,8 @@ mod paired_test {
                         LoopMode::Samples(samples_total) => BenchmarkProgress::SamplingNo {
                             samples_total,
                             sample_no: commpage
-                                .load_sample_counter(Role::Candidate)
-                                .min(commpage.load_sample_counter(Role::Baseline)),
+                                .load_cursor_value(Role::Candidate)
+                                .min(commpage.load_cursor_value(Role::Baseline)),
                         },
                     };
                     if expected_duration > PROGRESS_REPORTING_THRESHOLD

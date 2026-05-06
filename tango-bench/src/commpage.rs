@@ -165,7 +165,7 @@ impl Commpage {
     }
 
     /// Advance this role's cursor after completing a sample.
-    pub fn advance_cursor(&mut self, role: Role, sample_no: u64) {
+    pub fn set_cursor_value(&mut self, role: Role, sample_no: u64) {
         self.layout_mut().cursor_mut(role).set_value(sample_no);
     }
 
@@ -206,7 +206,7 @@ impl Commpage {
     /// Read the sample counter for a given role (cursor value without the DONE bit).
     /// Sample counter is the number of a sample the children is collecting right now. 0 means
     /// that measurement has not start yet.
-    pub fn load_sample_counter(&self, role: Role) -> usize {
+    pub fn load_cursor_value(&self, role: Role) -> usize {
         let (_, value) = self.layout().cursor(role).load();
         value as usize
     }
@@ -266,11 +266,11 @@ mod tests {
     fn done_bit() {
         let mut cp = Commpage::create().unwrap();
         assert!(!cp.is_done(Role::Candidate));
-        cp.advance_cursor(Role::Candidate, 1);
+        cp.set_cursor_value(Role::Candidate, 1);
         cp.mark_done(Role::Candidate);
 
         assert!(cp.is_done(Role::Candidate));
-        assert_eq!(cp.load_sample_counter(Role::Candidate), 1);
+        assert_eq!(cp.load_cursor_value(Role::Candidate), 1);
     }
 
     #[test]
@@ -284,14 +284,14 @@ mod tests {
             let mut cp = Commpage::open(&id).unwrap();
 
             for i in 0..num_samples {
-                cp.advance_cursor(Role::Candidate, i);
+                cp.set_cursor_value(Role::Candidate, i);
                 cp.wait_for_cursor_value(Role::Baseline, i);
             }
             cp.mark_done(Role::Candidate);
         });
 
         for i in 0..num_samples {
-            cp.advance_cursor(Role::Baseline, i);
+            cp.set_cursor_value(Role::Baseline, i);
             cp.wait_for_cursor_value(Role::Candidate, i);
         }
         cp.mark_done(Role::Baseline);
@@ -299,11 +299,11 @@ mod tests {
         handle.join().unwrap();
 
         assert_eq!(
-            cp.load_sample_counter(Role::Baseline),
+            cp.load_cursor_value(Role::Baseline),
             (num_samples - 1) as usize
         );
         assert_eq!(
-            cp.load_sample_counter(Role::Candidate),
+            cp.load_cursor_value(Role::Candidate),
             (num_samples - 1) as usize
         );
     }
