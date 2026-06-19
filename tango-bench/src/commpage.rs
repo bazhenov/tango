@@ -8,6 +8,7 @@
 use shared_memory::{Shmem, ShmemConf};
 use std::{
     mem::size_of,
+    ops::{Deref, DerefMut},
     sync::atomic::{AtomicU32, AtomicU64, Ordering},
 };
 use thiserror::Error;
@@ -16,7 +17,7 @@ use thiserror::Error;
 const MAGIC: u64 = 0x54414E47_4F434D50;
 
 /// Protocol version
-const VERSION: u32 = 3;
+const VERSION: u32 = 4;
 
 /// Bit 63 of cursor -- set when the child exits the measurement loop
 const DONE_BIT: u64 = 1 << 63;
@@ -39,16 +40,43 @@ struct CommpageLayout {
     magic: u64,
     version: u32,
     flags: AtomicU32,
-    cursor_c: Cursor,
-    cursor_b: Cursor,
+    /// Cursors are stored in independent cache lines to get rid of false-sharing
+    cursor_c: CacheLineAligned<Cursor>,
+    cursor_b: CacheLineAligned<Cursor>,
 }
 
 #[repr(C)]
 struct Cursor(AtomicU64);
 
+/// ## Apple Silicon Notes
+///
+/// Although Apple Silicon has 128-byte L2 cache-line, there is no evidence that false sharing is affecting
+/// performance if [`Cursor`] is aligned on 64-byte boundary. Probably it's due to following facts:
+///
+/// - L1 cache lines are still 64B aligned;
+/// - L2 is not a core private cache, but rather shared by the whole P/E-cluster.
+///
+/// see: Apple Silicon CPU Optimization Guide, sections 5.6.3 and 5.6.4
+#[repr(C, align(64))]
+struct CacheLineAligned<T>(T);
+
+impl<T> Deref for CacheLineAligned<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<T> DerefMut for CacheLineAligned<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
 impl Cursor {
     fn set_value(&mut self, value: u64) {
-        self.0.store(value & !DONE_BIT, Ordering::Relaxed);
+        self.0.store(value & !DONE_BIT, Ordering::Release);
     }
 
     fn load(&self) -> (bool, u64) {
@@ -61,7 +89,7 @@ impl Cursor {
     }
 
     fn reset(&mut self) {
-        self.0.store(0, Ordering::Relaxed);
+        self.0.store(0, Ordering::Release);
     }
 }
 
@@ -70,8 +98,8 @@ impl CommpageLayout {
         self.magic = MAGIC;
         self.version = VERSION;
         *self.flags.get_mut() = 0;
-        *self.cursor_c.0.get_mut() = 0;
-        *self.cursor_b.0.get_mut() = 0;
+        self.cursor_c.reset();
+        self.cursor_b.reset();
     }
 
     fn validate(&self) -> Result<(), CommpageError> {
