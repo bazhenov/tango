@@ -26,7 +26,7 @@ Tango is designed to have the capability to detect a 1% change in performance wi
 
 ## Prerequirements
 
-1. Rust and Cargo toolchain installed (Rust stable is supported on Linux/macOS, nightly is required for Windows)
+1. Rust and Cargo toolchain installed (Rust stable is supported on all platforms)
 1. (_Optional_) [`cargo-export`](https://github.com/bazhenov/cargo-export) installed
 
 ## Getting started
@@ -41,24 +41,6 @@ Tango is designed to have the capability to detect a 1% change in performance wi
    name = "factorial"
    harness = false
    ```
-
-1. allows rustc to export symbols for dynamic linking from benchmarks
-
-   - **(Linux/macOS)** Add build script (`build.rs`) with following content
-
-      ```rust,ignore
-      fn main() {
-          println!("cargo:rustc-link-arg-benches=-rdynamic");
-          println!("cargo:rerun-if-changed=build.rs");
-      }
-      ```
-
-    - **(Windows, nightly required)** Add following code to cargo config (`.cargo/config`)
-
-       ```toml
-       [build]
-       rustflags = ["-Zexport-executable-symbols"]
-       ```
 
 1. Add `benches/factorial.rs` with the following content:
 
