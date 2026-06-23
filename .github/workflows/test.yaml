@@ -35,12 +35,6 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      # On Windows we need to configure -Zexport-executable-symbols
-      - name: Configure Windows nightly RUSTFLAGS
-        if: runner.os == 'Windows'
-        shell: bash
-        run: cp .cargo/config.windows.toml .cargo/config.toml
-
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.toolchain }}
@@ -77,12 +71,6 @@ jobs:
         with:
           ref: main
           path: baseline-branch
-
-      # On Windows we need to configure -Zexport-executable-symbols
-      - name: Configure Windows nightly RUSTFLAGS
-        if: runner.os == 'Windows'
-        shell: bash
-        run: cp .cargo/config.windows.toml .cargo/config.toml
 
       - uses: dtolnay/rust-toolchain@master
         with:

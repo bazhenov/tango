@@ -53,13 +53,6 @@ Tango is designed to have the capability to detect a 1% change in performance wi
       }
       ```
 
-    - **(Windows, nightly required)** Add following code to cargo config (`.cargo/config`)
-
-       ```toml
-       [build]
-       rustflags = ["-Zexport-executable-symbols"]
-       ```
-
 1. Add `benches/factorial.rs` with the following content:
 
    ```rust,no_run
