@@ -80,7 +80,7 @@ fn benchmark_with_panic() {
 
 #[test]
 fn benchmark_with_multiple_tests() {
-    Cmd::run(MULTIPLE, &["compare", MULTIPLE])
+    Cmd::run(MULTIPLE, &["compare", "--noise-threshold", "100", MULTIPLE])
         .assert_success()
         .assert_stdout_contains("bench1 {..} [ {..} ... {..} ]")
         .assert_stdout_contains("bench2 {..} [ {..} ... {..} ]");
