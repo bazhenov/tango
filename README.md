@@ -42,17 +42,6 @@ Tango is designed to have the capability to detect a 1% change in performance wi
    harness = false
    ```
 
-1. allows rustc to export symbols for dynamic linking from benchmarks
-
-   - **(Linux/macOS)** Add build script (`build.rs`) with following content
-
-      ```rust,ignore
-      fn main() {
-          println!("cargo:rustc-link-arg-benches=-rdynamic");
-          println!("cargo:rerun-if-changed=build.rs");
-      }
-      ```
-
 1. Add `benches/factorial.rs` with the following content:
 
    ```rust,no_run
