@@ -26,7 +26,7 @@ Tango is designed to have the capability to detect a 1% change in performance wi
 
 ## Prerequirements
 
-1. Rust and Cargo toolchain installed (Rust stable is supported on Linux/macOS, nightly is required for Windows)
+1. Rust and Cargo toolchain installed (Rust stable is supported on all platforms)
 1. (_Optional_) [`cargo-export`](https://github.com/bazhenov/cargo-export) installed
 
 ## Getting started

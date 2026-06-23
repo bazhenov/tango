@@ -16,10 +16,7 @@ jobs:
   test:
     strategy:
       matrix:
-        include:
-          - os: ubuntu-22.04
-          - os: macos-14
-          - os: windows-2022
+        os: [ubuntu-22.04, macos-14, windows-2022]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6

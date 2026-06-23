@@ -24,20 +24,12 @@ jobs:
   test:
     strategy:
       matrix:
-        include:
-          - os: ubuntu-22.04
-            toolchain: stable
-          - os: macos-14
-            toolchain: stable
-          - os: windows-2022
-            toolchain: nightly
+        os: [ubuntu-22.04, macos-14, windows-2022]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
 
-      - uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: ${{ matrix.toolchain }}
+      - uses: dtolnay/rust-toolchain@stable
 
       - uses: Swatinem/rust-cache@v2
 
@@ -50,13 +42,10 @@ jobs:
       matrix:
         include:
           - os: ubuntu-22.04
-            toolchain: stable
             exe: ""
           - os: macos-14
-            toolchain: stable
             exe: ""
           - os: windows-2022
-            toolchain: nightly
             exe: .exe
     runs-on: ${{ matrix.os }}
     # Do not run benchmarks if it is push to master or current branch has incompatibile protocol with the main.
@@ -72,9 +61,7 @@ jobs:
           ref: main
           path: baseline-branch
 
-      - uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: ${{ matrix.toolchain }}
+      - uses: dtolnay/rust-toolchain@stable
 
       - uses: Swatinem/rust-cache@v2
 
