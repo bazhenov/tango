@@ -129,7 +129,7 @@ pub trait ErasedSampler {
     /// method is called. Only then new set of input arguments should be generated. It is NOT allowed
     /// to call this method without first calling [`prepare_state()`].
     ///
-    /// [`prepare_state()`]: Self::prepare_state()
+    /// [`prepare_state()`]: Benchmark::prepare_state()
     fn measure(&mut self, iterations: usize) -> u64;
 
     /// Estimates the number of iterations achievable within given time.
@@ -207,11 +207,7 @@ impl<F: FnMut(Bencher<WallClock>) -> Box<dyn ErasedSampler>> SamplerFactory
 }
 
 impl Benchmark {
-    /// Generates next haystack for the measurement
-    ///
-    /// Calling this method should update internal haystack used for measurement.
-    /// Returns `true` if update happens, `false` if implementation doesn't support haystack generation.
-    /// Haystack/Needle distinction is described in [`Generator`] trait.
+    /// Generates next sampler for the measurement
     pub fn prepare_state(&mut self, seed: u64) -> Box<dyn ErasedSampler> {
         self.sampler_factory
             .create_sampler(BenchmarkParams { seed })
@@ -502,7 +498,7 @@ pub trait Metric {
     fn measure_fn(f: impl FnMut()) -> u64;
 }
 
-/// Dynamic dispatch entry for an [`AuxiliaryMetric`].
+/// Dynamic dispatch entry for collecting a metric
 pub struct AuxMetricEntry {
     pub id: &'static str,
     pub start: fn() -> u64,
