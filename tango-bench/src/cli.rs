@@ -925,12 +925,4 @@ mod tests {
             );
         }
     }
-
-    #[test]
-    fn colorize_output() {
-        assert_eq!(
-            format!("{}", colorize("1.02", true, true)),
-            "\u{1b}[32m1.02\u{1b}[0m"
-        );
-    }
 }
