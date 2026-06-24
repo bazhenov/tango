@@ -2,7 +2,6 @@
 use crate::{available_aux_metrics, commpage::Role, worker, Benchmark, Error};
 use anyhow::{bail, Context};
 use clap::{ArgAction, Parser};
-use colorz::mode::{self, Mode};
 use core::fmt;
 use glob_match::glob_match;
 use std::{
@@ -14,7 +13,6 @@ use std::{
     ops::Deref,
     path::{Path, PathBuf},
     process::{Command, ExitCode, Stdio},
-    str::FromStr,
     time::Duration,
 };
 
@@ -174,9 +172,11 @@ pub fn run(benchmarks: Vec<Benchmark>) -> Result<ExitCode> {
         })?;
         worker::run_worker(&worker_opts.shmem, role, benchmarks)
     } else {
-        match Mode::from_str(&opts.coloring_mode) {
-            Ok(coloring_mode) => mode::set_coloring_mode(coloring_mode),
-            Err(_) => eprintln!("[WARN] Invalid coloring mode: {}", opts.coloring_mode),
+        match opts.coloring_mode.as_str() {
+            "always" => colored::control::set_override(true),
+            "never" => colored::control::set_override(false),
+            "detect" | "auto" => colored::control::unset_override(),
+            _ => eprintln!("[WARN] Invalid coloring mode: {}", opts.coloring_mode),
         }
 
         match subcommand {
@@ -623,7 +623,7 @@ mod reporting {
         cli::{colorize, HumanTime},
         RunResult, Summary,
     };
-    use colorz::{ansi, mode::Stream, Colorize, Style};
+    use colored::Colorize;
     use std::{
         io::{self, stderr, Write},
         time::Duration,
@@ -675,7 +675,7 @@ mod reporting {
 
             println!(
                 "{}  (n: {}, outliers: {})",
-                name.bold().stream(Stream::Stdout),
+                name.bold(),
                 results.diff.n,
                 results.outliers
             );
@@ -683,23 +683,23 @@ mod reporting {
             println!(
                 "    {:12}   {:>15} {:>15} {:>15}",
                 "",
-                "baseline".bold().stream(Stream::Stdout),
-                "candidate".bold().stream(Stream::Stdout),
-                "\u{2206}".bold().stream(Stream::Stdout),
+                "baseline".bold(),
+                "candidate".bold(),
+                "\u{2206}".bold(),
             );
             println!("    {:12} \u{256d}{}", "", "\u{2500}".repeat(48));
             println!(
-                "    {:12} \u{2502} {:>15} {:>15} {:>15}  {:+4.2}{}{}",
+                "    {:12} \u{2502} {:>15} {:>15} {:>15}  {:>7}{}{}",
                 "mean",
                 HumanTime(base.mean),
                 HumanTime(candidate.mean),
                 colorize(
-                    HumanTime(results.diff.mean),
+                    format!("{}", HumanTime(results.diff.mean)),
                     significant,
                     results.diff.mean < 0.
                 ),
                 colorize(
-                    results.diff_estimate.pct,
+                    format!("{:+.2}", results.diff_estimate.pct),
                     significant,
                     results.diff.mean < 0.
                 ),
@@ -732,7 +732,7 @@ mod reporting {
             let (names, b_aux, c_aux) = aux_metrics;
             for ((name, b), c) in names.iter().zip(b_aux.iter()).zip(c_aux.iter()) {
                 println!(
-                    "{:>16} \u{2502} {:>15} {:>15} {:>15}  {:+4.2}%",
+                    "{:>16} \u{2502} {:>15} {:>15} {:>15}  {:>+7.2}%",
                     name,
                     b,
                     c,
@@ -764,11 +764,15 @@ mod reporting {
             let speedup = results.diff_estimate.pct;
             let candidate_faster = diff.mean < 0.;
             println!(
-                "{:50} [ {:>8} ... {:>8} ]    {:>+7.2}{}{}",
+                "{:50} [ {:>8} ... {:>8} ]    {:>7}{}{}",
                 colorize(name, significant, candidate_faster),
                 HumanTime(base.mean),
-                colorize(HumanTime(candidate.mean), significant, candidate_faster),
-                colorize(speedup, significant, candidate_faster),
+                colorize(
+                    format!("{}", HumanTime(candidate.mean)),
+                    significant,
+                    candidate_faster
+                ),
+                colorize(format!("{:+.2}", speedup), significant, candidate_faster),
                 colorize("%", significant, candidate_faster),
                 if significant { "*" } else { "" },
             )
@@ -839,11 +843,9 @@ mod reporting {
         b_sys_time: Duration,
         c_sys_time: Duration,
     ) {
-        const RED: Style = Style::new().fg(ansi::Red).const_into_runtime_style();
-
         eprintln!(
             "{}: {} benchmark spent too much time in system mode. Results may be inaccurate",
-            "WARN".into_style_with(RED).stream(Stream::Stderr),
+            "WARN".red(),
             name,
         );
         eprintln!("{:>20}: {:?}", "wall time", wall_time);
@@ -852,21 +854,18 @@ mod reporting {
     }
 }
 
-fn colorize<T: Display>(value: T, do_paint: bool, is_improved: bool) -> impl Display {
-    use colorz::{ansi, mode::Stream::Stdout, Colorize, Style};
+fn colorize(value: impl Into<String>, do_paint: bool, is_improved: bool) -> impl Display {
+    use colored::Colorize;
 
-    const RED: Style = Style::new().fg(ansi::Red).const_into_runtime_style();
-    const GREEN: Style = Style::new().fg(ansi::Green).const_into_runtime_style();
-    const DEFAULT: Style = Style::new().const_into_runtime_style();
-
+    let value = value.into();
     if do_paint {
         if is_improved {
-            value.into_style_with(GREEN).stream(Stdout)
+            value.green()
         } else {
-            value.into_style_with(RED).stream(Stdout)
+            value.red()
         }
     } else {
-        value.into_style_with(DEFAULT).stream(Stdout)
+        value.normal()
     }
 }
 
@@ -925,5 +924,13 @@ mod tests {
                 input
             );
         }
+    }
+
+    #[test]
+    fn colorize_output() {
+        assert_eq!(
+            format!("{}", colorize("1.02", true, true)),
+            "\u{1b}[32m1.02\u{1b}[0m"
+        );
     }
 }

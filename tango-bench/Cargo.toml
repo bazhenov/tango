@@ -15,7 +15,7 @@ keywords = ["benchmarks", "performance"]
 anyhow = "1.0.75"
 alloca = { version = "0.4.0", optional = true }
 clap = { version = "4.4.11", features = ["derive"] }
-colorz = { version = "1.1", features = ["supports-color"] }
+colored = "2.1"
 glob-match = "0.2"
 log = "0.4.20"
 num-traits = "0.2"
