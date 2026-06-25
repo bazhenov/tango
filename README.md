@@ -1,6 +1,8 @@
 # Tango.rs
 
 <div align="center">
+  <a href="https://github.com/bazhenov/tango/actions/workflows/test.yaml"><img src="https://github.com/bazhenov/tango/actions/workflows/test.yaml/badge.svg" alt="Test"/></a>
+  <a href="https://github.com/bazhenov/tango/actions/workflows/test-nightly.yaml"><img src="https://github.com/bazhenov/tango/actions/workflows/test-nightly.yaml/badge.svg" alt="Nightly Test"/></a>
   <a href="https://crates.io/crates/tango-bench"><img src="https://img.shields.io/crates/v/tango-bench" alt="Tango Bench"/></a>
   <a href="https://docs.rs/tango-bench/latest/tango_bench/"><img src="https://img.shields.io/docsrs/tango-bench" alt="Tango Bench"/></a>
 </div>
