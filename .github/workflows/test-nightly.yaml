@@ -1,4 +1,4 @@
-name: Nightly Test and Lint
+name: Nightly Test
 # Used to test tango on nightly periodically, to make sure nothing
 # breaks on a new compiler and clippy version
 
