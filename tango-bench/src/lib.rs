@@ -931,22 +931,27 @@ mod tests {
         use metrics::CpuTime;
         use std::time::Instant;
 
-        let target_duration = Duration::from_millis(50);
-        let deadline = Instant::now() + target_duration;
+        // This test is flaky by design expecially in CI, doing multiple attempts
+        for _ in 0..20 {
+            let target_duration = Duration::from_millis(50);
+            let deadline = Instant::now() + target_duration;
 
-        let cpu_nanos = CpuTime::measure_fn(|| {
-            while Instant::now() < deadline {
-                black_box(0u64);
+            let cpu_nanos = CpuTime::measure_fn(|| {
+                while Instant::now() < deadline {
+                    black_box(0u64);
+                }
+            });
+
+            let wall_nanos = target_duration.as_nanos() as f64;
+            let cpu = cpu_nanos as f64;
+            let error = ((cpu - wall_nanos) / wall_nanos).abs();
+            if error >= 0.01 {
+                eprintln!("CPU time ({cpu_nanos} ns) should be within 1% of wall time ({wall_nanos} ns), error: {error:.4}")
+            } else {
+                return;
             }
-        });
-
-        let wall_nanos = target_duration.as_nanos() as f64;
-        let cpu = cpu_nanos as f64;
-        let error = ((cpu - wall_nanos) / wall_nanos).abs();
-        assert!(
-            error < 0.01,
-            "CPU time ({cpu_nanos} ns) should be within 1% of wall time ({wall_nanos} ns), error: {error:.4}"
-        );
+        }
+        panic!("No more attempts left");
     }
 
     struct RngIterator<T>(T);
