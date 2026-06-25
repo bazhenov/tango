@@ -931,7 +931,7 @@ mod tests {
         use metrics::CpuTime;
         use std::time::Instant;
 
-        // This test is flaky by design expecially in CI, doing multiple attempts
+        // This test is flaky by design especially in CI, doing multiple attempts
         for _ in 0..20 {
             let target_duration = Duration::from_millis(50);
             let deadline = Instant::now() + target_duration;
