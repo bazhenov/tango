@@ -994,7 +994,8 @@ mod tests {
         let start = (metric.start)();
         // Do some CPU work
         let mut sum = 0u64;
-        for i in 0..1_000_000 {
+        // black_box prevents constant folding optimization
+        for i in 0..black_box(1_000_000) {
             sum = sum.wrapping_add(i);
         }
         black_box(sum);
