@@ -22,3 +22,6 @@ Cargo.lock
 !*.tfvars.example
 .terraform/
 .ssh/
+
+tango-compare/*.tar.gz
+tango-compare/result

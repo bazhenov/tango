@@ -1,11 +1,10 @@
 #!/bin/bash
 set -euo pipefail
 
-git clone -b main --depth=1 https://github.com/bazhenov/tango.git tango-main
-git clone -b shmem-test --depth=1 https://github.com/bazhenov/tango.git tango-commpage
+git clone -b main --depth=1 https://github.com/bazhenov/tango.git tango
 
-cargo export . -t main -- bench --manifest-path tango-main/Cargo.toml --bench=tango-slower
-cargo export . -t commpage -- bench --manifest-path tango-commpage/Cargo.toml --bench=tango-slower
+cargo export bin -- bench -p tango-compare --manifest-path tango/Cargo.toml --bench=criterion
+cargo export bin -- bench -p tango-compare --manifest-path tango/Cargo.toml --bench=tango
 
 UUID=$(uuidgen)
 echo "Running experiment $UUID"
@@ -23,10 +22,13 @@ fi
 tar czvf result.tar.gz result/
 aws s3 cp result.tar.gz "s3://${s3_bucket_name}/$UUID.tar.gz"
 
+# Saving criterion baseline
+./bin/criterion --save-baseline master --bench str || true
+
 for i in $(seq 1 1000);
 do
-    (./tango_slower-commpage compare -f factorial -s 100 || true) >> result/commpage.txt
-    (./tango_slower-main compare -f factorial --sampler flat -s 100 -p || true) >> result/main.txt
+    (./bin/criterion --baseline master --bench str --measurement-time 1 --warm-up-time 0.1 || true) >> result/criterion.txt
+    (./bin/tango compare -t 1 -f 'str' || true) >> result/tango.txt
 done
 
 tar czvf result.tar.gz result/
