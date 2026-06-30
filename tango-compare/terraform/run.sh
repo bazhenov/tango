@@ -23,12 +23,12 @@ tar czvf result.tar.gz result/
 aws s3 cp result.tar.gz "s3://${s3_bucket_name}/$UUID.tar.gz"
 
 # Saving criterion baseline
-./bin/criterion --save-baseline master --bench str || true
+./bin/criterion --save-baseline master --bench binary_search || true
 
 for i in $(seq 1 1000);
 do
-    (./bin/criterion --baseline master --bench str --measurement-time 1 --warm-up-time 0.1 || true) >> result/criterion.txt
-    (./bin/tango compare -t 1 -f 'str' || true) >> result/tango.txt
+    (./bin/criterion --baseline master --bench binary_search --measurement-time 1 --warm-up-time 0.1 || true) >> result/criterion.txt
+    (./bin/tango compare -t 1 -f binary_search || true) >> result/tango.txt
 done
 
 tar czvf result.tar.gz result/
