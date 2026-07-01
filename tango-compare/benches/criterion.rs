@@ -13,7 +13,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         b.iter(|| black_box(INPUT_STRING).chars().count())
     });
 
-    let mut vec = vec![0u64; 1024 * 1024];
+    let mut vec = vec![0u64; 10 * 1024];
     let mut rand = SmallRng::seed_from_u64(42);
     rand.fill(&mut vec);
     vec.sort();
