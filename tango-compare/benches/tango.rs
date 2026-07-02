@@ -1,5 +1,8 @@
 use rand::{RngExt, SeedableRng, rngs::SmallRng};
-use std::hint::black_box;
+use std::{
+    hash::{DefaultHasher, Hasher},
+    hint::black_box,
+};
 use tango_bench::{IntoBenchmarks, benchmark_fn, tango_benchmarks};
 
 pub const INPUT_STRING: &str = include_str!("../data/input.txt");
@@ -18,6 +21,15 @@ fn benchmarks() -> impl IntoBenchmarks {
             b.iter(move || {
                 let needle = rand.random::<u64>();
                 vec.binary_search(&needle)
+            })
+        }),
+        benchmark_fn("hash", |b| {
+            b.iter(|| {
+                let mut hasher = DefaultHasher::new();
+                for i in black_box(0..100000) {
+                    hasher.write_u64(i);
+                }
+                hasher.finish()
             })
         }),
     ]

@@ -1,6 +1,9 @@
 use criterion::{Criterion, criterion_group, criterion_main};
 use rand::{RngExt, SeedableRng, rngs::SmallRng};
-use std::hint::black_box;
+use std::{
+    hash::{DefaultHasher, Hasher},
+    hint::black_box,
+};
 
 pub const INPUT_STRING: &str = include_str!("../data/input.txt");
 
@@ -21,6 +24,16 @@ fn criterion_benchmark(c: &mut Criterion) {
     c.bench_function("binary_search", |b| {
         let needle = rand.random::<u64>();
         b.iter(|| vec.binary_search(&needle))
+    });
+
+    c.bench_function("hash", |b| {
+        b.iter(|| {
+            let mut hasher = DefaultHasher::new();
+            for i in black_box(0..100000) {
+                hasher.write_u64(i);
+            }
+            hasher.finish()
+        });
     });
 }
 

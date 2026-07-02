@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-git clone -b main --depth=1 https://github.com/bazhenov/tango.git tango
+git clone -b criterion-to-tango-comparison --depth=1 https://github.com/bazhenov/tango.git tango
 
 cargo export bin -- bench -p tango-compare --manifest-path tango/Cargo.toml --bench=criterion
 cargo export bin -- bench -p tango-compare --manifest-path tango/Cargo.toml --bench=tango
