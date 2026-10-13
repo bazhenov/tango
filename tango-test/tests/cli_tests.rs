@@ -7,6 +7,7 @@ use temp_dir::TempDir;
 
 const SLEEP_10: &str = env!("CARGO_BIN_EXE_sleep_10");
 const MULTIPLE: &str = env!("CARGO_BIN_EXE_multiple");
+const PREFIXED: &str = env!("CARGO_BIN_EXE_prefixed");
 const SLEEP_100: &str = env!("CARGO_BIN_EXE_sleep_100");
 const NOT_A_BENCH: &str = env!("CARGO_BIN_EXE_not_a_bench");
 const SLEEP_PANIC: &str = env!("CARGO_BIN_EXE_sleep_panic");
@@ -84,6 +85,26 @@ fn benchmark_with_multiple_tests() {
         .assert_success()
         .assert_stdout_contains("bench1 {..} [ {..} ... {..} ]")
         .assert_stdout_contains("bench2 {..} [ {..} ... {..} ]");
+}
+
+/// Baseline and candidate benchmarks are defined in the same executable and matched
+/// after stripping their prefixes.
+#[test]
+fn compare_with_stripped_prefixes() {
+    Cmd::run(
+        PREFIXED,
+        &[
+            "compare",
+            "--noise-threshold",
+            "100",
+            "--strip-candidate",
+            "candidate/**",
+            "--strip-baseline",
+            "baseline/**",
+        ],
+    )
+    .assert_success()
+    .assert_stdout_match("compression {..} [ {..} ... {..} ]{..}\n");
 }
 
 fn gnuplot_available() -> bool {

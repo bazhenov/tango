@@ -3,7 +3,7 @@ use crate::{available_aux_metrics, commpage::Role, worker, Benchmark, Error};
 use anyhow::{bail, Context};
 use clap::{ArgAction, Parser};
 use core::fmt;
-use glob_match::glob_match;
+use glob_match::{glob_match, glob_match_with_captures};
 use std::{
     env::{self, temp_dir},
     fmt::Display,
@@ -89,6 +89,16 @@ struct PairedOpts {
     /// Filter tests by name (eg. '*/{sorted,unsorted}/[0-9]*')
     #[arg(short = 'f', long = "filter")]
     filter: Option<String>,
+
+    /// Include only candidate benchmarks matching a glob and strip its literal prefix/suffix from
+    /// their names (eg. 'my/**' turns 'my/compression' into 'compression')
+    #[arg(long = "strip-candidate")]
+    strip_candidate: Option<String>,
+
+    /// Include only baseline benchmarks matching a glob and strip its literal prefix/suffix from
+    /// their names (eg. 'zstd/**' turns 'zstd/compression' into 'compression')
+    #[arg(long = "strip-baseline")]
+    strip_baseline: Option<String>,
 
     /// Report only statistically significant results
     #[arg(short = 'g', long = "significant-only", default_value_t = false)]
@@ -311,6 +321,8 @@ mod paired_test {
             path,
             verbose,
             filter,
+            strip_candidate,
+            strip_baseline,
             samples,
             time,
             filter_outliers,
@@ -355,8 +367,8 @@ mod paired_test {
         let b_list = child_b
             .list_benchmarks()
             .context("Failed to list benchmarks (baseline)")?;
-        let c_benchmarks = c_list.benchmarks;
-        let b_benchmarks = b_list.benchmarks;
+        let c_benchmarks = strip_and_filter_names(c_list.benchmarks, strip_candidate.as_deref());
+        let b_benchmarks = strip_and_filter_names(b_list.benchmarks, strip_baseline.as_deref());
 
         if let Some(path) = &path_to_dump {
             if !path.exists() {
@@ -535,6 +547,38 @@ mod paired_test {
         let _ = child_b.shutdown();
 
         Ok(exit_code)
+    }
+
+    /// Applies `--strip-candidate`/`--strip-baseline` pattern to the list of benchmark names.
+    ///
+    /// Benchmarks not matching the pattern are replaced with `None` (so indices are preserved),
+    /// matching ones are reduced to the part captured by wildcards (see [`strip_name`]).
+    pub(super) fn strip_and_filter_names(names: Vec<String>, pattern: Option<&str>) -> Vec<String> {
+        let Some(pattern) = pattern else {
+            return names;
+        };
+        names
+            .iter()
+            .filter_map(|name| strip_name(name, pattern))
+            .collect()
+    }
+
+    /// Returns `None` if the name doesn't match the pattern, otherwise the parts of the name
+    /// captured by the pattern wildcards joined with `/` (eg. `my/a` with `my/**` gives `a`,
+    /// `my/a/x/b` with `my/*/x/*` gives `a/b`). Pattern without wildcards keeps the name intact.
+    pub(super) fn strip_name(name: &str, pattern: &str) -> Option<String> {
+        let captures = glob_match_with_captures(pattern, name)?;
+        let result = if captures.is_empty() {
+            // empty capture set is returned when name and pattern are equals
+            name.to_string()
+        } else {
+            captures
+                .into_iter()
+                .map(|c| &name[c])
+                .collect::<Vec<_>>()
+                .join("/")
+        };
+        Some(result)
     }
 
     /// Checking if test spent too much time in a system/kernel mode.
@@ -909,6 +953,34 @@ mod tests {
         assert_eq!(format!("{}", HumanTime(1200000000.)), "1.2 s");
 
         assert_eq!(format!("{}", HumanTime(-1200000.)), "-1.2 ms");
+    }
+
+    #[test]
+    fn check_strip_name() {
+        use paired_test::strip_name;
+
+        assert_eq!(strip_name("foo/a", "foo/**"), Some("a".into()));
+        assert_eq!(strip_name("foo/a/b", "foo/**"), Some("a/b".into()));
+        assert_eq!(strip_name("bar/a", "foo/**"), None);
+
+        // Literal suffix of the pattern is stripped
+        assert_eq!(strip_name("a/foo", "**/foo"), Some("a".into()));
+        assert_eq!(strip_name("a/b/foo", "**/foo"), Some("a/b".into()));
+        assert_eq!(strip_name("a/bar", "**/foo"), None);
+
+        // Both literal prefix and suffix are stripped
+        assert_eq!(strip_name("foo/a/bar", "foo/**/bar"), Some("a".into()));
+        assert_eq!(strip_name("foo/a/b/bar", "foo/**/bar"), Some("a/b".into()));
+        assert_eq!(strip_name("foo/a/baz", "foo/**/bar"), None);
+
+        // Captures of several wildcards are joined with `/`
+        assert_eq!(strip_name("foo/a/x/b", "foo/*/x/*"), Some("a/b".into()));
+
+        // Pattern without wildcards keeps the name intact
+        assert_eq!(strip_name("foo/bar", "foo/bar"), Some("foo/bar".into()));
+
+        // Pattern without wildcards keeps the name intact
+        assert_eq!(strip_name("foo/bar", "foo/b*"), Some("ar".into()));
     }
 
     // Sane checking some simple patterns
