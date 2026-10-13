@@ -409,14 +409,16 @@ mod paired_test {
 
         let selected_benchmarks = c_benchmarks
             .iter()
+            // It's important that we enumerate functions first, because absolute indexes
+            // are used to specify benchmark
             .enumerate()
-            // Filtering benchmarks by -f
+            .filter_map(|(idx, f)| f.as_deref().map(|f| (idx, f)))
             .filter(|(_, f)| filter.is_empty() || glob_match(filter, f))
             // finding position of the benchmark in a baseline
             .filter_map(|(c_idx, f)| {
                 b_benchmarks
                     .iter()
-                    .position(|b_func| b_func == f)
+                    .position(|b_func| b_func.as_deref() == Some(f))
                     .map(|b_idx| (c_idx, b_idx, f))
             });
         for (c_idx, b_idx, func_name) in selected_benchmarks {
@@ -553,14 +555,12 @@ mod paired_test {
     ///
     /// Benchmarks not matching the pattern are replaced with `None` (so indices are preserved),
     /// matching ones are reduced to the part captured by wildcards (see [`strip_name`]).
-    pub(super) fn strip_and_filter_names(names: Vec<String>, pattern: Option<&str>) -> Vec<String> {
-        let Some(pattern) = pattern else {
-            return names;
-        };
-        names
-            .iter()
-            .filter_map(|name| strip_name(name, pattern))
-            .collect()
+    fn strip_and_filter_names(names: Vec<String>, pattern: Option<&str>) -> Vec<Option<String>> {
+        if let Some(pattern) = pattern {
+            names.iter().map(|name| strip_name(name, pattern)).collect()
+        } else {
+            names.into_iter().map(Some).collect()
+        }
     }
 
     /// Returns `None` if the name doesn't match the pattern, otherwise the parts of the name
