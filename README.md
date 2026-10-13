@@ -158,6 +158,7 @@ There are several arguments you can pass to the `compare` command to change it b
   - `-t`, `--time` – how long to run each benchmark (in seconds)
   - `-s`, `--samples` – how much samples to gather from each benchmark
   - `-f` – filter benchmarks by name. Glob patterns are supported (eg. `*/bench_name/{2,4,8}/**`)
+  - `--strip-candidate`, `--strip-baseline` – include only candidate/baseline benchmarks matching a glob pattern and strip the pattern's literal prefix and suffix from their names (eg. `my/**` turns `my/a` into `a`, `**/my` turns `a/my` into `a`). This allows comparing two benchmarks defined in the same executable (see below)
   - `-d [path]` – dump CSV with raw samples in a given directory
   - `--gnuplot` – generate plot for each benchmark (requires gnuplot to be installed)
   - `-o`, `--filter-outliers` – additionally filter outliers
@@ -165,6 +166,25 @@ There are several arguments you can pass to the `compare` command to change it b
   - `--noise-threshold` – consider benchmark differences below this percentage as noise (default: 0.5%)
   - `--fail-fast` - terminate early on first statistically significant performance regression
 
+### Comparing benchmarks from the same executable
+
+Sometimes it's more convenient to define both baseline and candidate in the same file (eg. comparing your algorithm against a third-party one). Give them a common name with different prefixes:
+
+```rust
+tango_benchmarks!([
+    benchmark_fn("zstd/compression", |b| b.iter(|| zstd::compress(...))),
+    benchmark_fn("my/compression", |b| b.iter(|| my_compression::compress(...))),
+]);
+```
+
+and use `--strip-candidate`/`--strip-baseline` to match them:
+
+```console
+$ cargo bench --bench=my -- compare --strip-candidate='my/**' --strip-baseline='zstd/**'
+compression      [ 15us ..... 15us ] +0.1%
+```
+
+`-f` filter is applied to the names after the prefix/suffix is stripped.
 
 ## Contributing
 
