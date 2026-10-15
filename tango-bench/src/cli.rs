@@ -285,6 +285,24 @@ mod solo_test {
     }
 }
 
+/// Benchmarks are addressed by their index.
+///
+/// This type saves the original index of the benchmark to prevent index mismatch when we need to
+/// filter benchmarks by name then and so on.
+struct IndexedBenchmarkName {
+    benchmark_name: String,
+    index: usize,
+}
+
+impl From<(usize, String)> for IndexedBenchmarkName {
+    fn from((index, benchmark_name): (usize, String)) -> Self {
+        Self {
+            benchmark_name,
+            index,
+        }
+    }
+}
+
 mod paired_test {
     use super::*;
     use crate::{
@@ -293,7 +311,7 @@ mod paired_test {
         child::ChildHandle,
         cli::reporting::{report_system_time_bias, BenchmarkProgress},
         commpage::{Commpage, Role},
-        protocol::RunBenchmarkResult,
+        protocol::{ListBenchmarksResult, RunBenchmarkResult},
     };
     use fs::File;
     use reporting::Reporter;
@@ -361,14 +379,34 @@ mod paired_test {
         let mut child_b = ChildHandle::spawn(&path, &commpage, Role::Baseline)
             .context("Failed to spawn baseline")?;
 
-        let c_list = child_c
+        let ListBenchmarksResult {
+            benchmarks: c_benchmarks,
+            aux_metrics: c_aux_metrics,
+        } = child_c
             .list_benchmarks()
             .context("Failed to list benchmarks (candidate)")?;
-        let b_list = child_b
+        let ListBenchmarksResult {
+            benchmarks: b_benchmarks,
+            aux_metrics: b_aux_metrics,
+        } = child_b
             .list_benchmarks()
             .context("Failed to list benchmarks (baseline)")?;
-        let c_benchmarks = strip_and_filter_names(c_list.benchmarks, strip_candidate.as_deref());
-        let b_benchmarks = strip_and_filter_names(b_list.benchmarks, strip_baseline.as_deref());
+
+        // Benchmarks are addressed by their index. We need to preserve indexing while we will
+        // filter them by name etc.
+        let c_benchmarks = c_benchmarks
+            .into_iter()
+            .enumerate()
+            .map(IndexedBenchmarkName::from)
+            .collect::<Vec<_>>();
+        let b_benchmarks = b_benchmarks
+            .into_iter()
+            .enumerate()
+            .map(IndexedBenchmarkName::from)
+            .collect::<Vec<_>>();
+
+        let c_benchmarks = strip_and_filter_names(c_benchmarks, strip_candidate.as_deref());
+        let b_benchmarks = strip_and_filter_names(b_benchmarks, strip_baseline.as_deref());
 
         if let Some(path) = &path_to_dump {
             if !path.exists() {
@@ -397,8 +435,8 @@ mod paired_test {
 
         // Calculate common aux-metric names if verbose mode activated
         let aux_metrics = if verbose {
-            let b_metrics = HashSet::<String>::from_iter(b_list.aux_metrics);
-            let c_metrics = HashSet::from_iter(c_list.aux_metrics);
+            let b_metrics = HashSet::<String>::from_iter(b_aux_metrics);
+            let c_metrics = HashSet::from_iter(c_aux_metrics);
             b_metrics
                 .intersection(&c_metrics)
                 .cloned()
@@ -409,33 +447,29 @@ mod paired_test {
 
         let selected_benchmarks = c_benchmarks
             .iter()
-            // It's important that we enumerate functions first, because absolute indexes
-            // are used to specify benchmark
-            .enumerate()
-            .filter_map(|(idx, f)| f.as_deref().map(|f| (idx, f)))
-            .filter(|(_, f)| filter.is_empty() || glob_match(filter, f))
-            // finding position of the benchmark in a baseline
-            .filter_map(|(c_idx, f)| {
+            .filter(|c| filter.is_empty() || glob_match(filter, &c.benchmark_name))
+            .filter_map(|c| {
                 b_benchmarks
                     .iter()
-                    .position(|b_func| b_func.as_deref() == Some(f))
-                    .map(|b_idx| (c_idx, b_idx, f))
+                    .find(|b| b.benchmark_name == c.benchmark_name)
+                    .map(|b| (c, b))
             });
-        for (c_idx, b_idx, func_name) in selected_benchmarks {
+        for (c, b) in selected_benchmarks {
+            let func_name = &c.benchmark_name;
             // Estimate iterations
             let c_iters = child_c
-                .estimate_iterations(c_idx, seed, TIME_SLICE)
+                .estimate_iterations(c.index, seed, TIME_SLICE)
                 .context("Failed to estimate iterations (candidate)")?;
             let b_iters = child_b
-                .estimate_iterations(b_idx, seed, TIME_SLICE)
+                .estimate_iterations(b.index, seed, TIME_SLICE)
                 .context("Failed to estimate iterations (baseline)")?;
             let iterations = c_iters.max(1).min(b_iters.max(1));
 
             commpage.reset();
 
             // Start measurement on both children (non-blocking)
-            child_c.start_benchmark(c_idx, seed, iterations, num_samples, aux_metrics.clone())?;
-            child_b.start_benchmark(b_idx, seed, iterations, num_samples, aux_metrics.clone())?;
+            child_c.start_benchmark(c.index, seed, iterations, num_samples, aux_metrics.clone())?;
+            child_b.start_benchmark(b.index, seed, iterations, num_samples, aux_metrics.clone())?;
 
             let expected_duration = match loop_mode {
                 LoopMode::Samples(samples) => TIME_SLICE * samples as u32,
@@ -555,11 +589,19 @@ mod paired_test {
     ///
     /// Benchmarks not matching the pattern are replaced with `None` (so indices are preserved),
     /// matching ones are reduced to the part captured by wildcards (see [`strip_name`]).
-    fn strip_and_filter_names(names: Vec<String>, pattern: Option<&str>) -> Vec<Option<String>> {
+    fn strip_and_filter_names(
+        benchmarks: Vec<IndexedBenchmarkName>,
+        pattern: Option<&str>,
+    ) -> Vec<IndexedBenchmarkName> {
         if let Some(pattern) = pattern {
-            names.iter().map(|name| strip_name(name, pattern)).collect()
+            benchmarks
+                .into_iter()
+                .map(|b| (b.index, strip_name(&b.benchmark_name, pattern)))
+                .filter_map(|(index, new_name)| new_name.map(|name| (index, name)))
+                .map(IndexedBenchmarkName::from)
+                .collect()
         } else {
-            names.into_iter().map(Some).collect()
+            benchmarks
         }
     }
 
