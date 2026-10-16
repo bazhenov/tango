@@ -1,3 +1,5 @@
+/.vm
+/mvm-bootstrap.sh
 /.zed
 target/
 Cargo.lock
